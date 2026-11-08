@@ -40,7 +40,7 @@ struct SettingsView: View {
             }
             Divider()
             HStack {
-                Text("个人版 · 1.0").font(.caption).foregroundStyle(.secondary)
+                Text("个人版 · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0")").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("打开配置目录") { store.revealConfiguration() }.buttonStyle(.link)
             }.padding(.horizontal, 24).padding(.vertical, 14)

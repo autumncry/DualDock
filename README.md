@@ -1,10 +1,12 @@
 # DualDock
 
-供个人使用的 macOS 多屏 Dock。首次运行导入系统 Dock 的固定应用，之后独立保存分组与排列。支持 macOS 14 及以上；本次交付构建为 Apple Silicon 版本。
+供个人使用的 macOS 多屏 Dock。首次运行导入系统 Dock 的固定应用，之后独立保存分组与排列。最低部署目标为 macOS 14；本次构建与验证环境为 macOS 27.0.1 / Apple M5，发布包为 Apple Silicon 版本。
 
 ## 打开
 
-打开 `dist/DualDock.app`。首次启动显示设置，菜单栏的双矩形图标可以再次打开设置或退出。
+从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.0.0) 下载 `DualDock-1.0.0-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
+
+也可以打开本地构建的 `dist/DualDock.app`。首次启动显示设置，菜单栏的双矩形图标可以再次打开设置或退出。
 
 在“权限”页授予屏幕录制与辅助功能。前者用于窗口缩略图，后者用于切换指定窗口。修改权限后如未生效，退出并重新打开应用。窗口截图仅在内存中缓存，不写入磁盘或上传。
 
@@ -31,6 +33,7 @@
 ./script/build_and_run.sh              # 编译、打包、本地签名并启动
 ./script/build_and_run.sh --build-only # 只构建 .app
 ./script/build_and_run.sh --verify     # 构建、启动并检查进程
+./script/package_dmg.sh               # release 构建，生成 DMG 与 SHA-256 校验文件
 swift test                            # 分组、排序及模式数据不变性测试
 ./script/check_system_dock.sh          # 内存偏好注入的恢复故障测试
 ```
@@ -45,4 +48,8 @@ swift test                            # 分组、排序及模式数据不变性�
 
 应用为本机个人使用进行 ad-hoc 签名，未进行 Apple 公证。最新验证记录见 `docs/validation.md`。
 
-分析依据与设计见 `docs/superpowers/specs/2026-11-09-dualdock-design.md`；原始 REA Evidence 位于相邻 `../research/Dockish-1.2.8/`。
+分析依据与设计见 `docs/superpowers/specs/2026-11-09-dualdock-design.md`；原始 REA Evidence 属于本地研究资料，保存在相邻 `../research/Dockish-1.2.8/`，未随源码仓库或安装包发布。
+
+## 协议
+
+采用 [MIT License](LICENSE)，Copyright (c) 2026 Ronny Cao。源码仓库目前为私有。

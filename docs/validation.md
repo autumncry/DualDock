@@ -17,7 +17,7 @@
 | 两屏一致性 | 两个逻辑屏各一张面板，条目数与运行标识数相同；面板 frame 均在各自屏幕内 |
 | 私有全屏状态读取 | 两个屏幕 UUID 均能取得当前普通桌面的 Space 状态 |
 
-最终主程序 SHA-256：`a91b2d2146c14cf9bedda0b0757cede14cfcda37bfc8b4f7bb8f29f998805212`。
+首轮本地 debug 构建的主程序 SHA-256（历史记录，本次 Release 另行校验）：`a91b2d2146c14cf9bedda0b0757cede14cfcda37bfc8b4f7bb8f29f998805212`。
 
 模型测试覆盖跨组移动、空组目标、自身目标、重复插入、无效目标、移出最后成员、组内及栏内排序、改名、拆组和模式往返持久化。
 
@@ -43,3 +43,20 @@
 5. 用户开启系统 Dock 隐藏开关后，退出 DualDock 并确认原设置恢复。
 
 测试启动使用 `/private/tmp/dualdock-validation/config`，与正式配置 `~/Library/Application Support/DualDock` 隔离。交付前结束测试实例，用户正常打开应用后使用正式配置。
+
+## v1.0.0 Release 打包验证
+
+本次采用 `swift build -c release`。发布包为 `DualDock-1.0.0-arm64.dmg`，大小 1,508,312 字节。
+
+- 12 项模型测试、10 项内存偏好恢复检查再次通过。
+- `hdiutil verify` 校验通过。
+- 只读挂载后确认包含 DualDock.app、指向 /Applications 的安装入口、安装说明和 MIT 协议。
+- 挂载内应用与复制到临时安装目录后的应用均通过 `codesign --verify --strict`。
+- 复制后主程序与 release 构建逐字节一致，版本为 1.0.0，架构为 arm64。
+- 挂载与临时副本已清理。此轮未启动安装副本或更改系统设置。
+
+DMG SHA-256：`d187dd2c7135a1f6d60e0f622f6d1e7b74fc586eaef57ee775351464774a7801`。
+
+Release 主程序 SHA-256：`430554314695872cb4d72e5af926eee564cd399c4a9fbb2ac1ad0041e5f9401d`。
+
+前文待解锁、授权的实际交互验收仍未完成，已在 Release 说明中保留该边界。

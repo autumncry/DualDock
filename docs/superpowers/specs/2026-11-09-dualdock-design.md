@@ -4,6 +4,8 @@
 
 ## 1. 分析对象与证据范围
 
+本节引用的 Evidence JSON、config-shape.json 和 otool-supplement.md 均属本地研究材料，未随源码仓库或安装包发布；这里保留结论及证据标识供追溯。
+
 - 本地程序 `/Applications/Dockish.app`，版本 1.2.8，Universal Mach-O，本轮分析 arm64。
 - 主程序 SHA-256 为 `435bc46159b5335d6d60cf109fc98b32ad503c6d8dfe0545aeb95d95ce75d7cc`。
 - REA 使用 Hopper，共保留 38 条 Evidence，见同目录 `evidence-final.json`。反编译结果是静态伪代码，不是 Dockish 原始源代码，也不代表观察到实际执行。

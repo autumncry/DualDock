@@ -21,20 +21,7 @@ if pgrep -x DualDock >/dev/null; then
   fi
 fi
 
-swift build
-BIN_DIR="$(swift build --show-bin-path)"
-APP_BUNDLE="$ROOT_DIR/dist/DualDock.app"
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
-cp "$BIN_DIR/DualDock" "$APP_BUNDLE/Contents/MacOS/DualDock"
-cp "$ROOT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
-if [ ! -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
-  xcrun swift "$ROOT_DIR/script/make_icon.swift" "$ROOT_DIR/Resources"
-  iconutil -c icns "$ROOT_DIR/Resources/AppIcon.iconset" -o "$ROOT_DIR/Resources/AppIcon.icns"
-fi
-cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-codesign --force --sign - --identifier local.ronny.DualDock \
-  --requirements '=designated => identifier "local.ronny.DualDock"' "$APP_BUNDLE"
-codesign --verify --strict "$APP_BUNDLE"
+APP_BUNDLE="$("$ROOT_DIR/script/package_app.sh" debug)"
 echo "Built $APP_BUNDLE"
 
 case "$MODE" in

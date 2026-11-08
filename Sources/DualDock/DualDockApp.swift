@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let result: [String: Any] = ["screens": screens, "mode": store.configuration.mode.rawValue,
             "groups": store.configuration.entries.filter(\.isGroup).count,
             "runningApps": store.runningApps.count, "accessibility": AXIsProcessTrusted(),
-            "screenCapture": CGPreflightScreenCaptureAccess(), "version": "1.0"]
+            "screenCapture": CGPreflightScreenCaptureAccess(), "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"]
         if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: url, options: .atomic) }
     }
 }
