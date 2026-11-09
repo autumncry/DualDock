@@ -4,7 +4,7 @@
 
 ## 打开
 
-从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.2.2) 下载 `DualDock-1.2.2-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
+从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.2.3) 下载 `DualDock-1.2.3-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
 
 也可以打开本地构建的 `dist/DualDock.app`。首次启动显示设置；右键 Dock 空白处或点击菜单栏的双矩形图标可以再次打开设置。退出入口在菜单栏中。
 
@@ -41,6 +41,7 @@
 swift test                            # 分组、排序及模式数据不变性测试
 ./script/check_system_dock.sh          # 内存偏好注入的恢复故障测试
 ./script/check_badges.sh               # 角标读取、关闭与异步隔离检查
+./script/check_dock_views.sh           # 隐藏 AppKit 视图的滚动范围与边界检查
 ```
 
 脚本支持 `--logs`、`--telemetry` 与 `--debug`。Codex Run 按钮也使用该脚本。重新构建会先请求已运行的 DualDock 正常退出，以完成系统 Dock 恢复。

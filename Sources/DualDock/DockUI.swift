@@ -69,9 +69,18 @@ final class DockDocumentView: NSView {
 @MainActor
 private final class DockScrollView: NSScrollView {
     var onUserScroll: (() -> Void)?
+    var allowsHorizontalScrolling = false
+    private var handlingWheel = false
     override func scrollWheel(with event: NSEvent) {
+        // A non-scrollable row must not move by a fractional backing pixel.
+        // An unhandled edge event can also return here through the responder
+        // chain (the strip forwards wheel input to this view); handle it once.
+        guard allowsHorizontalScrolling, !handlingWheel else { return }
+        handlingWheel = true
+        defer { handlingWheel = false }
+        let previous = contentView.bounds.origin
         super.scrollWheel(with: event)
-        onUserScroll?()
+        if contentView.bounds.origin != previous { onUserScroll?() }
     }
 }
 
@@ -115,7 +124,7 @@ final class DockStripView: NSView {
     private var lastMousePoint: NSPoint?
     private var displayLink: CADisplayLink?
     private var animationTarget: DockAnimationTarget?
-    private var lastTimestamp: CFTimeInterval?
+    private var animationTiming = DockAnimationTiming()
 
     init() {
         super.init(frame: .zero)
@@ -160,6 +169,7 @@ final class DockStripView: NSView {
         super.viewDidMoveToWindow()
         removeMouseMonitors()
         if window == nil { stopAnimations(); return }
+        needsLayout = true
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             self?.updatePointer()
@@ -175,8 +185,18 @@ final class DockStripView: NSView {
         super.layout()
         guard let currentLayout else { return }
         let unit = baseSide / 48
-        scrolling.frame = NSRect(x: currentLayout.horizontalInset, y: 0,
-                                 width: currentLayout.viewportSize.width, height: currentLayout.viewportSize.height)
+        let viewport = NSRect(x: currentLayout.horizontalInset, y: 0,
+                              width: currentLayout.viewportSize.width, height: currentLayout.viewportSize.height)
+        scrolling.frame = backingAlignedRect(viewport, options: [.alignAllEdgesOutward])
+        scrolling.layoutSubtreeIfNeeded()
+        let clipSize = scrolling.contentView.bounds.size
+        let overflows = currentLayout.contentSize.width > currentLayout.viewportSize.width + 0.001
+        scrolling.allowsHorizontalScrolling = overflows
+        document.frame.size = NSSize(width: overflows ? max(currentLayout.contentSize.width, clipSize.width) : clipSize.width,
+                                     height: clipSize.height)
+        if !overflows, scrolling.contentView.bounds.origin != .zero {
+            scrolling.contentView.scroll(to: .zero)
+        }
         emptyLabel?.frame = NSRect(x: 10 * unit, y: 8 * unit + baseSide / 2 - 8 * unit,
                                   width: max(100, currentLayout.contentSize.width - 20 * unit), height: 20 * unit)
     }
@@ -230,7 +250,7 @@ final class DockStripView: NSView {
         displayLink?.invalidate()
         displayLink = nil
         animationTarget = nil
-        lastTimestamp = nil
+        animationTiming.pause()
         focusIndex = nil
         lensAnchorX = nil
         lastMousePoint = nil
@@ -358,10 +378,10 @@ final class DockStripView: NSView {
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
         let index = tileIndex(at: local)
         changeHoveredIndex(index)
-        if !isGroup, magnificationScale > 1, index != nil {
+        if !isGroup, magnificationScale > 1, scrolling.frame.contains(local), let baseLayout {
             let point = document.convert(local, from: self)
-            focusIndex = baseLayout?.focusIndex(at: point.x)
-            lensAnchorX = point.x
+            focusIndex = currentLayout.magnificationFocus(at: point, basedOn: baseLayout)
+            lensAnchorX = focusIndex == nil ? nil : point.x
         } else { focusIndex = nil; lensAnchorX = nil }
         let next = makeLayout(focus: focusIndex)
         guard targetLayout != next || currentLayout.maximumDifference(from: next) > 0.08 else { return }
@@ -384,6 +404,7 @@ final class DockStripView: NSView {
         interactionDepth = max(0, interactionDepth + (active ? 1 : -1))
         if active {
             displayLink?.isPaused = true
+            animationTiming.pause()
             changeHoveredIndex(nil)
         } else if interactionDepth == 0 {
             updatePointer(force: true)
@@ -397,11 +418,14 @@ final class DockStripView: NSView {
             currentLayout = targetLayout
             apply(targetLayout)
             displayLink?.isPaused = true
+            animationTiming.pause()
             return
         }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let targetLayout {
             currentLayout = targetLayout
             apply(targetLayout)
+            displayLink?.isPaused = true
+            animationTiming.pause()
             return
         }
         if displayLink == nil {
@@ -411,29 +435,34 @@ final class DockStripView: NSView {
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
-        lastTimestamp = nil
+        animationTiming.resume()
         displayLink?.isPaused = false
     }
 
     fileprivate func animationTick(_ link: CADisplayLink) {
-        guard interactionDepth == 0, let currentLayout, let targetLayout else { link.isPaused = true; return }
-        if NSEvent.pressedMouseButtons != 0 { waitingForMouseRelease = true; return }
+        guard interactionDepth == 0, let currentLayout, let targetLayout else {
+            link.isPaused = true
+            animationTiming.pause()
+            return
+        }
+        if NSEvent.pressedMouseButtons != 0 {
+            waitingForMouseRelease = true
+            animationTiming.pause()
+            return
+        }
         if waitingForMouseRelease {
             waitingForMouseRelease = false
             updatePointer(force: true)
             return
         }
-        let now = link.timestamp
-        let dt = min(0.05, max(0.001, now - (lastTimestamp ?? (now - 1.0 / 60.0))))
-        lastTimestamp = now
-        let fraction = CGFloat(1 - exp(-dt / 0.055))
+        let fraction = animationTiming.fraction(at: link.timestamp, returningToRest: focusIndex == nil)
         let remaining = currentLayout.maximumDifference(from: targetLayout)
         let next = remaining < 0.08 ? targetLayout : currentLayout.interpolated(to: targetLayout, fraction: fraction)
         self.currentLayout = next
         apply(next)
         if remaining < 0.08 {
             link.isPaused = true
-            lastTimestamp = nil
+            animationTiming.pause()
             refreshHoveredIndex()
         }
     }
@@ -448,7 +477,6 @@ final class DockStripView: NSView {
     private func apply(_ value: DockWaveLayout) {
         frame.size = value.panelSize
         backdrop.frame = NSRect(origin: .zero, size: value.backdropSize)
-        document.frame.size = value.contentSize
         for (tile, itemFrame) in zip(tiles, value.tileFrames) {
             let sizeChanged = tile.frame.size != itemFrame.size
             tile.frame = itemFrame

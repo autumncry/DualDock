@@ -2,6 +2,42 @@ import XCTest
 @testable import DualDockCore
 
 final class PreviewWindowPolicyTests: XCTestCase {
+    func testHiddenGenericShellRequiresConfirmedAccessibilityAbsence() {
+        XCTAssertTrue(PreviewWindowPolicy.isBackgroundShellCandidate(
+            isOnScreen: false, isActive: false, title: " 微信 ",
+            applicationNames: ["WeChat", "微信"], hasAccessibleWindow: false))
+        for matched: Bool? in [true, nil] {
+            XCTAssertFalse(PreviewWindowPolicy.isBackgroundShellCandidate(
+                isOnScreen: false, isActive: false, title: "微信",
+                applicationNames: ["WeChat", "微信"], hasAccessibleWindow: matched))
+        }
+    }
+
+    func testVisibleOrActiveGenericWindowsAreNotBlankShellCandidates() {
+        for state in [(true, false), (false, true), (true, true)] {
+            XCTAssertFalse(PreviewWindowPolicy.isBackgroundShellCandidate(
+                isOnScreen: state.0, isActive: state.1, title: "Example",
+                applicationNames: ["Example"], hasAccessibleWindow: false))
+        }
+    }
+
+    func testNamedDocumentsAndUnknownTitlesAreNotBlankShellCandidates() {
+        for title: String? in ["Untitled", "Article — Example", "Report.pdf", "", nil] {
+            XCTAssertFalse(PreviewWindowPolicy.isBackgroundShellCandidate(
+                isOnScreen: false, isActive: false, title: title,
+                applicationNames: ["Example"], hasAccessibleWindow: false))
+        }
+    }
+
+    func testShellAliasesAreRuntimeNamesRatherThanApplicationSpecificRules() {
+        XCTAssertTrue(PreviewWindowPolicy.isBackgroundShellCandidate(
+            isOnScreen: false, isActive: false, title: "EXAMPLE",
+            applicationNames: ["Example"], hasAccessibleWindow: false))
+        XCTAssertFalse(PreviewWindowPolicy.isBackgroundShellCandidate(
+            isOnScreen: false, isActive: false, title: "微信",
+            applicationNames: ["Example"], hasAccessibleWindow: false))
+    }
+
     private func window(_ id: UInt32, frame: CGRect? = CGRect(x: 350, y: 130, width: 1153, height: 821),
                         role: String? = "AXWindow", subrole: String? = "AXUnknown",
                         main: Bool? = false, focused: Bool? = false, modal: Bool? = false,

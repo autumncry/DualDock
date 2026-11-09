@@ -100,6 +100,30 @@ final class DockWaveLayoutTests: XCTestCase {
         XCTAssertLessThan(value.dividerX!, value.tileFrames[2].minX)
     }
 
+    func testMagnificationStaysActiveAcrossSeparatorWithoutPretendingTileHit() throws {
+        let base = DockWaveLayout.make(count: 6, iconSize: 48, spacing: 14, magnificationScale: 2,
+                                      focusIndex: nil, maxWidth: 900, hasControls: false, dividerIndex: 3)
+        let point = CGPoint(x: (base.tileFrames[2].maxX + base.tileFrames[3].minX) / 2, y: 24)
+        XCTAssertFalse(base.tileFrames.contains { $0.contains(point) })
+        let focus = try XCTUnwrap(base.magnificationFocus(at: point, basedOn: base))
+        XCTAssertEqual(focus, 2.5, accuracy: 0.001)
+        var prior: CGFloat = 0
+        for x in stride(from: base.tileFrames[2].midX, through: base.tileFrames[3].midX, by: 0.25) {
+            let current = try XCTUnwrap(base.magnificationFocus(at: CGPoint(x: x, y: 24), basedOn: base))
+            XCTAssertGreaterThanOrEqual(current, prior)
+            prior = current
+        }
+    }
+
+    func testMagnificationLaneDoesNotExtendIntoUnrelatedDesktopSpace() {
+        let base = layout()
+        let wave = layout(focus: 4)
+        XCTAssertNil(wave.magnificationFocus(at: CGPoint(x: -1, y: 24), basedOn: base))
+        XCTAssertNil(wave.magnificationFocus(at: CGPoint(x: wave.contentSize.width + 1, y: 24), basedOn: base))
+        XCTAssertNil(wave.magnificationFocus(at: CGPoint(x: base.tileFrames[0].midX, y: 90), basedOn: base))
+        XCTAssertNotNil(wave.magnificationFocus(at: CGPoint(x: wave.tileFrames[4].midX, y: 90), basedOn: base))
+    }
+
     func testEmptyStateNeedsNoTransparentMagnificationSpace() {
         let empty = DockWaveLayout.make(count: 0, iconSize: 48, spacing: 14, magnificationScale: 2,
                                         focusIndex: nil, maxWidth: 300, hasControls: false)

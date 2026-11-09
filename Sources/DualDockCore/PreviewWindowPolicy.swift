@@ -1,6 +1,18 @@
 import Foundation
 
 public enum PreviewWindowPolicy {
+    public static func isBackgroundShellCandidate(isOnScreen: Bool, isActive: Bool, title: String?,
+                                                   applicationNames: Set<String>, hasAccessibleWindow: Bool?) -> Bool {
+        guard !isOnScreen, !isActive, hasAccessibleWindow == false,
+              let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return false }
+        // A title alone is never an identity. This is only eligibility for a
+        // subsequent flat-image check of a hidden, AX-unmatched app shell.
+        return applicationNames.contains {
+            let name = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !name.isEmpty && name.caseInsensitiveCompare(title) == .orderedSame
+        }
+    }
+
     public struct AccessibilityWindow: Equatable, Sendable {
         public let windowID: UInt32
         public let frame: CGRect?

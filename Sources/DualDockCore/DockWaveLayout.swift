@@ -94,6 +94,20 @@ public struct DockWaveLayout: Equatable, Sendable {
 
     public func position(for index: CGFloat) -> CGFloat? { Self.position(index, in: tileFrames) }
 
+    /// Magnification activation and individual tile hit-testing are separate.
+    public func magnificationFocus(at point: CGPoint, basedOn base: DockWaveLayout) -> CGFloat? {
+        guard let first = tileFrames.first, let last = tileFrames.last,
+              let baseFirst = base.tileFrames.first, let baseLast = base.tileFrames.last else { return nil }
+        // Separators and small gaps inside the row are still part of the lens.
+        // Using per-tile hits here would repeatedly collapse/regrow the wave.
+        let rowStart = min(first.minX, baseFirst.minX)
+        let rowEnd = max(last.maxX, baseLast.maxX)
+        let inRow = point.x >= rowStart && point.x <= rowEnd
+            && point.y >= 0 && point.y <= base.backdropSize.height
+        guard inRow || tileFrames.contains(where: { $0.contains(point) }) else { return nil }
+        return base.focusIndex(at: point.x)
+    }
+
     /// Pointer-to-lens mapping belongs to the fixed base layout, not moving frames.
     public func focusIndex(at x: CGFloat) -> CGFloat? {
         guard let first = tileFrames.first, let last = tileFrames.last else { return nil }

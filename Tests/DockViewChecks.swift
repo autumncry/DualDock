@@ -1,0 +1,66 @@
+import AppKit
+import DualDockCore
+
+/// Hidden component checks: no windows are shown and no system input is posted.
+@main
+struct DockViewChecks {
+    @MainActor
+    static func main() throws {
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.prohibited)
+        let root = URL(fileURLWithPath: CommandLine.arguments[1])
+        var checks = 0
+        func check(_ value: Bool, _ message: String) {
+            precondition(value, message)
+            checks += 1
+        }
+        for count in [5, 20] {
+            for grouped in [false, true] {
+                var configuration = DockConfiguration()
+                configuration.iconSize = 47.69190871369294
+                configuration.iconSpacing = 6.479771784232365
+                configuration.showBadges = false
+                configuration.showPreviews = false
+                configuration.entries = (0..<count).map { index in
+                    DockEntry(name: "Fixture", apps: [.init(id: "test.\(index)", name: "Fixture", path: "/System/Applications/Notes.app")])
+                }
+                let directory = root.appendingPathComponent("\(count)-\(grouped)")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try JSONEncoder().encode(configuration).write(to: directory.appendingPathComponent("configuration.json"))
+                let store = AppStore(directory: directory)
+                let strip = DockStripView()
+                let size = strip.populate(entries: configuration.entries, groupID: grouped ? UUID() : nil,
+                                          store: store, maxWidth: count == 5 ? 1800 : 320) { _ in }
+                let panel = DockPanel()
+                panel.contentView = strip
+                panel.setFrame(NSRect(x: -5000, y: -5000, width: size.width, height: size.height), display: false)
+                strip.layoutSubtreeIfNeeded()
+                let clip = strip.scroll.contentView
+                let right = clip.constrainBoundsRect(NSRect(x: 100_000, y: 0, width: clip.bounds.width, height: clip.bounds.height))
+                check(!panel.isVisible, "Checks must not show windows")
+                check(!strip.scroll.hasHorizontalScroller && !strip.scroll.hasVerticalScroller, "Unexpected scrollbars")
+                if count == 5 {
+                    check(strip.document.frame.width == clip.bounds.width, "Fractional pixel creates phantom scrolling")
+                    check(right.minX == 0, "A fitting row must not scroll")
+                    // Locally delivered test event, never posted to the desktop.
+                    let event = NSEvent(cgEvent: CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+                                                        wheelCount: 2, wheel1: 0, wheel2: 120, wheel3: 0)!)!
+                    for _ in 0..<40 { strip.scrollWheel(with: event) }
+                    check(clip.bounds.origin == .zero, "Wheel input moved a fitting row")
+                } else {
+                    check(right.minX > 1, "Genuine overflow must remain scrollable")
+                    let panelFrame = panel.frame
+                    let backdrop = strip.backdropFrame
+                    clip.scroll(to: right.origin)
+                    strip.scroll.reflectScrolledClipView(clip)
+                    check(clip.bounds.minX > 1, "Scroll position cannot advance")
+                    check(panel.frame == panelFrame && strip.backdropFrame == backdrop, "Scrolling moved the Dock")
+                }
+                strip.stopAnimations()
+                panel.close()
+                store.stopBackgroundServices()
+            }
+        }
+        print("\(checks) hidden AppKit scroll checks passed; no desktop input posted")
+    }
+}

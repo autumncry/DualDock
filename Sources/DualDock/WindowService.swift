@@ -28,6 +28,15 @@ final class WindowService {
         }
         let processIDs = Set(running.map(\.processIdentifier))
         guard !processIDs.isEmpty else { return [] }
+        let applicationNames = Set([app.name] + running.flatMap { application -> [String] in
+            var names = application.localizedName.map { [$0] } ?? []
+            if let url = application.bundleURL, let bundle = Bundle(url: url) {
+                names += ["CFBundleDisplayName", "CFBundleName"].compactMap {
+                    bundle.object(forInfoDictionaryKey: $0) as? String
+                }
+            }
+            return names
+        })
 
         let content: SCShareableContent
         do {
@@ -53,24 +62,40 @@ final class WindowService {
             if left.isOnScreen != right.isOnScreen { return left.isOnScreen }
             return left.windowID < right.windowID
         }
+        let shellCandidates = Set(windows.filter { window in
+            guard let owner = window.owningApplication else { return false }
+            return PreviewWindowPolicy.isBackgroundShellCandidate(
+                isOnScreen: window.isOnScreen, isActive: window.isActive, title: window.title,
+                applicationNames: applicationNames,
+                hasAccessibleWindow: accessibility.knownWindowIDs[owner.processID].map { $0.contains(window.windowID) })
+        }.map(\.windowID))
 
         // Capture at most three windows at once. Only fresh, visible image
         // content can become a preview; failed captures never reuse old cards.
         var snapshots: [UInt32: CGImage] = [:]
+        var flatShellIDs: Set<UInt32> = []
         for offset in stride(from: 0, to: windows.count, by: 3) {
             guard !Task.isCancelled else { return [] }
             let batch = Array(windows[offset..<min(offset + 3, windows.count)])
-            let captured = await withTaskGroup(of: (UInt32, CGImage?).self) { group in
+            let captured = await withTaskGroup(of: (UInt32, CGImage?, Bool).self) { group in
                 for window in batch {
-                    group.addTask { (window.windowID, await Self.capture(window)) }
+                    group.addTask {
+                        let image = await Self.capture(window)
+                        let flatShell = shellCandidates.contains(window.windowID)
+                            && PreviewImagePolicy.isUniformWindowShell(image)
+                        return (window.windowID, image, flatShell)
+                    }
                 }
-                var result: [UInt32: CGImage] = [:]
-                for await (id, image) in group {
-                    if let image { result[id] = image }
+                var result: [UInt32: (image: CGImage, flatShell: Bool)] = [:]
+                for await (id, image, flatShell) in group {
+                    if let image { result[id] = (image, flatShell) }
                 }
                 return result
             }
-            snapshots.merge(captured) { _, fresh in fresh }
+            for (id, capture) in captured {
+                snapshots[id] = capture.image
+                if capture.flatShell { flatShellIDs.insert(id) }
+            }
         }
         guard !Task.isCancelled, !snapshots.isEmpty,
               let latestContent = try? await currentContent(), !Task.isCancelled else { return [] }
@@ -79,9 +104,18 @@ final class WindowService {
             guard let owner = window.owningApplication, liveProcessIDs.contains(owner.processID) else { return nil }
             return window.windowID
         })
+        let confirmedShellIDs = Set(latestContent.windows.compactMap { window -> CGWindowID? in
+            guard flatShellIDs.contains(window.windowID), let owner = window.owningApplication,
+                  PreviewWindowPolicy.isBackgroundShellCandidate(
+                    isOnScreen: window.isOnScreen, isActive: window.isActive, title: window.title,
+                    applicationNames: applicationNames,
+                    hasAccessibleWindow: accessibility.knownWindowIDs[owner.processID].map { $0.contains(window.windowID) })
+            else { return nil }
+            return window.windowID
+        })
         let selectedIDs = PreviewWindowPolicy.availablePreviewIDs(
             orderedCandidates: windows.map(\.windowID),
-            validSnapshotIDs: Set(snapshots.keys),
+            validSnapshotIDs: Set(snapshots.keys).subtracting(confirmedShellIDs),
             currentWindowIDs: currentWindowIDs
         )
         let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.windowID, $0) })
@@ -170,8 +204,12 @@ final class WindowService {
             let identified = windows.compactMap { element -> (CGWindowID, AXUIElement)? in
                 native.windowID(for: element).map { ($0, element) }
             }
-            // A failed ID lookup or AX query is unknown coverage, not an absent window.
-            if identified.count == windows.count { result.knownWindowIDs[pid] = Set(identified.map { $0.0 }) }
+            // Empty or incomplete AX results do not establish reliable absence.
+            // A nonempty fully identified list can qualify a hidden generic
+            // window for the separate, conservative flat-shell image check.
+            if !identified.isEmpty, identified.count == windows.count {
+                result.knownWindowIDs[pid] = Set(identified.map { $0.0 })
+            }
 
             // ScreenCaptureKit also exposes app-owned overlays (for example a
             // watermark layer). They may have valid pixels and a different ID

@@ -3,6 +3,43 @@ import XCTest
 @testable import DualDockCore
 
 final class PreviewImagePolicyTests: XCTestCase {
+    func testRecognizesFlatShellWithOnlyTinyCornerChrome() throws {
+        let context = try shellContext()
+        context.setFillColor(CGColor(gray: 0.3, alpha: 1))
+        context.fillEllipse(in: CGRect(x: 4, y: 94, width: 3, height: 3))
+        XCTAssertTrue(PreviewImagePolicy.isUniformWindowShell(try XCTUnwrap(context.makeImage())))
+    }
+
+    func testInteriorContentPreventsFlatShellClassification() throws {
+        let context = try shellContext()
+        context.setFillColor(CGColor(gray: 0.8, alpha: 1))
+        context.fill(CGRect(x: 45, y: 45, width: 2, height: 2))
+        XCTAssertFalse(PreviewImagePolicy.isUniformWindowShell(try XCTUnwrap(context.makeImage())))
+    }
+
+    func testSubstantialWindowChromePreventsFlatShellClassification() throws {
+        let context = try shellContext()
+        context.setFillColor(CGColor(gray: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 90, width: 100, height: 10))
+        XCTAssertFalse(PreviewImagePolicy.isUniformWindowShell(try XCTUnwrap(context.makeImage())))
+    }
+
+    func testMissingAndTransparentCapturesAreNotOpaqueFlatShells() throws {
+        XCTAssertFalse(PreviewImagePolicy.isUniformWindowShell(nil))
+        let context = try shellContext()
+        context.clear(CGRect(x: 0, y: 0, width: 100, height: 100))
+        XCTAssertFalse(PreviewImagePolicy.isUniformWindowShell(try XCTUnwrap(context.makeImage())))
+    }
+
+    private func shellContext() throws -> CGContext {
+        let context = try XCTUnwrap(CGContext(data: nil, width: 100, height: 100,
+            bitsPerComponent: 8, bytesPerRow: 400, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(gray: 0.16, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+        return context
+    }
+
     func testRejectsMissingCapture() {
         XCTAssertFalse(PreviewImagePolicy.hasVisiblePixels(nil))
     }
