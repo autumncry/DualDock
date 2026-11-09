@@ -1,63 +1,137 @@
+<div align="center">
+
+<img src="Resources/AppIcon.iconset/icon_128x128@2x.png" width="112" alt="DualDock 图标">
+
 # DualDock
 
-供个人使用的 macOS 多屏 Dock。首次运行导入系统 Dock 的固定应用，之后独立保存分组与排列。最低部署目标为 macOS 14；本次构建与验证环境为 macOS 27.0.1 / Apple M5，发布包为 Apple Silicon 版本。
+### 每块屏幕，同一套工作空间。
 
-## 打开
+一款原生 macOS 多屏 Dock。把常用应用收进横向展开的应用组，悬停查看窗口，
+在 MacBook 和外接显示器上使用同一套布局。
 
-从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.3.0) 下载 `DualDock-1.3.0-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库及发布包公开提供。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#系统要求)
+[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases/latest)
+[![Release](https://img.shields.io/github/v/release/autumncry/DualDock)](https://github.com/autumncry/DualDock/releases/latest)
 
-也可以打开本地构建的 `dist/DualDock.app`。首次启动显示设置；右键 Dock 空白处或点击菜单栏的双矩形图标可以再次打开设置。退出入口在菜单栏中。
+**简体中文** &nbsp;·&nbsp; [English](README.en.md)
 
-在“权限”页授予屏幕录制与辅助功能。前者用于窗口缩略图，后者用于切换指定窗口。修改权限后如未生效，退出并重新打开应用。窗口截图仅在内存中缓存，不写入磁盘或上传。
+[**下载最新版**](https://github.com/autumncry/DualDock/releases/latest) &nbsp;·&nbsp; [**从源码构建**](#从源码构建) &nbsp;·&nbsp; [**反馈问题**](https://github.com/autumncry/DualDock/issues)
 
-## 四项功能
+</div>
 
-- 从 Finder 拖入应用，或用“添加应用”。拖到其他图标边缘调整顺序；在图标中央停留约 0.6 秒后松开可以建组。点击组图标横向展开，可组内重排、拖回主栏，右键重命名或拆组。
-- 悬停运行中的应用显示窗口缩略图，点击切换窗口；缩略图右上角的 × 用于关闭对应窗口。未保存内容由原应用提示确认，DualDock 不会代选保存或丢弃。点击关闭会收起预览，再次悬停读取最新窗口列表。无法捕获有效截图的窗口不显示预览。
-- 普通模式显示固定应用、应用组及未固定运行应用。仅运行模式将全部普通运行应用平铺，包括最小化、隐藏和其他桌面的应用。切换模式保留原布局。
-- 每个扩展显示器分别有一条 Dock，共享同一配置。镜像显示器由系统复制对应画面。某屏进入全屏应用时隐藏该屏的栏，其他屏继续使用。
+<div align="center">
+  <img src="docs/images/dualdock-overview.png" width="1000" alt="DualDock 演示布局：应用分组、窗口预览和底部主栏">
+  <p><sub>演示布局，使用实际 AppKit 组件和示例内容绘制。</sub></p>
+</div>
 
-“Dock 高度”和“Dock 宽度”分别使用连续滑块，两项独立；高度同步缩放图标，宽度保持用户选择，不随间距或应用数量变化。所有屏幕共用同一套有效尺寸：宽度上限取最窄屏幕的完整有效宽度，高度上限取最矮屏幕有效高度的 12%（指底板高度）。显示尺寸以 macOS 缩放后的逻辑点计算。接入较小屏幕时只限制实际显示尺寸，保留原始选择，断开后可恢复。升级时保留已有栏宽并备份配置。
+## 为什么选择 DualDock
 
-“图标间距”只改变内部疏密；内容超出栏内可见宽度时可以手动横向滚动，不显示滑块。鼠标附近的图标平滑联动放大，中心最大、两侧逐级减小，图标后不叠加悬停底色；Dock 底板尺寸和位置保持不变，可在设置中关闭放大或调整幅度。Dock 内不显示设置和模式切换按钮，显示模式统一在设置的“显示内容”中切换。应用组采用独立文件夹轮廓，右键菜单从图标右上方展开。“重新导入系统 Dock”会补入尚未固定的应用，保留已有分组和顺序。
+工作空间从笔记本延伸到外接屏幕后，常用应用也应该随手可及。DualDock 围绕多屏和应用分组设计，让每块屏幕都保留熟悉的入口。
 
-## 消息角标
+- **多屏共享。** 每个扩展屏幕都有一条 Dock，应用、分组、顺序和显示模式统一保存。
+- **按工作方式整理。** 把相关应用归为一组，展开后横向排列，随时调整成员和顺序。
+- **公开且可修改。** 使用 Swift、AppKit 和 SwiftUI 构建，源码采用 MIT 协议。
 
-在设置中开启或关闭“显示消息数量角标”。单个应用显示系统实际提供的标签，应用组有未读提醒时显示红色叹号。后台每两秒更新，关闭会清除显示。角标读取只涉及状态标签，不读取或上传通知正文。部分应用或系统版本可能不提供可用标签。
+## 功能
 
-## 系统 Dock
+### 每块屏幕都有 Dock
 
-“隐藏系统 Dock”默认关闭。开启前保存原始偏好，正常退出时恢复；异常退出后再次启动会先恢复，再按已保存的开关状态应用设置。菜单栏提供“恢复系统 Dock”。恢复时只还原仍与 DualDock 所写值相符的键，保留用户随后修改的设置。
+在 MacBook 内置屏和外接屏上同时显示 Dock。连接变化时自动调整，镜像屏幕由 macOS 复制对应画面。某块屏幕进入全屏应用时，只隐藏该屏的 DualDock。
 
-配置与恢复记录位于 `~/Library/Application Support/DualDock/`。配置异常时保留原文件并提示错误。
+### 应用分组与拖拽整理
 
-## 构建与验证
+从 Finder 拖入应用，或在设置中添加。拖到图标边缘可排序；在另一个应用图标中央停留约 0.6 秒再松开，即可合成应用组。
 
-需要 Xcode 或合适的 Swift/macOS SDK。无第三方包依赖。
+点击文件夹图标横向展开。成员支持组内重排、移回主栏；右键可重命名或拆分应用组。首次启动会导入系统 Dock 的固定应用，之后独立保存。“重新导入”会补入缺少的应用，并保留已有分组。
+
+### 看清窗口，再切换或关闭
+
+悬停运行中的应用查看窗口缩略图，点击预览切换到对应窗口，点击右上角 **×** 请求关闭该窗口。未保存内容仍由原应用提示确认。关闭后收起当前预览，再次悬停读取最新窗口列表。
+
+无法取得有效截图的窗口不显示预览。截图仅在本机内存中处理，不保存到磁盘或上传。
+
+### 两种显示模式
+
+- **固定应用与分组 + 运行应用：** 保留常用入口，并显示未固定的运行应用。
+- **仅正在运行的应用：** 平铺所有普通运行应用，包括隐藏、最小化和其他桌面的应用；切回普通模式会恢复原来的分组与排列。
+
+显示模式在设置页切换，所有屏幕同步生效。
+
+### 独立宽高与平滑放大
+
+Dock 高度、宽度使用独立连续滑块，图标间距只改变内部疏密。鼠标附近的图标逐级放大，支持开关和幅度调整，底板保持固定。内容超出主栏时可手动横向滚动，不显示滚动条。
+
+所有屏幕共用尺寸限制：宽度上限取最窄屏幕的有效宽度，底板高度上限取最矮屏幕有效高度的 **12%**。尺寸按 macOS 缩放后的逻辑点计算。接入较小屏幕时限制实际显示尺寸，保留原始选择，断开后可恢复。
+
+### 更多细节
+
+- **消息角标：** 单个应用显示系统提供的数量或标签，组内有未读提醒时显示红色 **!**；可统一关闭。只读取角标状态，不读取通知正文。部分应用可能不提供可用角标。
+- **系统 Dock 管理：** 可选择隐藏系统 Dock；正常退出时恢复由 DualDock 修改的设置，异常退出后在下次启动时恢复，并保留之后手动更改的项目。菜单栏也提供手动恢复入口。
+- **方便进入设置：** 右键 Dock 空白处，或点击菜单栏的双矩形图标。
+- **本地配置：** 分组、排列和设置保存在 `~/Library/Application Support/DualDock/`，升级时按需保留迁移前备份。
+
+## 下载与安装
+
+前往 [Releases](https://github.com/autumncry/DualDock/releases/latest) 下载最新的 `DualDock-版本号-arm64.dmg`，以及可选的 SHA-256 校验文件。
+
+1. 打开 DMG，将 `DualDock.app` 拖入 `Applications`。
+2. 从“应用程序”启动 DualDock，在“权限”页授予**屏幕录制**和**辅助功能**权限。
+3. 在设置中选择显示模式和尺寸，再通过拖拽整理应用组。系统 Dock 隐藏默认关闭，可按需启用。
+
+屏幕录制用于窗口缩略图；辅助功能用于匹配、切换和关闭窗口。权限变更后如未生效，请退出并重新打开 DualDock。更新时下载新 DMG 并替换旧应用，本地配置会继续保留。
+
+> [!NOTE]
+> 当前发布包面向 Apple Silicon，采用个人自用的 ad-hoc 签名，尚未经过 Apple 公证。首次安装遇到系统提示时，请参阅[安装说明](docs/installation.txt)。
+
+## 从源码构建
 
 ```sh
-./script/build_and_run.sh              # 编译、打包、本地签名并启动
-./script/build_and_run.sh --build-only # 只构建 .app
-./script/build_and_run.sh --verify     # 构建、启动并检查进程
-./script/package_dmg.sh               # release 构建，生成 DMG 与 SHA-256 校验文件
-swift test                            # 分组、排序及模式数据不变性测试
-./script/check_system_dock.sh          # 内存偏好注入的恢复故障测试
-./script/check_badges.sh               # 角标读取、关闭与异步隔离检查
-./script/check_dock_views.sh           # 隐藏 AppKit 视图的滚动与预览按钮检查
+git clone https://github.com/autumncry/DualDock.git
+cd DualDock
+./script/build_and_run.sh
 ```
 
-脚本支持 `--logs`、`--telemetry` 与 `--debug`。Codex Run 按钮也使用该脚本。重新构建会先请求已运行的 DualDock 正常退出，以完成系统 Dock 恢复。
+这是一个 Swift Package Manager 项目，无需创建 Xcode 工程。脚本会先请求已运行的 DualDock 正常退出，再构建、打包、本地签名并启动 `dist/DualDock.app`。
 
-本地测试可以用 `--config-dir <独立目录>` 指定隔离配置，`--diagnostics <JSON路径>` 输出屏幕面板状态供验证；这些参数通过 `.app` 启动，例如 `open -n dist/DualDock.app --args --config-dir /private/tmp/dualdock-test --diagnostics /private/tmp/dualdock-test.json`。
+### 系统要求
 
-## 平台边界
+- 运行环境：macOS 14 或更新版本；当前 DMG 为 Apple Silicon（arm64）构建。
+- 当前应用界面为简体中文。
+- 构建环境：支持 Swift tools version 5.9、包含相应 macOS SDK 的 Xcode 或命令行工具。
 
-窗口身份匹配及全屏空间查询使用可选动态加载的 macOS 私有接口，接口不可用时退回公开辅助功能 API。系统升级后可能需要适配。其他桌面、最小化或受保护窗口的截图和切换能力受目标应用及 macOS 限制。
+### 构建与检查命令
 
-应用为本机个人使用进行 ad-hoc 签名，未进行 Apple 公证。最新验证记录见 `docs/validation.md`。
+```sh
+./script/build_and_run.sh --build-only # 生成 .app，不启动
+./script/build_and_run.sh --verify     # 构建、启动并确认进程
+./script/package_dmg.sh               # release 构建、DMG 与 SHA-256
+swift test -c release                 # 模型、布局和窗口策略回归
+./script/check_dock_views.sh          # 隐藏 AppKit 组件检查
+./script/check_badges.sh              # 角标读取与异步状态检查
+./script/check_system_dock.sh         # 隔离环境下的系统 Dock 恢复检查
+```
 
-分析依据与设计见 `docs/superpowers/specs/2026-11-09-dualdock-design.md`；原始 REA Evidence 属于本地研究资料，保存在相邻 `../research/Dockish-1.2.8/`，未随源码仓库或安装包发布。
+构建运行脚本也支持 `--logs`、`--telemetry` 和 `--debug`。测试实例可通过 `.app` 启动参数 `--config-dir <目录>` 使用独立配置，或用 `--diagnostics <JSON 路径>` 输出布局诊断。
 
-## 协议
+## 文档
 
-采用 [MIT License](LICENSE)，Copyright (c) 2026 Ronny Cao。源码仓库已公开。
+- [安装说明](docs/installation.txt)
+- [验证记录与已知边界](docs/validation.md)
+- [实现分析与初始设计](docs/superpowers/specs/2026-11-09-dualdock-design.md)
+
+窗口身份匹配和全屏检测使用可选的 macOS 私有接口，并提供回退。系统升级后可能需要适配；最小化、其他桌面和受保护窗口的预览及操作能力取决于目标应用和 macOS。
+
+## 反馈与贡献
+
+欢迎通过 [Issues](https://github.com/autumncry/DualDock/issues) 报告问题或建议。描述问题时，请附上 DualDock 与 macOS 版本、显示器配置和复现步骤；截图前请遮盖私人内容。也欢迎提交 Pull Request。
+
+README 的展示结构参考了 [Docky](https://github.com/josejuanqm/docky)，文案、图标和演示内容描述的是 DualDock 自身。
+
+## 依赖
+
+无第三方 Swift Package 依赖。主要使用 AppKit、SwiftUI、ScreenCaptureKit、Accessibility 和 CoreGraphics 等系统框架。
+
+## 许可证
+
+[MIT License](LICENSE)。Copyright © 2026 Ronny Cao。
