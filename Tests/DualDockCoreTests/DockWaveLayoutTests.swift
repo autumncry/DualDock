@@ -2,6 +2,93 @@ import XCTest
 @testable import DualDockCore
 
 final class DockWaveLayoutTests: XCTestCase {
+    func testMainDockSpacingChangesContentButNeverItsEnvelope() {
+        let reference: CGFloat = 6.479771784232365
+        for side: CGFloat in [24, 40.8, 47.69190871369294, 96] {
+            for count in [0, 1, 5, 27] {
+                for width: CGFloat in [320, 1768, 2976] {
+                    let base = DockWaveLayout.make(count: count, iconSize: side, spacing: reference,
+                        magnificationScale: 1.64, focusIndex: nil, maxWidth: width,
+                        hasControls: false, widthReferenceSpacing: reference)
+                    for gap: CGFloat in [0, 0.125, 6.48, 14, 32] {
+                        let value = DockWaveLayout.make(count: count, iconSize: side, spacing: gap,
+                            magnificationScale: 1.64, focusIndex: nil, maxWidth: width,
+                            hasControls: false, widthReferenceSpacing: reference)
+                        XCTAssertEqual(value.panelSize, base.panelSize)
+                        XCTAssertEqual(value.backdropSize, base.backdropSize)
+                        XCTAssertEqual(value.viewportSize, base.viewportSize)
+                        XCTAssertGreaterThanOrEqual(value.contentSize.width, value.viewportSize.width)
+                        for frame in value.tileFrames {
+                            XCTAssertEqual(frame.height - 16 * side / 48, side, accuracy: 0.000001)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testFixedMainDockCentersCompactContentAndScrollsWiderContent() {
+        let compact = DockWaveLayout.make(count: 12, iconSize: 48, spacing: 0,
+            magnificationScale: 1, focusIndex: nil, maxWidth: 1800, hasControls: false,
+            widthReferenceSpacing: 4)
+        let roomy = DockWaveLayout.make(count: 12, iconSize: 48, spacing: 32,
+            magnificationScale: 1, focusIndex: nil, maxWidth: 1800, hasControls: false,
+            widthReferenceSpacing: 4)
+        XCTAssertEqual(compact.panelSize, roomy.panelSize)
+        XCTAssertEqual(compact.contentSize.width, compact.viewportSize.width)
+        XCTAssertGreaterThan(roomy.contentSize.width, roomy.viewportSize.width)
+        XCTAssertEqual(compact.tileFrames.first!.minX + compact.tileFrames.last!.maxX,
+                       compact.contentSize.width, accuracy: 0.000001)
+        XCTAssertEqual(roomy.tileFrames.first!.minX, 0)
+        XCTAssertEqual(roomy.tileFrames[0].width - compact.tileFrames[0].width, 32)
+        XCTAssertEqual(compact.initialScrollOffset, 0)
+    }
+
+    func testGroupWithoutWidthReferenceStillSizesToItsMembers() {
+        let compact = DockWaveLayout.make(count: 5, iconSize: 48, spacing: 0,
+            magnificationScale: 1, focusIndex: nil, maxWidth: 1800, hasControls: false)
+        let roomy = DockWaveLayout.make(count: 5, iconSize: 48, spacing: 32,
+            magnificationScale: 1, focusIndex: nil, maxWidth: 1800, hasControls: false)
+        XCTAssertGreaterThan(roomy.panelSize.width, compact.panelSize.width)
+        XCTAssertEqual(compact.contentSize.width, compact.viewportSize.width)
+        XCTAssertEqual(roomy.contentSize.width, roomy.viewportSize.width)
+    }
+
+    func testMainDockSizeAndApplicationCountStillDetermineWidth() {
+        func value(_ count: Int, _ side: CGFloat) -> DockWaveLayout {
+            .make(count: count, iconSize: side, spacing: 14, magnificationScale: 1.6,
+                  focusIndex: nil, maxWidth: 3008, hasControls: false, widthReferenceSpacing: 6.48)
+        }
+        let small = value(8, 24)
+        let large = value(8, 72)
+        let additionalApps = value(12, 72)
+        XCTAssertGreaterThan(large.panelSize.width, small.panelSize.width)
+        XCTAssertGreaterThan(large.backdropSize.height, small.backdropSize.height)
+        XCTAssertGreaterThan(additionalApps.panelSize.width, large.panelSize.width)
+        XCTAssertEqual(large.tileFrames[0].height, small.tileFrames[0].height * 3, accuracy: 0.000001)
+    }
+
+    func testFixedMainWidthKeepsHoverAndScrollGeometryStableAtEverySpacing() {
+        for spacing: CGFloat in [0, 6.48, 32] {
+            let base = DockWaveLayout.make(count: 20, iconSize: 47.69, spacing: spacing,
+                magnificationScale: 1.64, focusIndex: nil, maxWidth: 700, hasControls: false,
+                widthReferenceSpacing: 6.48)
+            let offset = (base.contentSize.width - base.viewportSize.width) / 2
+            for focus: CGFloat in [0, 0.5, 9.3, 18.5, 19] {
+                let hover = DockWaveLayout.make(count: 20, iconSize: 47.69, spacing: spacing,
+                    magnificationScale: 1.64, focusIndex: focus, maxWidth: 700, hasControls: false,
+                    scrollOffset: offset, widthReferenceSpacing: 6.48)
+                XCTAssertEqual(hover.panelSize, base.panelSize)
+                XCTAssertEqual(hover.backdropSize, base.backdropSize)
+                XCTAssertEqual(hover.viewportSize, base.viewportSize)
+                XCTAssertEqual(hover.contentSize, base.contentSize)
+                for pair in zip(hover.tileFrames, hover.tileFrames.dropFirst()) {
+                    XCTAssertLessThanOrEqual(pair.0.maxX, pair.1.minX + 0.000001)
+                }
+            }
+        }
+    }
+
     private func layout(width: CGFloat = 1800, focus: CGFloat? = nil, scale: CGFloat = 2) -> DockWaveLayout {
         .make(count: 9, iconSize: 48, spacing: 14, magnificationScale: scale,
               focusIndex: focus, maxWidth: width, hasControls: false)

@@ -75,6 +75,9 @@ final class DisplayCoordinator {
             let id = Self.id(screen)
             let old = docks[id]
             let panel = old?.panel ?? DockPanel()
+            // A shadow on the transparent canvas also outlines magnified icons.
+            // Floating group/preview panels retain their own normal shadow.
+            panel.hasShadow = false
             let strip = old?.strip ?? DockStripView()
             panel.title = "DualDock · \(screen.localizedName)"
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }

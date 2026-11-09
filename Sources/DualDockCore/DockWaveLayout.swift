@@ -18,11 +18,13 @@ public struct DockWaveLayout: Equatable, Sendable {
                             maxWidth: CGFloat, hasControls: Bool,
                             dividerIndex: Int? = nil,
                             scrollOffset: CGFloat? = nil,
-                            lensAnchorX: CGFloat? = nil) -> DockWaveLayout {
+                            lensAnchorX: CGFloat? = nil,
+                            widthReferenceSpacing: CGFloat? = nil) -> DockWaveLayout {
         let itemCount = max(0, count)
         let side = max(1, iconSize)
         let unit = side / 48
         let gap = max(0, spacing) * unit
+        let widthGap = max(0, widthReferenceSpacing ?? spacing) * unit
         let inset = 10 * unit
         let controls = hasControls ? 62 * unit : 0
         let availableWidth = max(1, maxWidth - controls - 2 * inset)
@@ -35,7 +37,8 @@ public struct DockWaveLayout: Equatable, Sendable {
         let reserve = itemCount == 0 ? 0 : ceil(delta * reserveFactor)
         let dividerWidth: CGFloat = dividerIndex.map { $0 > 0 && $0 < itemCount ? 13 * unit : 0 } ?? 0
         let baseWidth = itemCount == 0 ? 160 * unit : CGFloat(itemCount) * (side + gap) + dividerWidth
-        let panelWidth = min(max(1, maxWidth), baseWidth + reserve * 2 + controls + 2 * inset)
+        let referenceWidth = itemCount == 0 ? 160 * unit : CGFloat(itemCount) * (side + widthGap) + dividerWidth
+        let panelWidth = min(max(1, maxWidth), referenceWidth + reserve * 2 + controls + 2 * inset)
         let viewportWidth = max(1, panelWidth - controls - 2 * inset)
         // Only the base application row can create a scroll range. Hover never scrolls it.
         let contentWidth = max(baseWidth, viewportWidth)

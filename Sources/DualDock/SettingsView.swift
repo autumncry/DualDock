@@ -74,7 +74,7 @@ struct SettingsView: View {
                 Slider(value: Binding(get: { store.configuration.iconSpacing }, set: { value in store.update { $0.iconSpacing = value } }), in: 0...32)
                 HStack { Text("紧凑"); Spacer(); Text("宽松") }.font(.caption).foregroundStyle(.secondary)
             }
-            Text("所有屏幕同步应用大小与间距。超出屏幕宽度的内容可横向滚动。").font(.caption).foregroundStyle(.secondary)
+            Text("所有屏幕同步设置。图标间距只调整栏内疏密，不改变主栏宽度；内容超出时可横向滚动。").font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("鼠标悬停放大", isOn: Binding(get: { store.configuration.magnificationEnabled }, set: { value in store.update { $0.magnificationEnabled = value } }))
                 HStack {

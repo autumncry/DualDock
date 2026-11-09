@@ -56,6 +56,21 @@ struct DockViewChecks {
                     check(clip.bounds.minX > 1, "Scroll position cannot advance")
                     check(panel.frame == panelFrame && strip.backdropFrame == backdrop, "Scrolling moved the Dock")
                 }
+                if !grouped {
+                    let fixedWidth = panel.frame.width
+                    let backdropWidth = strip.backdropFrame.width
+                    for gap in [0.0, 32.0, configuration.iconSpacing] {
+                        store.update { $0.iconSpacing = gap }
+                        let updated = strip.populate(entries: configuration.entries, store: store,
+                                                     maxWidth: count == 5 ? 1800 : 320) { _ in }
+                        panel.setFrame(NSRect(origin: panel.frame.origin, size: updated), display: false)
+                        strip.layoutSubtreeIfNeeded()
+                        check(panel.frame.width == fixedWidth && strip.backdropFrame.width == backdropWidth,
+                              "Spacing slider resized the main Dock")
+                        check(abs((strip.tiles.first?.visualIconBounds.width ?? 0) - configuration.iconSize) < 0.001,
+                              "Spacing slider resized application icons")
+                    }
+                }
                 strip.stopAnimations()
                 panel.close()
                 store.stopBackgroundServices()

@@ -109,6 +109,7 @@ final class DockStripView: NSView {
     private var tracking: NSTrackingArea?
     private var baseSide: CGFloat = 48
     private var spacing: CGFloat = 14
+    private var widthReferenceSpacing: CGFloat?
     private var maximumWidth: CGFloat = 1800
     private var magnificationScale: CGFloat = 1
     private var isGroup = false
@@ -212,6 +213,7 @@ final class DockStripView: NSView {
         spacing = CGFloat(store.configuration.iconSpacing)
         maximumWidth = max(1, maxWidth)
         isGroup = groupID != nil
+        widthReferenceSpacing = isGroup ? nil : CGFloat(store.configuration.dockWidthReferenceSpacing)
         magnificationScale = !isGroup && store.configuration.magnificationEnabled
             ? CGFloat(store.configuration.magnificationScale) : 1
         dividerIndex = groupID == nil && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
@@ -358,7 +360,8 @@ final class DockStripView: NSView {
         DockWaveLayout.make(count: tiles.count, iconSize: baseSide, spacing: spacing,
                             magnificationScale: magnificationScale, focusIndex: focus,
                             maxWidth: maximumWidth, hasControls: false, dividerIndex: dividerIndex,
-                            scrollOffset: scrolling.contentView.bounds.origin.x, lensAnchorX: lensAnchorX)
+                            scrollOffset: scrolling.contentView.bounds.origin.x, lensAnchorX: lensAnchorX,
+                            widthReferenceSpacing: widthReferenceSpacing)
     }
 
     private func updatePointer(force: Bool = false) {
