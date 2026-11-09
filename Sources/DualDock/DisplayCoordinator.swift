@@ -199,9 +199,20 @@ final class DisplayCoordinator {
             }
             previewActions.append(action)
             let button = NSButton(frame: NSRect(x: x, y: 26, width: 192, height: 108))
-            button.image = item.image ?? store.icon(for: app)
-            button.imageScaling = .scaleProportionallyUpOrDown
-            button.imagePosition = .imageOnly
+            if let image = item.image {
+                button.image = image
+                button.imageScaling = .scaleProportionallyUpOrDown
+                button.imagePosition = .imageOnly
+            } else {
+                let icon = store.icon(for: app).copy() as? NSImage
+                icon?.size = NSSize(width: 44, height: 44)
+                button.image = icon
+                button.imageScaling = .scaleNone
+                button.imagePosition = .imageAbove
+                button.title = "预览暂不可用"
+                button.font = .systemFont(ofSize: 10)
+                button.contentTintColor = .secondaryLabelColor
+            }
             button.isBordered = false
             button.target = action
             button.action = #selector(MenuAction.invoke)

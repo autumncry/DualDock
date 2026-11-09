@@ -44,10 +44,16 @@ final class WindowService {
             return []
         }
         guard !Task.isCancelled else { return [] }
+        let knownWindowIDs = accessibleWindowIDs(processIDs: processIDs)
         let windows = content.windows.filter { window in
             guard let owner = window.owningApplication else { return false }
             return processIDs.contains(owner.processID) && window.windowLayer == 0
                 && window.frame.width >= 80 && window.frame.height >= 50
+                && PreviewWindowPolicy.shouldInclude(
+                    isOnScreen: window.isOnScreen,
+                    title: window.title,
+                    hasAccessibleWindow: knownWindowIDs[owner.processID].map { $0.contains(window.windowID) }
+                )
         }.sorted { left, right in
             if left.isOnScreen != right.isOnScreen { return left.isOnScreen }
             return left.windowID < right.windowID
@@ -152,6 +158,22 @@ final class WindowService {
         shareableContent = content
         contentDate = Date()
         return content
+    }
+
+    private func accessibleWindowIDs(processIDs: Set<pid_t>) -> [pid_t: Set<CGWindowID>] {
+        guard AXIsProcessTrusted(), native.canResolveWindowIDs else { return [:] }
+        var result: [pid_t: Set<CGWindowID>] = [:]
+        for pid in processIDs {
+            let application = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(application, 0.2)
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value) == .success,
+                  let windows = value as? [AXUIElement] else { continue }
+            let ids = windows.compactMap { native.windowID(for: $0) }
+            // A failed ID lookup or AX query is unknown coverage, not an absent window.
+            if ids.count == windows.count { result[pid] = Set(ids) }
+        }
+        return result
     }
 
     nonisolated private static func capture(_ window: SCWindow) async -> CGImage? {
@@ -282,6 +304,8 @@ private final class NativeWindowAPI {
         if let skyLightHandle { dlclose(skyLightHandle) }
         if let processHandle { dlclose(processHandle) }
     }
+
+    var canResolveWindowIDs: Bool { getWindowID != nil }
 
     func windowID(for element: AXUIElement) -> CGWindowID? {
         guard let getWindowID else { return nil }

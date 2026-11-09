@@ -4,7 +4,7 @@
 
 ## 打开
 
-从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.0.0) 下载 `DualDock-1.0.0-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
+从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.0.1) 下载 `DualDock-1.0.1-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
 
 也可以打开本地构建的 `dist/DualDock.app`。首次启动显示设置，菜单栏的双矩形图标可以再次打开设置或退出。
 
