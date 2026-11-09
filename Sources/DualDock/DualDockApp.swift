@@ -98,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         diagnosticsTimer?.invalidate()
         coordinator?.stop()
+        store?.stopBackgroundServices()
     }
 
     private func writeDiagnostics(_ url: URL) {
@@ -107,6 +108,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
              "tiles": dock.strip.tiles.count,
              "firstTileWidth": dock.strip.tiles.first?.frame.width ?? 0,
              "firstIconWidth": dock.strip.tiles.first?.visualIconBounds.width ?? 0,
+             "scrollOffsetX": dock.strip.scroll.contentView.bounds.origin.x,
+             "horizontalScrollerEnabled": dock.strip.scroll.hasHorizontalScroller,
+             "viewportWidth": dock.strip.scroll.contentView.bounds.width,
+             "documentWidth": dock.strip.document.frame.width,
              "runningDots": dock.strip.tiles.filter { $0.entry.apps.contains(where: store.isRunning) }.count]
         }
         let result: [String: Any] = ["screens": screens, "mode": store.configuration.mode.rawValue,
@@ -116,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "dockSize": store.configuration.iconSize, "iconSpacing": store.configuration.iconSpacing,
             "magnificationEnabled": store.configuration.magnificationEnabled,
             "magnificationScale": store.configuration.magnificationScale,
+            "showBadges": store.configuration.showBadges, "badgeAppCount": store.badgeLabels.count,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"]
         if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: url, options: .atomic) }
     }

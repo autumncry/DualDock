@@ -85,6 +85,10 @@ struct SettingsView: View {
                 Slider(value: Binding(get: { store.configuration.magnificationScale }, set: { value in store.update { $0.magnificationScale = value } }), in: 1...2.5)
                     .disabled(!store.configuration.magnificationEnabled)
             }
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("显示消息数量角标", isOn: Binding(get: { store.configuration.showBadges }, set: { value in store.update { $0.showBadges = value } }))
+                Text(badgeDescription).font(.caption).foregroundStyle(.secondary)
+            }
             Toggle("悬停显示窗口预览", isOn: Binding(get: { store.configuration.showPreviews }, set: { value in store.update { $0.showPreviews = value } }))
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("隐藏系统 Dock", isOn: Binding(get: { store.configuration.hideSystemDock }, set: { store.setSystemDockHidden($0) }))
@@ -97,6 +101,18 @@ struct SettingsView: View {
                 Spacer()
             }
             Text("重新导入会补入尚未固定的应用，保留已有分组和顺序。").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var badgeDescription: String {
+        guard store.configuration.showBadges else { return "应用与应用组的角标已关闭。" }
+        switch store.badgeStatus {
+        case .permissionRequired:
+            return "请在权限页允许辅助功能，以读取系统提供的角标。"
+        case .unavailable:
+            return "暂时无法读取系统角标，稍后会自动重试。"
+        case .available, .disabled:
+            return "单个应用显示原有数量；组内有未读提醒时，文件夹显示红色叹号。"
         }
     }
 

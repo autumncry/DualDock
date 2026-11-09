@@ -9,11 +9,14 @@ import DualDockCore
 final class AppStore: ObservableObject {
     @Published private(set) var configuration: DockConfiguration
     @Published private(set) var runningApps: [AppReference] = []
+    @Published private(set) var badgeLabels: [String: String] = [:]
+    @Published private(set) var badgeStatus: DockBadgeStatus = .disabled
     @Published var message: String?
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var captureGranted = CGPreflightScreenCaptureAccess()
     let systemDock: SystemDockService
     let windows = WindowService()
+    private let badgeService = DockBadgeService()
     let directory: URL
     private let configURL: URL
     private var observers: [NSObjectProtocol] = []
@@ -33,7 +36,7 @@ final class AppStore: ObservableObject {
                 initial = try JSONDecoder().decode(DockConfiguration.self, from: originalData)
                 if let raw = try JSONSerialization.jsonObject(with: originalData) as? [String: Any],
                    (raw["version"] as? Int ?? 1) < DockConfiguration.currentVersion {
-                    let backup = directory.appendingPathComponent("configuration-before-v2.json")
+                    let backup = directory.appendingPathComponent("configuration-before-v\(DockConfiguration.currentVersion).json")
                     if !FileManager.default.fileExists(atPath: backup.path) {
                         try originalData.write(to: backup, options: .atomic)
                     }
@@ -57,6 +60,12 @@ final class AppStore: ObservableObject {
             if initial.hideSystemDock && !readOnly { try systemDock.setHidden(true) }
         } catch { message = "系统 Dock 恢复失败：\(error.localizedDescription)" }
         refreshRunningApps()
+        badgeService.onUpdate = { [weak self] labels, status in
+            guard let self else { return }
+            if self.badgeLabels != labels { self.badgeLabels = labels }
+            if self.badgeStatus != status { self.badgeStatus = status }
+        }
+        badgeService.setEnabled(configuration.showBadges)
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
                      NSWorkspace.didActivateApplicationNotification, NSWorkspace.didHideApplicationNotification,
                      NSWorkspace.didUnhideApplicationNotification] {
@@ -84,7 +93,18 @@ final class AppStore: ObservableObject {
         next.normalizeAppearance()
         guard next != configuration else { return }
         configuration = next
+        badgeService.setEnabled(next.showBadges)
         save()
+    }
+
+    func badgeLabel(for entry: DockEntry) -> String? {
+        BadgeDisplayPolicy.label(for: entry, labels: badgeLabels, enabled: configuration.showBadges)
+    }
+
+    func stopBackgroundServices() {
+        badgeService.stop()
+        observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        observers.removeAll()
     }
 
     func setSystemDockHidden(_ hidden: Bool) {
@@ -166,6 +186,7 @@ final class AppStore: ObservableObject {
     func refreshPermissions() {
         accessibilityGranted = AXIsProcessTrusted()
         captureGranted = CGPreflightScreenCaptureAccess()
+        badgeService.refresh()
     }
 
     func revealConfiguration() { NSWorkspace.shared.open(directory) }

@@ -32,7 +32,7 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
@@ -41,13 +41,14 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public var magnificationEnabled: Bool = true
     public var magnificationScale: Double = 5.0 / 3.0
     public var showPreviews: Bool = true
+    public var showBadges: Bool = true
     public var hideSystemDock: Bool = false
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case version, entries, mode, iconSize, iconSpacing
-        case magnificationEnabled, magnificationScale, showPreviews, hideSystemDock
+        case magnificationEnabled, magnificationScale, showPreviews, showBadges, hideSystemDock
     }
 
     public init(from decoder: Decoder) throws {
@@ -61,6 +62,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         magnificationEnabled = try values.decodeIfPresent(Bool.self, forKey: .magnificationEnabled) ?? true
         magnificationScale = try values.decodeIfPresent(Double.self, forKey: .magnificationScale) ?? 5.0 / 3.0
         showPreviews = try values.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? true
+        showBadges = try values.decodeIfPresent(Bool.self, forKey: .showBadges) ?? true
         hideSystemDock = try values.decodeIfPresent(Bool.self, forKey: .hideSystemDock) ?? false
         normalizeAppearance()
     }

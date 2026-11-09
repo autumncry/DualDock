@@ -12,7 +12,7 @@ final class ConfigurationMigrationTests: XCTestCase {
         saved.hideSystemDock = true
         var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
         legacy["version"] = 1
-        for key in ["iconSpacing", "magnificationEnabled", "magnificationScale"] { legacy.removeValue(forKey: key) }
+        for key in ["iconSpacing", "magnificationEnabled", "magnificationScale", "showBadges"] { legacy.removeValue(forKey: key) }
         let decoded = try JSONDecoder().decode(DockConfiguration.self, from: JSONSerialization.data(withJSONObject: legacy))
         XCTAssertEqual(decoded.version, DockConfiguration.currentVersion)
         XCTAssertEqual(decoded.entries, saved.entries)
@@ -22,6 +22,7 @@ final class ConfigurationMigrationTests: XCTestCase {
         XCTAssertTrue(decoded.hideSystemDock)
         XCTAssertEqual(decoded.iconSpacing, 14)
         XCTAssertTrue(decoded.magnificationEnabled)
+        XCTAssertTrue(decoded.showBadges)
         XCTAssertEqual(decoded.magnificationScale, 5.0 / 3.0, accuracy: 0.001)
     }
 
@@ -30,6 +31,7 @@ final class ConfigurationMigrationTests: XCTestCase {
         config.iconSize = 57.625
         config.iconSpacing = 6.375
         config.magnificationScale = 1.7345
+        config.showBadges = false
         let decoded = try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(config))
         XCTAssertEqual(decoded, config)
     }
@@ -48,5 +50,21 @@ final class ConfigurationMigrationTests: XCTestCase {
         XCTAssertEqual(config.iconSize, 48)
         XCTAssertEqual(config.iconSpacing, 0)
         XCTAssertEqual(config.magnificationScale, 2.5)
+    }
+
+    func testVersionTwoMigrationPreservesAppearanceAndAddsBadgeSwitch() throws {
+        var config = DockConfiguration()
+        config.iconSize = 47.69
+        config.iconSpacing = 6.48
+        config.magnificationScale = 1.47
+        var data = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any])
+        data["version"] = 2
+        data.removeValue(forKey: "showBadges")
+        let restored = try JSONDecoder().decode(DockConfiguration.self, from: JSONSerialization.data(withJSONObject: data))
+        XCTAssertEqual(restored.version, DockConfiguration.currentVersion)
+        XCTAssertEqual(restored.iconSize, config.iconSize)
+        XCTAssertEqual(restored.iconSpacing, config.iconSpacing)
+        XCTAssertEqual(restored.magnificationScale, config.magnificationScale)
+        XCTAssertTrue(restored.showBadges)
     }
 }

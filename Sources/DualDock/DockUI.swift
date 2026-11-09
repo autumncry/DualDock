@@ -85,7 +85,7 @@ final class DockStripView: NSVisualEffectView {
     private(set) var tiles: [DockTile] = []
     var settingsAction: (() -> Void)?
     var modeAction: (() -> Void)?
-    var onGeometryChange: ((NSSize, CGFloat?) -> CGFloat)?
+    var onGeometryChange: ((NSSize) -> Void)?
     private(set) var desiredWidth: CGFloat = 200
 
     private var actions: [MenuAction] = []
@@ -120,9 +120,10 @@ final class DockStripView: NSVisualEffectView {
         layer?.borderWidth = 0.5
         layer?.borderColor = NSColor.white.withAlphaComponent(0.28).cgColor
         scrolling.drawsBackground = false
-        scrolling.hasHorizontalScroller = true
+        scrolling.hasHorizontalScroller = false
+        scrolling.hasVerticalScroller = false
         scrolling.scrollerStyle = .overlay
-        scrolling.horizontalScrollElasticity = .allowed
+        scrolling.horizontalScrollElasticity = .none
         scrolling.verticalScrollElasticity = .none
         scrolling.documentView = document
         scrolling.onUserScroll = { [weak self] in self?.updatePointer(force: true) }
@@ -223,7 +224,7 @@ final class DockStripView: NSVisualEffectView {
         currentLayout = base
         targetLayout = base
         apply(base, notify: false)
-        scrolling.contentView.scroll(to: .zero)
+        scrolling.contentView.scroll(to: NSPoint(x: base.initialScrollOffset, y: 0))
         return base.panelSize
     }
 
@@ -259,7 +260,8 @@ final class DockStripView: NSVisualEffectView {
     private func makeLayout(focus: CGFloat?) -> DockWaveLayout {
         DockWaveLayout.make(count: tiles.count, iconSize: baseSide, spacing: spacing,
                             magnificationScale: magnificationScale, focusIndex: focus,
-                            maxWidth: maximumWidth, hasControls: !isGroup, dividerIndex: dividerIndex)
+                            maxWidth: maximumWidth, hasControls: !isGroup, dividerIndex: dividerIndex,
+                            scrollOffset: scrolling.contentView.bounds.origin.x)
     }
 
     private func updatePointer(force: Bool = false) {
@@ -273,10 +275,8 @@ final class DockStripView: NSVisualEffectView {
         let insideViewport = scrolling.frame.contains(local)
         let index = insideViewport ? currentLayout.tileFrames.firstIndex(where: { $0.contains(point) }) : nil
         changeHoveredIndex(index)
-        if let index, !isGroup, magnificationScale > 1 {
-            let itemFrame = currentLayout.tileFrames[index]
-            let fraction = min(1, max(0, (point.x - itemFrame.minX) / max(1, itemFrame.width)))
-            focusIndex = CGFloat(index) + fraction - 0.5
+        if index != nil, !isGroup, magnificationScale > 1 {
+            focusIndex = baseLayout?.focusIndex(at: point.x)
         } else { focusIndex = nil }
         targetLayout = makeLayout(focus: focusIndex)
         startAnimation()
@@ -339,13 +339,24 @@ final class DockStripView: NSVisualEffectView {
         let remaining = currentLayout.maximumDifference(from: targetLayout)
         let next = remaining < 0.08 ? targetLayout : currentLayout.interpolated(to: targetLayout, fraction: fraction)
         self.currentLayout = next
-        let centerDistance = apply(next, notify: true, settlingFraction: fraction)
-        if remaining < 0.08 && centerDistance < 0.08 { link.isPaused = true; lastTimestamp = nil }
+        apply(next, notify: true)
+        if remaining < 0.08 {
+            link.isPaused = true
+            lastTimestamp = nil
+            refreshHoveredIndex()
+        }
     }
 
-    @discardableResult
-    private func apply(_ value: DockWaveLayout, notify: Bool, settlingFraction: CGFloat = 1) -> CGFloat {
-        let oldOffset = scrolling.contentView.bounds.origin.x
+    private func refreshHoveredIndex() {
+        guard interactionDepth == 0, let window, let currentLayout else { return }
+        let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        let point = document.convert(local, from: self)
+        let index = scrolling.frame.contains(local)
+            ? currentLayout.tileFrames.firstIndex(where: { $0.contains(point) }) : nil
+        changeHoveredIndex(index)
+    }
+
+    private func apply(_ value: DockWaveLayout, notify: Bool) {
         frame.size = value.panelSize
         document.frame.size = value.contentSize
         for (tile, itemFrame) in zip(tiles, value.tileFrames) {
@@ -360,31 +371,12 @@ final class DockStripView: NSVisualEffectView {
         desiredWidth = value.contentSize.width + value.controlsWidth + 2 * value.horizontalInset
         needsLayout = true
         layoutSubtreeIfNeeded()
-        let maxOffset = max(0, value.contentSize.width - value.viewportSize.width)
-        var offset = min(max(0, oldOffset), maxOffset)
-        scrolling.contentView.scroll(to: NSPoint(x: offset, y: 0))
-        var centerDistance: CGFloat = 0
-        if notify {
-            let focus: CGFloat?
-            if let focusIndex, let contentX = value.position(for: focusIndex) {
-                focus = value.horizontalInset + contentX - offset
-            } else if onGeometryChange != nil, let window, let screen = window.screen, settlingFraction < 1 {
-                let centeredX = (screen.frame.midX - value.panelSize.width / 2).rounded(.down)
-                let nextX = DockWaveLayout.nextPanelOrigin(current: window.frame.minX, target: centeredX, fraction: settlingFraction)
-                centerDistance = abs(centeredX - nextX)
-                // A virtual anchor lets the same coordinator callback smoothly
-                // return the panel to center after the pointer has left it.
-                focus = NSEvent.mouseLocation.x - nextX
-            } else { focus = nil }
-            let correction = onGeometryChange?(value.panelSize, focus) ?? 0
-            if focusIndex != nil && abs(correction) > 0.01 {
-                offset = min(max(0, offset + correction), maxOffset)
-                scrolling.contentView.scroll(to: NSPoint(x: offset, y: 0))
-            }
-        }
+        // Horizontal extents are constant across hover frames. Only explicit
+        // wheel/trackpad input (or a new configuration) changes the scroll offset.
+        if notify { onGeometryChange?(value.panelSize) }
         scrolling.reflectScrolledClipView(scrolling.contentView)
-        return centerDistance
     }
+
 }
 
 @MainActor

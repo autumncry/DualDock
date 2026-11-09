@@ -35,7 +35,7 @@ final class DockTile: NSView, NSDraggingSource {
         registerForDraggedTypes([DockDrag.pasteboardType, .fileURL])
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(entry.isGroup ? "应用组 \(entry.name)，\(entry.apps.count) 个应用" : entry.name)
+        refreshBadge()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -59,6 +59,16 @@ final class DockTile: NSView, NSDraggingSource {
         onHover?(value)
     }
 
+    func refreshBadge() {
+        needsDisplay = true
+        let base = entry.isGroup ? "应用组 \(entry.name)，\(entry.apps.count) 个应用" : entry.name
+        if let badge = store.badgeLabel(for: entry) {
+            setAccessibilityLabel(entry.isGroup ? "\(base)，有未读提醒" : "\(base)，消息角标 \(badge)")
+        } else {
+            setAccessibilityLabel(base)
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         NSGraphicsContext.current?.imageInterpolation = .high
         let iconRect = visualIconBounds
@@ -78,6 +88,34 @@ final class DockTile: NSView, NSDraggingSource {
             NSBezierPath(roundedRect: NSRect(x: dropAfter ? bounds.maxX - width : 0, y: 6 * unitScale,
                                            width: width, height: bounds.height - 12 * unitScale), xRadius: width / 2, yRadius: width / 2).fill()
         }
+        if let label = store.badgeLabel(for: entry) { drawBadge(label, in: iconRect) }
+    }
+
+    private func drawBadge(_ label: String, in icon: NSRect) {
+        let scale = icon.width / 48
+        let maximumWidth = max(12, min(bounds.width - 2, icon.width * 0.88))
+        var fontSize = max(7, icon.width * 0.22)
+        var font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let text = label as NSString
+        var textSize = text.size(withAttributes: [.font: font])
+        while textSize.width + 6 * scale > maximumWidth && fontSize > 5 {
+            fontSize -= 0.5
+            font = .systemFont(ofSize: fontSize, weight: .semibold)
+            textSize = text.size(withAttributes: [.font: font])
+        }
+        let height = max(12, textSize.height + 2 * scale)
+        let width = min(maximumWidth, max(height, textSize.width + 7 * scale))
+        let right = min(bounds.maxX - 1, icon.maxX)
+        let top = min(bounds.maxY - 1, icon.maxY + 2 * scale)
+        let badge = NSRect(x: right - width, y: top - height, width: width, height: height)
+        NSColor.systemRed.setFill()
+        NSBezierPath(roundedRect: badge, xRadius: height / 2, yRadius: height / 2).fill()
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        style.lineBreakMode = .byTruncatingTail
+        let textRect = NSRect(x: badge.minX + 1, y: badge.midY - textSize.height / 2,
+                              width: badge.width - 2, height: textSize.height)
+        text.draw(in: textRect, withAttributes: [.font: font, .foregroundColor: NSColor.white, .paragraphStyle: style])
     }
 
     private func drawFolder(in rect: NSRect) {
@@ -160,11 +198,8 @@ final class DockTile: NSView, NSDraggingSource {
         guard let screen, let menu = menuProvider?() else { return }
         onHover?(false)
         menu.update()
-        let visible = screen.visibleFrame.insetBy(dx: 8, dy: 8)
-        let menuSize = menu.size
-        let x = max(visible.minX, min(icon.midX - menuSize.width / 2, visible.maxX - menuSize.width))
-        let topY = min(icon.maxY + 8 + menuSize.height, visible.maxY)
-        menu.popUp(positioning: nil, at: NSPoint(x: x, y: topY), in: nil)
+        let origin = DockMenuPlacement.origin(icon: icon, menuSize: menu.size, visibleScreen: screen.visibleFrame)
+        menu.popUp(positioning: nil, at: origin, in: nil)
     }
 
     private func beginInteraction() {

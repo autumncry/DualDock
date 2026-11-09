@@ -31,11 +31,18 @@ final class DisplayCoordinator {
 
     init(store: AppStore) {
         self.store = store
-        store.$configuration.dropFirst().sink { [weak self] _ in
+        store.$configuration.removeDuplicates { previous, next in
+            var layout = previous
+            layout.showBadges = next.showBadges
+            return layout == next
+        }.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.dismissPopups(); self?.refreshDisplays() }
         }.store(in: &subscriptions)
         store.$runningApps.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.refreshDisplays() }
+        }.store(in: &subscriptions)
+        store.$badgeLabels.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.redrawBadges() }
         }.store(in: &subscriptions)
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.dismissPopups(); self?.refreshDisplays() }
@@ -71,8 +78,8 @@ final class DisplayCoordinator {
             let panel = old?.panel ?? DockPanel()
             let strip = old?.strip ?? DockStripView()
             panel.title = "DualDock · \(screen.localizedName)"
-            strip.onGeometryChange = { [weak self] size, focusX in
-                self?.resizeDock(id: id, size: size, focusX: focusX) ?? 0
+            strip.onGeometryChange = { [weak self] size in
+                self?.resizeDockHeight(id: id, height: size.height)
             }
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
             strip.modeAction = { [weak self] in self?.store.update { $0.mode = $0.mode == .standard ? .runningOnly : .standard } }
@@ -88,20 +95,23 @@ final class DisplayCoordinator {
         applyFullscreenState()
     }
 
-    private func resizeDock(id: CGDirectDisplayID, size: NSSize, focusX: CGFloat?) -> CGFloat {
-        guard let dock = docks[id], size.width.isFinite, size.height.isFinite,
-              size.width > 0, size.height > 0 else { return 0 }
-        let screen = dock.screen.frame
-        let desiredX = focusX.map { NSEvent.mouseLocation.x - $0 } ?? (screen.midX - size.width / 2)
-        let x = min(max(desiredX, screen.minX + 16), max(screen.minX + 16, screen.maxX - size.width - 16))
-        let frame = NSRect(x: x, y: dock.panel.frame.minY, width: size.width, height: size.height)
+    private func resizeDockHeight(id: CGDirectDisplayID, height: CGFloat) {
+        guard let dock = docks[id], height.isFinite, height > 0 else { return }
+        // Horizontal geometry belongs to the saved layout and screen setup.
+        // Magnification only grows upward, never following the pointer sideways.
+        var frame = dock.panel.frame
+        frame.size.height = ceil(height)
         if dock.panel.frame != frame { dock.panel.setFrame(frame, display: true) }
-        return dock.panel.frame.minX - desiredX
     }
 
     func resetMagnification() {
         dismissPopups()
         docks.values.forEach { $0.strip.resetMagnification() }
+    }
+
+    private func redrawBadges() {
+        docks.values.forEach { dock in dock.strip.tiles.forEach { $0.refreshBadge() } }
+        (groupPanel?.contentView as? DockStripView)?.tiles.forEach { $0.refreshBadge() }
     }
 
     static func id(_ screen: NSScreen) -> CGDirectDisplayID {
