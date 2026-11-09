@@ -4,7 +4,7 @@
 
 ## 打开
 
-从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.3.0) 下载 `DualDock-1.3.0-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
+从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.3.0) 下载 `DualDock-1.3.0-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库及发布包公开提供。
 
 也可以打开本地构建的 `dist/DualDock.app`。首次启动显示设置；右键 Dock 空白处或点击菜单栏的双矩形图标可以再次打开设置。退出入口在菜单栏中。
 
@@ -60,4 +60,4 @@ swift test                            # 分组、排序及模式数据不变性�
 
 ## 协议
 
-采用 [MIT License](LICENSE)，Copyright (c) 2026 Ronny Cao。源码仓库目前为私有。
+采用 [MIT License](LICENSE)，Copyright (c) 2026 Ronny Cao。源码仓库已公开。
