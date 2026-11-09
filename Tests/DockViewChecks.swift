@@ -61,6 +61,23 @@ struct DockViewChecks {
                 store.stopBackgroundServices()
             }
         }
-        print("\(checks) hidden AppKit scroll checks passed; no desktop input posted")
+        for size in [NSSize(width: 480, height: 320), NSSize(width: 180, height: 600),
+                     NSSize(width: 3000, height: 50), NSSize(width: 80, height: 3000)] {
+            let image = NSImage(size: size)
+            let card = WindowPreviewCardView(title: "Fixture", image: image)
+            var activated = 0
+            var closed = 0
+            card.onActivate = { activated += 1 }
+            card.onClose = { closed += 1 }
+            let point = NSPoint(x: card.closeButton.frame.midX, y: card.closeButton.frame.midY)
+            check(card.bounds.contains(card.closeButton.frame), "Close control must stay inside the preview card")
+            check(card.hitTest(point) === card.closeButton, "Thumbnail intercepted the close control")
+            card.closeButton.performClick(nil)
+            check(closed == 1 && activated == 0, "Close must not activate the thumbnail")
+            card.thumbnailButton.performClick(nil)
+            check(closed == 1 && activated == 1, "Thumbnail must not close the window")
+            check(card.closeButton.accessibilityLabel()?.contains("关闭窗口") == true, "Close accessibility label missing")
+        }
+        print("\(checks) hidden AppKit scroll/preview checks passed; no desktop input posted")
     }
 }

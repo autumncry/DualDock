@@ -4,7 +4,7 @@
 
 ## 打开
 
-从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.2.3) 下载 `DualDock-1.2.3-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
+从 [GitHub Release](https://github.com/autumncry/DualDock/releases/tag/v1.2.4) 下载 `DualDock-1.2.4-arm64.dmg`，打开后把 `DualDock.app` 拖到 `Applications`。仓库当前为私有，需要登录有访问权限的 GitHub 账号。
 
 也可以打开本地构建的 `dist/DualDock.app`。首次启动显示设置；右键 Dock 空白处或点击菜单栏的双矩形图标可以再次打开设置。退出入口在菜单栏中。
 
@@ -13,7 +13,7 @@
 ## 四项功能
 
 - 从 Finder 拖入应用，或用“添加应用”。拖到其他图标边缘调整顺序；在图标中央停留约 0.6 秒后松开可以建组。点击组图标横向展开，可组内重排、拖回主栏，右键重命名或拆组。
-- 悬停运行中的应用显示窗口缩略图，点击切换窗口。无法捕获有效截图的窗口不显示预览。
+- 悬停运行中的应用显示窗口缩略图，点击切换窗口；缩略图右上角的 × 用于关闭对应窗口。未保存内容由原应用提示确认，DualDock 不会代选保存或丢弃。点击关闭会收起预览，再次悬停读取最新窗口列表。无法捕获有效截图的窗口不显示预览。
 - 普通模式显示固定应用、应用组及未固定运行应用。仅运行模式将全部普通运行应用平铺，包括最小化、隐藏和其他桌面的应用。切换模式保留原布局。
 - 每个扩展显示器分别有一条 Dock，共享同一配置。镜像显示器由系统复制对应画面。某屏进入全屏应用时隐藏该屏的栏，其他屏继续使用。
 
@@ -41,7 +41,7 @@
 swift test                            # 分组、排序及模式数据不变性测试
 ./script/check_system_dock.sh          # 内存偏好注入的恢复故障测试
 ./script/check_badges.sh               # 角标读取、关闭与异步隔离检查
-./script/check_dock_views.sh           # 隐藏 AppKit 视图的滚动范围与边界检查
+./script/check_dock_views.sh           # 隐藏 AppKit 视图的滚动与预览按钮检查
 ```
 
 脚本支持 `--logs`、`--telemetry` 与 `--debug`。Codex Run 按钮也使用该脚本。重新构建会先请求已运行的 DualDock 正常退出，以完成系统 Dock 恢复。

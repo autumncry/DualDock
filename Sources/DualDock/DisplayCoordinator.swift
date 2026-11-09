@@ -25,7 +25,6 @@ final class DisplayCoordinator {
     private var popupScreen: CGDirectDisplayID?
     private var popupAnchor = NSRect.zero
     private var pointerOutsideSince: Date?
-    private var previewActions: [MenuAction] = []
     private var contextMenuTracking = false
     private var menuTrackingObserver: MenuTrackingObserver?
 
@@ -177,7 +176,6 @@ final class DisplayCoordinator {
         // is pending. Only a member's own group remains as its interaction area.
         previewPanel?.close()
         previewPanel = nil
-        previewActions = []
         if tile.groupID == nil {
             (groupPanel?.contentView as? DockStripView)?.stopAnimations()
             groupPanel?.close()
@@ -207,7 +205,6 @@ final class DisplayCoordinator {
     private func showPreview(_ items: [WindowPreview], app: AppReference, anchor: NSRect, sourceRect: NSRect, screen: NSScreen) {
         previewPanel?.close()
         previewPanel = nil
-        previewActions = []
         let visibleItems = items.filter { $0.image != nil }
         guard let layout = PreviewStripLayout(itemCount: visibleItems.count, maxWidth: screen.frame.width - 40) else {
             if groupPanel == nil { popupScreen = nil }
@@ -222,6 +219,7 @@ final class DisplayCoordinator {
         background.blendingMode = .behindWindow
         background.wantsLayer = true
         background.layer?.cornerRadius = 14
+        background.layer?.masksToBounds = true
         let title = NSTextField(labelWithString: app.name)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
         title.frame = NSRect(x: layout.padding, y: 150, width: layout.viewportWidth, height: 20)
@@ -232,30 +230,18 @@ final class DisplayCoordinator {
         scroll.scrollerStyle = .overlay
         let document = NSView()
         for (index, item) in visibleItems.enumerated() {
+            guard let image = item.image else { continue }
             let x = layout.cardOrigins[index]
-            let action = MenuAction { [weak self] in
+            let card = WindowPreviewCardView(title: item.title.isEmpty ? app.name : item.title, image: image)
+            card.frame.origin = NSPoint(x: x, y: 0)
+            card.onActivate = { [weak self] in
                 guard let self else { return }
                 self.dismissPopups()
                 _ = self.store.windows.activate(item)
                 self.store.refreshPermissions()
             }
-            previewActions.append(action)
-            let button = NSButton(frame: NSRect(x: x, y: 26, width: 192, height: 108))
-            button.image = item.image
-            button.imageScaling = .scaleProportionallyUpOrDown
-            button.imagePosition = .imageOnly
-            button.isBordered = false
-            button.target = action
-            button.action = #selector(MenuAction.invoke)
-            button.toolTip = item.title
-            button.setAccessibilityLabel("切换到 \(item.title)")
-            document.addSubview(button)
-            let label = NSTextField(labelWithString: item.title.isEmpty ? app.name : item.title)
-            label.font = .systemFont(ofSize: 11)
-            label.lineBreakMode = .byTruncatingTail
-            label.alignment = .center
-            label.frame = NSRect(x: x, y: 5, width: 192, height: 18)
-            document.addSubview(label)
+            card.onClose = { [weak self] in self?.closePreview(item, app: app) }
+            document.addSubview(card)
         }
         document.frame = NSRect(x: 0, y: 0, width: layout.documentWidth, height: 140)
         scroll.documentView = document
@@ -269,6 +255,22 @@ final class DisplayCoordinator {
         panel.setFrame(popupFrame(size: size, anchor: anchor, screen: screen), display: true)
         previewPanel = panel
         panel.orderFrontRegardless()
+    }
+
+    private func closePreview(_ item: WindowPreview, app: AppReference) {
+        // A successful AXPress can open a save sheet instead of closing the
+        // window. Dismiss the snapshot; a later hover always reads fresh state.
+        dismissPopups()
+        let result = store.windows.close(item, for: app)
+        store.refreshPermissions()
+        guard let message = result.message else { return }
+        store.message = message
+        let alert = NSAlert()
+        alert.messageText = "无法关闭这个窗口"
+        alert.informativeText = message
+        alert.addButton(withTitle: "好")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     private func popupFrame(size: NSSize, anchor: NSRect, screen: NSScreen) -> NSRect {
@@ -289,7 +291,6 @@ final class DisplayCoordinator {
         cancelPreviewRequest()
         previewPanel?.close()
         previewPanel = nil
-        previewActions = []
         if groupPanel == nil { popupScreen = nil; pointerOutsideSince = nil }
     }
 
@@ -298,7 +299,6 @@ final class DisplayCoordinator {
         (groupPanel?.contentView as? DockStripView)?.stopAnimations()
         groupPanel?.close(); groupPanel = nil
         previewPanel?.close(); previewPanel = nil
-        previewActions = []
         popupScreen = nil
         pointerOutsideSince = nil
     }

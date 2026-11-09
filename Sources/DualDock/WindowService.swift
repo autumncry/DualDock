@@ -11,6 +11,40 @@ struct WindowPreview: Identifiable {
     let title: String
     let image: NSImage?
     let frame: CGRect
+    let identityTitle: String?
+    let processLaunchDate: Date?
+    let applicationPath: String?
+
+    init(windowID: UInt32, pid: pid_t, title: String, image: NSImage?, frame: CGRect,
+         identityTitle: String? = nil, processLaunchDate: Date? = nil, applicationPath: String? = nil) {
+        self.windowID = windowID
+        self.pid = pid
+        self.title = title
+        self.image = image
+        self.frame = frame
+        self.identityTitle = identityTitle
+        self.processLaunchDate = processLaunchDate
+        self.applicationPath = applicationPath
+    }
+}
+
+enum WindowCloseResult: Equatable {
+    /// The app accepted its native close action; a save confirmation may still be open.
+    case requested
+    case notFound
+    case permissionRequired
+    case unsupported
+    case failed
+
+    var message: String? {
+        switch self {
+        case .requested: return nil
+        case .notFound: return "无法准确识别这个窗口，它可能已关闭或发生变化。请重新悬停获取预览后再试。"
+        case .permissionRequired: return "请在 DualDock 的权限设置中允许辅助功能，再关闭窗口。"
+        case .unsupported: return "这个窗口没有可用的关闭按钮，请在原应用中关闭。"
+        case .failed: return "应用暂未接受关闭请求，请稍后重试或在原应用中关闭。"
+        }
+    }
 }
 
 /// Owns window discovery and thumbnails; callers decide whether a completed hover request is still current.
@@ -123,12 +157,16 @@ final class WindowService {
             guard let window = windowsByID[id], let owner = window.owningApplication,
                   let image = snapshots[id] else { return nil }
             let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let process = running.first { $0.processIdentifier == owner.processID }
             return WindowPreview(
                 windowID: window.windowID,
                 pid: owner.processID,
                 title: title?.isEmpty == false ? title! : app.name,
                 image: NSImage(cgImage: image, size: .zero),
-                frame: window.frame
+                frame: window.frame,
+                identityTitle: title,
+                processLaunchDate: process?.launchDate,
+                applicationPath: process?.bundleURL?.standardizedFileURL.path
             )
         }
     }
@@ -158,6 +196,88 @@ final class WindowService {
         let activated = app.activate(options: [])
         let raised = AXUIElementPerformAction(target, kAXRaiseAction as CFString) == .success
         return activated || raised
+    }
+
+    /// Press the matching window's own close button. Never substitute Cmd-W,
+    /// the frontmost window, or application termination for a missing target.
+    func close(_ item: WindowPreview, for expectedApp: AppReference) -> WindowCloseResult {
+        guard AXIsProcessTrusted() else { return .permissionRequired }
+        guard let app = NSRunningApplication(processIdentifier: item.pid), !app.isTerminated,
+              WindowCloseTargetPolicy.matchesApplication(
+                expected: expectedApp, capturedPath: item.applicationPath, capturedLaunchDate: item.processLaunchDate,
+                liveBundleID: app.bundleIdentifier, livePath: app.bundleURL?.standardizedFileURL.path,
+                liveLaunchDate: app.launchDate),
+              sourceWindowExists(item) else { return .notFound }
+
+        let application = AXUIElementCreateApplication(item.pid)
+        AXUIElementSetMessagingTimeout(application, 0.2)
+        var value: CFTypeRef?
+        let query = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value)
+        guard query == .success, let windows = value as? [AXUIElement] else { return .failed }
+        let ids = windows.map { element -> CGWindowID? in
+            AXUIElementSetMessagingTimeout(element, 0.15)
+            return native.windowID(for: element)
+        }
+        // Normal exact-ID closes do not need per-window title/geometry queries.
+        let needsFallback = ids.allSatisfy { $0 == nil }
+        let candidates = zip(windows, ids).map { element, id in
+            WindowCloseTargetPolicy.Candidate(windowID: id,
+                title: needsFallback ? axValue(element, kAXTitleAttribute as CFString) as? String : nil,
+                frame: needsFallback ? axFrame(element) : nil)
+        }
+        guard let index = WindowCloseTargetPolicy.candidateIndex(
+            windowID: item.windowID, rawTitle: item.identityTitle, frame: item.frame, candidates: candidates)
+        else { return .notFound }
+        guard !needsFallback || fallbackSourceIsUnique(item) else { return .notFound }
+        let target = windows[index]
+        var closeValue: CFTypeRef?
+        let closeQuery = AXUIElementCopyAttributeValue(target, kAXCloseButtonAttribute as CFString, &closeValue)
+        if closeQuery == .noValue || closeQuery == .attributeUnsupported { return .unsupported }
+        guard closeQuery == .success, let closeValue,
+              CFGetTypeID(closeValue) == AXUIElementGetTypeID() else { return .failed }
+        let closeButton = unsafeBitCast(closeValue, to: AXUIElement.self)
+        AXUIElementSetMessagingTimeout(closeButton, 0.2)
+        if axValue(closeButton, kAXEnabledAttribute as CFString) as? Bool == false { return .unsupported }
+
+        // Recheck the source after the AX round trips. A closed stale preview
+        // must never select a replacement with the same title or position.
+        guard !app.isTerminated,
+              needsFallback ? fallbackSourceIsUnique(item) : sourceWindowExists(item) else { return .notFound }
+        let action = AXUIElementPerformAction(closeButton, kAXPressAction as CFString)
+        guard action == .success else {
+            return action == .actionUnsupported ? .unsupported : .failed
+        }
+        // Bring any native save-confirmation sheet into view, without choosing
+        // Save/Discard or sending another close command.
+        if !app.isTerminated, sourceWindowExists(item) {
+            app.unhide()
+            _ = app.activate(options: [])
+        }
+        return .requested
+    }
+
+    private func sourceWindowExists(_ item: WindowPreview) -> Bool {
+        guard item.windowID != 0,
+              let rows = CGWindowListCopyWindowInfo([.optionIncludingWindow, .excludeDesktopElements], item.windowID) as? [[String: Any]]
+        else { return false }
+        return rows.contains {
+            ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == item.windowID
+                && ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == item.pid
+        }
+    }
+
+    private func fallbackSourceIsUnique(_ item: WindowPreview) -> Bool {
+        guard let rows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return false }
+        let sameProcess = rows.filter { ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == item.pid }
+        let windows = sameProcess.map { row -> WindowCloseTargetPolicy.Candidate in
+            let frame = (row[kCGWindowBounds as String] as? [String: Any])
+                .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+            return .init(windowID: (row[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                         title: row[kCGWindowName as String] as? String, frame: frame)
+        }
+        return WindowCloseTargetPolicy.fallbackSourceIsUnique(
+            windowID: item.windowID, rawTitle: item.identityTitle, frame: item.frame, windows: windows)
     }
 
     func fullscreenDisplayIDs(screens: [NSScreen]) -> Set<CGDirectDisplayID> {
