@@ -29,8 +29,16 @@ final class AppStore: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: configURL.path) {
-                initial = try JSONDecoder().decode(DockConfiguration.self, from: Data(contentsOf: configURL))
-                if initial.version > 1 {
+                let originalData = try Data(contentsOf: configURL)
+                initial = try JSONDecoder().decode(DockConfiguration.self, from: originalData)
+                if let raw = try JSONSerialization.jsonObject(with: originalData) as? [String: Any],
+                   (raw["version"] as? Int ?? 1) < DockConfiguration.currentVersion {
+                    let backup = directory.appendingPathComponent("configuration-before-v2.json")
+                    if !FileManager.default.fileExists(atPath: backup.path) {
+                        try originalData.write(to: backup, options: .atomic)
+                    }
+                }
+                if initial.version > DockConfiguration.currentVersion {
                     readOnly = true
                     issue = "配置来自较新的 DualDock，当前版本以只读方式打开。"
                 }
@@ -41,8 +49,7 @@ final class AppStore: ObservableObject {
             readOnly = true
             issue = "无法读取配置，原文件已保留。请打开配置目录检查。\n\(error.localizedDescription)"
         }
-        if !initial.iconSize.isFinite { initial.iconSize = 48 }
-        initial.iconSize = min(72, max(32, initial.iconSize))
+        initial.normalizeAppearance()
         configuration = initial
         message = issue
         do {
@@ -74,6 +81,7 @@ final class AppStore: ObservableObject {
         guard !readOnly else { message = "配置目前为只读，请先检查配置文件。"; return }
         var next = configuration
         change(&next)
+        next.normalizeAppearance()
         guard next != configuration else { return }
         configuration = next
         save()

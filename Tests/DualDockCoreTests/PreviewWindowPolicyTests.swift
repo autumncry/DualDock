@@ -50,4 +50,35 @@ final class PreviewWindowPolicyTests: XCTestCase {
         ))
     }
 
+    func testOmitsFailedCaptureInsteadOfKeepingAnIconOnlyCard() {
+        XCTAssertEqual(PreviewWindowPolicy.availablePreviewIDs(
+            orderedCandidates: [11, 12], validSnapshotIDs: [11], currentWindowIDs: [11, 12]
+        ), [11])
+    }
+
+    func testOmitsWindowClosedWhileItsScreenshotWasCaptured() {
+        XCTAssertEqual(PreviewWindowPolicy.availablePreviewIDs(
+            orderedCandidates: [11, 12], validSnapshotIDs: [11, 12], currentWindowIDs: [12]
+        ), [12])
+    }
+
+    func testDeduplicatesOnlyWindowIdentityAndPreservesOrder() {
+        XCTAssertEqual(PreviewWindowPolicy.availablePreviewIDs(
+            orderedCandidates: [22, 11, 22], validSnapshotIDs: [11, 22], currentWindowIDs: [11, 22]
+        ), [22, 11])
+    }
+
+    func testKeepsTwoRealWindowsEvenWhenTheirTitlesWouldMatch() {
+        // Matching titles are deliberately absent from the identity decision.
+        XCTAssertEqual(PreviewWindowPolicy.availablePreviewIDs(
+            orderedCandidates: [11, 12], validSnapshotIDs: [11, 12], currentWindowIDs: [11, 12]
+        ), [11, 12])
+    }
+
+    func testNoSuccessfulCapturesMeansNoPreviewCards() {
+        XCTAssertEqual(PreviewWindowPolicy.availablePreviewIDs(
+            orderedCandidates: [11, 12], validSnapshotIDs: [], currentWindowIDs: [11, 12]
+        ), [])
+    }
+
 }

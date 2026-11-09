@@ -16,15 +16,7 @@ struct WindowPreview: Identifiable {
 /// Owns window discovery and thumbnails; callers decide whether a completed hover request is still current.
 @MainActor
 final class WindowService {
-    private struct CachedImage {
-        let image: NSImage
-        let date: Date
-    }
-
     private let native = NativeWindowAPI()
-    private var images: [String: CachedImage] = [:]
-    private var shareableContent: SCShareableContent?
-    private var contentDate = Date.distantPast
     private var contentRequest: Task<SCShareableContent, Error>?
     private var fallbackFullscreenDate = Date.distantPast
     private var fallbackFullscreenIDs: Set<CGDirectDisplayID> = []
@@ -45,6 +37,7 @@ final class WindowService {
         }
         guard !Task.isCancelled else { return [] }
         let knownWindowIDs = accessibleWindowIDs(processIDs: processIDs)
+        var seenWindowIDs: Set<CGWindowID> = []
         let windows = content.windows.filter { window in
             guard let owner = window.owningApplication else { return false }
             return processIDs.contains(owner.processID) && window.windowLayer == 0
@@ -54,12 +47,14 @@ final class WindowService {
                     title: window.title,
                     hasAccessibleWindow: knownWindowIDs[owner.processID].map { $0.contains(window.windowID) }
                 )
+                && seenWindowIDs.insert(window.windowID).inserted
         }.sorted { left, right in
             if left.isOnScreen != right.isOnScreen { return left.isOnScreen }
             return left.windowID < right.windowID
         }
 
-        // Capture at most three windows at once, while retaining every eligible window in the result.
+        // Capture at most three windows at once. Only fresh, visible image
+        // content can become a preview; failed captures never reuse old cards.
         var snapshots: [UInt32: CGImage] = [:]
         for offset in stride(from: 0, to: windows.count, by: 3) {
             guard !Task.isCancelled else { return [] }
@@ -76,30 +71,31 @@ final class WindowService {
             }
             snapshots.merge(captured) { _, fresh in fresh }
         }
-        guard !Task.isCancelled else { return [] }
-
-        let now = Date()
-        images = images.filter { now.timeIntervalSince($0.value.date) < 60 }
-        let previews = windows.compactMap { window -> WindowPreview? in
-            guard let owner = window.owningApplication else { return nil }
-            let key = "\(owner.processID):\(window.windowID)"
-            if let cgImage = snapshots[window.windowID] {
-                images[key] = CachedImage(image: NSImage(cgImage: cgImage, size: .zero), date: now)
-            }
+        guard !Task.isCancelled, !snapshots.isEmpty,
+              let latestContent = try? await currentContent(), !Task.isCancelled else { return [] }
+        let liveProcessIDs = Set(running.filter { !$0.isTerminated }.map(\.processIdentifier))
+        let currentWindowIDs = Set(latestContent.windows.compactMap { window -> CGWindowID? in
+            guard let owner = window.owningApplication, liveProcessIDs.contains(owner.processID) else { return nil }
+            return window.windowID
+        })
+        let selectedIDs = PreviewWindowPolicy.availablePreviewIDs(
+            orderedCandidates: windows.map(\.windowID),
+            validSnapshotIDs: Set(snapshots.keys),
+            currentWindowIDs: currentWindowIDs
+        )
+        let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.windowID, $0) })
+        return selectedIDs.compactMap { id -> WindowPreview? in
+            guard let window = windowsByID[id], let owner = window.owningApplication,
+                  let image = snapshots[id] else { return nil }
             let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
             return WindowPreview(
                 windowID: window.windowID,
                 pid: owner.processID,
                 title: title?.isEmpty == false ? title! : app.name,
-                image: images[key]?.image,
+                image: NSImage(cgImage: image, size: .zero),
                 frame: window.frame
             )
         }
-        if images.count > 150 {
-            let newest = images.sorted { $0.value.date > $1.value.date }.prefix(150)
-            images = Dictionary(uniqueKeysWithValues: newest.map { ($0.key, $0.value) })
-        }
-        return previews
     }
 
     @discardableResult
@@ -149,15 +145,11 @@ final class WindowService {
     }
 
     private func currentContent() async throws -> SCShareableContent {
-        if let shareableContent, Date().timeIntervalSince(contentDate) < 0.75 { return shareableContent }
         if let contentRequest { return try await contentRequest.value }
         let request = Task { try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false) }
         contentRequest = request
         defer { contentRequest = nil }
-        let content = try await request.value
-        shareableContent = content
-        contentDate = Date()
-        return content
+        return try await request.value
     }
 
     private func accessibleWindowIDs(processIDs: Set<pid_t>) -> [pid_t: Set<CGWindowID>] {
@@ -184,7 +176,9 @@ final class WindowService {
         configuration.width = max(1, Int(window.frame.width * scale))
         configuration.height = max(1, Int(window.frame.height * scale))
         configuration.showsCursor = false
-        return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration),
+              PreviewImagePolicy.hasVisiblePixels(image) else { return nil }
+        return image
     }
 
     private func unambiguousMatch(_ item: WindowPreview, in windows: [AXUIElement]) -> AXUIElement? {

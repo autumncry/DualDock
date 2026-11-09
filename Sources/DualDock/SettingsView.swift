@@ -61,10 +61,30 @@ struct SettingsView: View {
                 Text("所有屏幕同步切换。返回普通模式时，分组和排列会恢复。").font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 8) {
-                HStack { Text("图标大小").font(.headline); Spacer(); Text("\(Int(store.configuration.iconSize)) pt").foregroundStyle(.secondary).monospacedDigit() }
-                Slider(value: Binding(get: { store.configuration.iconSize }, set: { value in store.update { $0.iconSize = value } }), in: 32...72, step: 4)
+                HStack {
+                    Text("Dock 大小").font(.headline)
+                    Spacer()
+                    Text("\(Int((store.configuration.iconSize / 48 * 100).rounded()))%").foregroundStyle(.secondary).monospacedDigit()
+                }
+                Slider(value: Binding(get: { store.configuration.iconSize }, set: { value in store.update { $0.iconSize = value } }), in: 24...96)
+                HStack { Text("小"); Spacer(); Text("大") }.font(.caption).foregroundStyle(.secondary)
             }
-            Text("屏幕空间不足时自动缩小图标，较长的应用组支持横向滚动。").font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("图标间距").font(.headline)
+                Slider(value: Binding(get: { store.configuration.iconSpacing }, set: { value in store.update { $0.iconSpacing = value } }), in: 0...32)
+                HStack { Text("紧凑"); Spacer(); Text("宽松") }.font(.caption).foregroundStyle(.secondary)
+            }
+            Text("所有屏幕同步应用大小与间距。超出屏幕宽度的内容可横向滚动。").font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("鼠标悬停放大", isOn: Binding(get: { store.configuration.magnificationEnabled }, set: { value in store.update { $0.magnificationEnabled = value } }))
+                HStack {
+                    Text("放大幅度")
+                    Spacer()
+                    Text("\(Int((store.configuration.magnificationScale * 100).rounded()))%").foregroundStyle(.secondary).monospacedDigit()
+                }
+                Slider(value: Binding(get: { store.configuration.magnificationScale }, set: { value in store.update { $0.magnificationScale = value } }), in: 1...2.5)
+                    .disabled(!store.configuration.magnificationEnabled)
+            }
             Toggle("悬停显示窗口预览", isOn: Binding(get: { store.configuration.showPreviews }, set: { value in store.update { $0.showPreviews = value } }))
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("隐藏系统 Dock", isOn: Binding(get: { store.configuration.hideSystemDock }, set: { store.setSystemDockHidden($0) }))
@@ -106,7 +126,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 20) {
             instruction("1", "整理应用", "从 Finder 拖入应用。拖到图标边缘可调整顺序；在另一个应用图标中央停留片刻再松开，即可合成应用组。")
             instruction("2", "展开与编辑分组", "点击应用组横向展开。成员可拖回主栏，也可在组内重排。右键应用组可以重命名或展开为独立应用。")
-            instruction("3", "切换窗口", "悬停运行中的应用显示窗口预览，点击缩略图切换。部分受保护窗口仅显示图标或标题。")
+            instruction("3", "切换窗口", "悬停运行中的应用显示窗口预览，点击缩略图切换。无法捕获有效截图的窗口不显示预览。")
             instruction("4", "在多屏上使用", "扩展屏各有一条 Dock，镜像屏随系统复制。显示器连接变化时自动调整，全部屏幕共享布局。")
         }
     }

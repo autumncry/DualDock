@@ -32,14 +32,44 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public var version: Int = 1
+    public static let currentVersion = 2
+    public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
     public var iconSize: Double = 48
+    public var iconSpacing: Double = 14
+    public var magnificationEnabled: Bool = true
+    public var magnificationScale: Double = 5.0 / 3.0
     public var showPreviews: Bool = true
     public var hideSystemDock: Bool = false
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case version, entries, mode, iconSize, iconSpacing
+        case magnificationEnabled, magnificationScale, showPreviews, hideSystemDock
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let storedVersion = try values.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        version = max(storedVersion, Self.currentVersion)
+        entries = try values.decodeIfPresent([DockEntry].self, forKey: .entries) ?? []
+        mode = try values.decodeIfPresent(DockMode.self, forKey: .mode) ?? .standard
+        iconSize = try values.decodeIfPresent(Double.self, forKey: .iconSize) ?? 48
+        iconSpacing = try values.decodeIfPresent(Double.self, forKey: .iconSpacing) ?? 14
+        magnificationEnabled = try values.decodeIfPresent(Bool.self, forKey: .magnificationEnabled) ?? true
+        magnificationScale = try values.decodeIfPresent(Double.self, forKey: .magnificationScale) ?? 5.0 / 3.0
+        showPreviews = try values.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? true
+        hideSystemDock = try values.decodeIfPresent(Bool.self, forKey: .hideSystemDock) ?? false
+        normalizeAppearance()
+    }
+
+    public mutating func normalizeAppearance() {
+        iconSize = iconSize.isFinite ? min(96, max(24, iconSize)) : 48
+        iconSpacing = iconSpacing.isFinite ? min(32, max(0, iconSpacing)) : 14
+        magnificationScale = magnificationScale.isFinite ? min(2.5, max(1, magnificationScale)) : 5.0 / 3.0
+    }
 
     public var allAppIDs: Set<String> {
         Set(entries.flatMap(\.apps).map(\.id))

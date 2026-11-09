@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func openSettings() {
+        coordinator?.resetMagnification()
         if settingsWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 550, height: 580), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = "DualDock"
@@ -103,12 +104,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let screens: [[String: Any]] = coordinator.docks.map { id, dock in
             ["id": id, "name": dock.screen.localizedName, "visible": dock.panel.isVisible,
              "frame": NSStringFromRect(dock.panel.frame), "screenFrame": NSStringFromRect(dock.screen.frame),
-             "tiles": dock.strip.tiles.count, "runningDots": dock.strip.tiles.filter { $0.entry.apps.contains(where: store.isRunning) }.count]
+             "tiles": dock.strip.tiles.count,
+             "firstTileWidth": dock.strip.tiles.first?.frame.width ?? 0,
+             "firstIconWidth": dock.strip.tiles.first?.visualIconBounds.width ?? 0,
+             "runningDots": dock.strip.tiles.filter { $0.entry.apps.contains(where: store.isRunning) }.count]
         }
         let result: [String: Any] = ["screens": screens, "mode": store.configuration.mode.rawValue,
             "groups": store.configuration.entries.filter(\.isGroup).count,
             "runningApps": store.runningApps.count, "accessibility": AXIsProcessTrusted(),
-            "screenCapture": CGPreflightScreenCaptureAccess(), "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"]
+            "screenCapture": CGPreflightScreenCaptureAccess(),
+            "dockSize": store.configuration.iconSize, "iconSpacing": store.configuration.iconSpacing,
+            "magnificationEnabled": store.configuration.magnificationEnabled,
+            "magnificationScale": store.configuration.magnificationScale,
+            "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"]
         if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: url, options: .atomic) }
     }
 }

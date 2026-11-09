@@ -26,6 +26,8 @@ final class DisplayCoordinator {
     private var popupAnchor = NSRect.zero
     private var pointerOutsideSince: Date?
     private var previewActions: [MenuAction] = []
+    private var contextMenuTracking = false
+    private var menuTrackingObserver: MenuTrackingObserver?
 
     init(store: AppStore) {
         self.store = store
@@ -42,7 +44,7 @@ final class DisplayCoordinator {
             Task { @MainActor in self?.dismissPopups() }
         }
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if let self, event.window !== self.groupPanel && event.window !== self.previewPanel && !self.docks.values.contains(where: { $0.panel === event.window }) {
+            if let self, !self.contextMenuTracking, event.window !== self.groupPanel && event.window !== self.previewPanel && !self.docks.values.contains(where: { $0.panel === event.window }) {
                 self.dismissPopups()
             }
             return event
@@ -57,13 +59,21 @@ final class DisplayCoordinator {
         dismissPopups()
         let screens = NSScreen.screens.filter { CGDisplayMirrorsDisplay(Self.id($0)) == kCGNullDirectDisplay }
         let valid = Set(screens.map(Self.id))
-        for id in Array(docks.keys) where !valid.contains(id) { docks.removeValue(forKey: id)?.panel.close() }
+        for id in Array(docks.keys) where !valid.contains(id) {
+            if let removed = docks.removeValue(forKey: id) {
+                removed.strip.stopAnimations()
+                removed.panel.close()
+            }
+        }
         for screen in screens {
             let id = Self.id(screen)
             let old = docks[id]
             let panel = old?.panel ?? DockPanel()
             let strip = old?.strip ?? DockStripView()
             panel.title = "DualDock · \(screen.localizedName)"
+            strip.onGeometryChange = { [weak self] size, focusX in
+                self?.resizeDock(id: id, size: size, focusX: focusX) ?? 0
+            }
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
             strip.modeAction = { [weak self] in self?.store.update { $0.mode = $0.mode == .standard ? .runningOnly : .standard } }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
@@ -78,6 +88,22 @@ final class DisplayCoordinator {
         applyFullscreenState()
     }
 
+    private func resizeDock(id: CGDirectDisplayID, size: NSSize, focusX: CGFloat?) -> CGFloat {
+        guard let dock = docks[id], size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0 else { return 0 }
+        let screen = dock.screen.frame
+        let desiredX = focusX.map { NSEvent.mouseLocation.x - $0 } ?? (screen.midX - size.width / 2)
+        let x = min(max(desiredX, screen.minX + 16), max(screen.minX + 16, screen.maxX - size.width - 16))
+        let frame = NSRect(x: x, y: dock.panel.frame.minY, width: size.width, height: size.height)
+        if dock.panel.frame != frame { dock.panel.setFrame(frame, display: true) }
+        return dock.panel.frame.minX - desiredX
+    }
+
+    func resetMagnification() {
+        dismissPopups()
+        docks.values.forEach { $0.strip.resetMagnification() }
+    }
+
     static func id(_ screen: NSScreen) -> CGDirectDisplayID {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
     }
@@ -89,7 +115,7 @@ final class DisplayCoordinator {
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         subscriptions.removeAll()
         dismissPopups()
-        docks.values.forEach { $0.panel.close() }
+        docks.values.forEach { $0.strip.stopAnimations(); $0.panel.close() }
         docks.removeAll()
     }
 
@@ -106,6 +132,7 @@ final class DisplayCoordinator {
         }
         tile.menuProvider = { [weak self, weak tile] in
             guard let self, let tile else { return NSMenu() }
+            self.dismissPreview()
             return self.menu(for: tile)
         }
         tile.onDrop = { [weak self, weak tile] info, merge, after in
@@ -115,7 +142,7 @@ final class DisplayCoordinator {
     }
 
     private func tileRect(_ tile: DockTile) -> NSRect {
-        tile.window?.convertToScreen(tile.convert(tile.bounds, to: nil)) ?? .zero
+        tile.window?.convertToScreen(tile.convert(tile.visualIconBounds, to: nil)) ?? .zero
     }
 
     private func openGroup(_ tile: DockTile, screen: NSScreen) {
@@ -145,7 +172,6 @@ final class DisplayCoordinator {
               let app = tile.entry.apps.first, store.isRunning(app) else { return }
         let generation = previewGeneration
         pendingPreviewScreen = Self.id(screen)
-        let anchor = tileRect(tile)
         previewTask = Task { [weak self, weak tile] in
             do { try await Task.sleep(nanoseconds: 450_000_000) } catch { return }
             guard let self, tile != nil, !Task.isCancelled, generation == self.previewGeneration else { return }
@@ -155,14 +181,24 @@ final class DisplayCoordinator {
                   self.docks[Self.id(screen)]?.panel.isVisible == true,
                   self.tileRect(tile).insetBy(dx: -4, dy: -4).contains(NSEvent.mouseLocation) else { return }
             self.pendingPreviewScreen = nil
-            if tile.groupID == nil { self.groupPanel?.close(); self.groupPanel = nil }
-            self.showPreview(previews, app: app, anchor: anchor, screen: screen)
+            if tile.groupID == nil {
+                (self.groupPanel?.contentView as? DockStripView)?.stopAnimations()
+                self.groupPanel?.close()
+                self.groupPanel = nil
+            }
+            self.showPreview(previews, app: app, anchor: self.tileRect(tile), screen: screen)
         }
     }
 
     private func showPreview(_ items: [WindowPreview], app: AppReference, anchor: NSRect, screen: NSScreen) {
         previewPanel?.close()
+        previewPanel = nil
         previewActions = []
+        let visibleItems = items.filter { $0.image != nil }
+        guard let layout = PreviewStripLayout(itemCount: visibleItems.count, maxWidth: screen.frame.width - 40) else {
+            if groupPanel == nil { popupScreen = nil }
+            return
+        }
         let panel = DockPanel()
         panel.title = "窗口预览 · \(app.name)"
         panel.level = .popUpMenu
@@ -174,23 +210,15 @@ final class DisplayCoordinator {
         background.layer?.cornerRadius = 14
         let title = NSTextField(labelWithString: app.name)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
-        title.frame = NSRect(x: 14, y: 150, width: 280, height: 20)
+        title.frame = NSRect(x: layout.padding, y: 150, width: layout.viewportWidth, height: 20)
         background.addSubview(title)
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = true
         scroll.scrollerStyle = .overlay
         let document = NSView()
-        var x: CGFloat = 4
-        if items.isEmpty {
-            let text = CGPreflightScreenCaptureAccess() ? "当前没有可预览的窗口" : "在设置中允许屏幕录制以显示预览"
-            let label = NSTextField(wrappingLabelWithString: text)
-            label.textColor = .secondaryLabelColor
-            label.frame = NSRect(x: 10, y: 46, width: 240, height: 40)
-            document.addSubview(label)
-            x = 264
-        }
-        for item in items {
+        for (index, item) in visibleItems.enumerated() {
+            let x = layout.cardOrigins[index]
             let action = MenuAction { [weak self] in
                 guard let self else { return }
                 self.dismissPopups()
@@ -199,20 +227,9 @@ final class DisplayCoordinator {
             }
             previewActions.append(action)
             let button = NSButton(frame: NSRect(x: x, y: 26, width: 192, height: 108))
-            if let image = item.image {
-                button.image = image
-                button.imageScaling = .scaleProportionallyUpOrDown
-                button.imagePosition = .imageOnly
-            } else {
-                let icon = store.icon(for: app).copy() as? NSImage
-                icon?.size = NSSize(width: 44, height: 44)
-                button.image = icon
-                button.imageScaling = .scaleNone
-                button.imagePosition = .imageAbove
-                button.title = "预览暂不可用"
-                button.font = .systemFont(ofSize: 10)
-                button.contentTintColor = .secondaryLabelColor
-            }
+            button.image = item.image
+            button.imageScaling = .scaleProportionallyUpOrDown
+            button.imagePosition = .imageOnly
             button.isBordered = false
             button.target = action
             button.action = #selector(MenuAction.invoke)
@@ -225,14 +242,12 @@ final class DisplayCoordinator {
             label.alignment = .center
             label.frame = NSRect(x: x, y: 5, width: 192, height: 18)
             document.addSubview(label)
-            x += 202
         }
-        document.frame = NSRect(x: 0, y: 0, width: x, height: 140)
+        document.frame = NSRect(x: 0, y: 0, width: layout.documentWidth, height: 140)
         scroll.documentView = document
-        let width = min(max(280, x + 20), screen.frame.width - 40)
-        scroll.frame = NSRect(x: 8, y: 8, width: width - 16, height: 140)
+        scroll.frame = NSRect(x: layout.padding, y: 8, width: layout.viewportWidth, height: 140)
         background.addSubview(scroll)
-        let size = NSSize(width: width, height: 182)
+        let size = NSSize(width: layout.panelWidth, height: 182)
         background.frame.size = size
         panel.contentView = background
         popupAnchor = groupPanel == nil ? anchor : popupAnchor.union(anchor)
@@ -256,8 +271,17 @@ final class DisplayCoordinator {
         pendingPreviewScreen = nil
     }
 
+    private func dismissPreview() {
+        cancelPreviewRequest()
+        previewPanel?.close()
+        previewPanel = nil
+        previewActions = []
+        if groupPanel == nil { popupScreen = nil; pointerOutsideSince = nil }
+    }
+
     func dismissPopups() {
         cancelPreviewRequest()
+        (groupPanel?.contentView as? DockStripView)?.stopAnimations()
         groupPanel?.close(); groupPanel = nil
         previewPanel?.close(); previewPanel = nil
         previewActions = []
@@ -269,7 +293,7 @@ final class DisplayCoordinator {
     private func tick() {
         fullscreenCounter += 1
         if fullscreenCounter % 4 == 0 { applyFullscreenState() }
-        guard groupPanel != nil || previewPanel != nil else { return }
+        guard !contextMenuTracking, NSEvent.pressedMouseButtons == 0, groupPanel != nil || previewPanel != nil else { return }
         var safe = popupAnchor
         if let groupPanel { safe = safe.union(groupPanel.frame) }
         if let previewPanel { safe = safe.union(previewPanel.frame) }
@@ -282,6 +306,7 @@ final class DisplayCoordinator {
         let hidden = store.windows.fullscreenDisplayIDs(screens: docks.values.map(\.screen))
         for (id, dock) in docks {
             if hidden.contains(id) {
+                if dock.panel.isVisible { dock.strip.resetMagnification() }
                 dock.panel.orderOut(nil)
                 if popupScreen == id || pendingPreviewScreen == id { dismissPopups() }
             } else if !dock.panel.isVisible { dock.panel.orderFrontRegardless() }
@@ -337,6 +362,12 @@ final class DisplayCoordinator {
 
     private func menu(for tile: DockTile) -> NSMenu {
         let menu = NSMenu()
+        let observer = MenuTrackingObserver(
+            opened: { [weak self] in self?.contextMenuTracking = true },
+            closed: { [weak self] in self?.contextMenuTracking = false }
+        )
+        menuTrackingObserver = observer
+        menu.delegate = observer
         if tile.entry.isGroup {
             menu.addAction("重命名应用组…") { [weak self] in self?.rename(tile.entry) }
             menu.addAction("展开为独立应用") { [weak self] in self?.store.update { $0.ungroup(id: tile.entry.id) } }
@@ -368,4 +399,18 @@ final class DisplayCoordinator {
         alert.window.initialFirstResponder = field
         if alert.runModal() == .alertFirstButtonReturn { store.update { $0.renameGroup(id: entry.id, name: field.stringValue) } }
     }
+}
+
+@MainActor
+private final class MenuTrackingObserver: NSObject, NSMenuDelegate {
+    private let opened: () -> Void
+    private let closed: () -> Void
+
+    init(opened: @escaping () -> Void, closed: @escaping () -> Void) {
+        self.opened = opened
+        self.closed = closed
+    }
+
+    func menuWillOpen(_ menu: NSMenu) { opened() }
+    func menuDidClose(_ menu: NSMenu) { closed() }
 }
