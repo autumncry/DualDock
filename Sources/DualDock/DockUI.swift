@@ -108,6 +108,7 @@ final class DockStripView: NSView {
     private var currentLayout: DockWaveLayout?
     private var targetLayout: DockWaveLayout?
     private var focusIndex: CGFloat?
+    private var lensAnchorX: CGFloat?
     private var hoveredIndex: Int?
     private var interactionDepth = 0
     private var waitingForMouseRelease = false
@@ -231,6 +232,7 @@ final class DockStripView: NSView {
         animationTarget = nil
         lastTimestamp = nil
         focusIndex = nil
+        lensAnchorX = nil
         lastMousePoint = nil
         changeHoveredIndex(nil)
     }
@@ -257,23 +259,22 @@ final class DockStripView: NSView {
     /// Only the opaque Dock strip and the visible magnified icon capture mouse input.
     /// The reserved transparent band above the strip must pass clicks to other apps.
     func containsInteractivePoint(_ point: NSPoint) -> Bool {
-        backdropFrame.contains(point) || tileIndex(at: point) != nil
+        backdropFrame.contains(point) || interactionTileIndex(at: point) != nil
     }
 
     private func tileIndex(at local: NSPoint) -> Int? {
-        guard scrolling.frame.contains(local), let baseLayout else { return nil }
+        guard scrolling.frame.contains(local), let currentLayout else { return nil }
         let point = document.convert(local, from: self)
-        if backdropFrame.contains(local) {
-            // Stable base slots own the bottom row even when a larger icon overlaps them.
-            return baseLayout.tileFrames.firstIndex { $0.contains(point) }
-        }
-        guard let focused = focusIndex.map({ Int($0.rounded()) }), tiles.indices.contains(focused) else { return nil }
-        let tile = tiles[focused]
-        return tile.visualIconBounds.contains(tile.convert(local, from: self)) ? focused : nil
+        // Actual frames own hover/preview targets. Their widths never overlap,
+        // while the lens itself uses a separate immutable coordinate mapping.
+        return currentLayout.tileFrames.firstIndex { $0.contains(point) }
     }
 
     private func interactionTileIndex(at local: NSPoint) -> Int? {
         guard let index = tileIndex(at: local) else { return nil }
+        // Keep the row's small inter-icon padding clickable as part of its
+        // tile. Above the backdrop only the visible icon captures input.
+        if backdropFrame.contains(local) { return index }
         let tile = tiles[index]
         let point = tile.convert(local, from: self)
         if tile.visualIconBounds.contains(point) { return index }
@@ -337,7 +338,7 @@ final class DockStripView: NSView {
         DockWaveLayout.make(count: tiles.count, iconSize: baseSide, spacing: spacing,
                             magnificationScale: magnificationScale, focusIndex: focus,
                             maxWidth: maximumWidth, hasControls: false, dividerIndex: dividerIndex,
-                            scrollOffset: scrolling.contentView.bounds.origin.x)
+                            scrollOffset: scrolling.contentView.bounds.origin.x, lensAnchorX: lensAnchorX)
     }
 
     private func updatePointer(force: Bool = false) {
@@ -357,7 +358,11 @@ final class DockStripView: NSView {
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
         let index = tileIndex(at: local)
         changeHoveredIndex(index)
-        focusIndex = !isGroup && magnificationScale > 1 ? index.map(CGFloat.init) : nil
+        if !isGroup, magnificationScale > 1, index != nil {
+            let point = document.convert(local, from: self)
+            focusIndex = baseLayout?.focusIndex(at: point.x)
+            lensAnchorX = point.x
+        } else { focusIndex = nil; lensAnchorX = nil }
         let next = makeLayout(focus: focusIndex)
         guard targetLayout != next || currentLayout.maximumDifference(from: next) > 0.08 else { return }
         targetLayout = next

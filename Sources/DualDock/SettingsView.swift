@@ -84,7 +84,7 @@ struct SettingsView: View {
                 }
                 Slider(value: Binding(get: { store.configuration.magnificationScale }, set: { value in store.update { $0.magnificationScale = value } }), in: 1...2.5)
                     .disabled(!store.configuration.magnificationEnabled)
-                Text("仅放大鼠标指向的图标，Dock 底板和其他图标保持不变。").font(.caption).foregroundStyle(.secondary)
+                Text("鼠标附近的图标平滑联动放大，Dock 底板保持不变。").font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("显示消息数量角标", isOn: Binding(get: { store.configuration.showBadges }, set: { value in store.update { $0.showBadges = value } }))

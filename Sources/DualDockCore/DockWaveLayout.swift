@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-/// Fixed Dock geometry. Magnification changes only the selected icon, not its neighbors or backdrop.
+/// A local magnification wave inside a fixed Dock canvas and backdrop.
 public struct DockWaveLayout: Equatable, Sendable {
     public var tileFrames: [CGRect]
     public var contentSize: CGSize
@@ -17,7 +17,8 @@ public struct DockWaveLayout: Equatable, Sendable {
                             magnificationScale: CGFloat, focusIndex: CGFloat?,
                             maxWidth: CGFloat, hasControls: Bool,
                             dividerIndex: Int? = nil,
-                            scrollOffset: CGFloat? = nil) -> DockWaveLayout {
+                            scrollOffset: CGFloat? = nil,
+                            lensAnchorX: CGFloat? = nil) -> DockWaveLayout {
         let itemCount = max(0, count)
         let side = max(1, iconSize)
         let unit = side / 48
@@ -28,7 +29,10 @@ public struct DockWaveLayout: Equatable, Sendable {
         // Only physically narrower viewports limit the peak; base sizes stay shared.
         let peakSide = min(side * max(1, magnificationScale), max(side, availableWidth))
         let delta = peakSide - side
-        let reserve = itemCount == 0 ? 0 : ceil(delta / 2)
+        // A radius-2.5 cosine wave adds at most 2.5 * delta to the row.
+        // Reserve both ends once, so no hover frame changes the Dock envelope.
+        let reserveFactor: CGFloat = itemCount == 1 ? 0.5 : (itemCount == 2 ? 1.25 : 1.5)
+        let reserve = itemCount == 0 ? 0 : ceil(delta * reserveFactor)
         let dividerWidth: CGFloat = dividerIndex.map { $0 > 0 && $0 < itemCount ? 13 * unit : 0 } ?? 0
         let baseWidth = itemCount == 0 ? 160 * unit : CGFloat(itemCount) * (side + gap) + dividerWidth
         let panelWidth = min(max(1, maxWidth), baseWidth + reserve * 2 + controls + 2 * inset)
@@ -38,27 +42,45 @@ public struct DockWaveLayout: Equatable, Sendable {
         let leadingSpace = (contentWidth - baseWidth) / 2
         let initialOffset: CGFloat = 0
         let visibleOffset = min(max(0, scrollOffset ?? initialOffset), max(0, contentWidth - viewportWidth))
-        let focused = focusIndex.map { min(max(0, Int($0.rounded())), max(0, itemCount - 1)) }
+        let focus = focusIndex.map { min(max(0, $0), CGFloat(max(0, itemCount - 1))) }
+        var baseFrames: [CGRect] = []
         var frames: [CGRect] = []
-        var x = leadingSpace
+        var baseX = leadingSpace
+        var x: CGFloat = 0
         var divider: CGFloat?
         for index in 0..<itemCount {
             if index == dividerIndex && index > 0 {
                 divider = x + 6 * unit
                 x += 13 * unit
+                baseX += 13 * unit
             }
-            let size = index == focused ? peakSide : side
-            let center = x + (side + gap) / 2
-            var iconCenter = center
-            // A partially scrolled edge icon expands inside the same viewport.
-            // No other icon or scroll coordinate is moved to make room.
-            if index == focused {
-                iconCenter = min(max(center, visibleOffset + size / 2), visibleOffset + viewportWidth - size / 2)
-            }
-            frames.append(CGRect(x: iconCenter - (size + gap) / 2, y: 0,
-                                 width: size + gap, height: size + 16 * unit))
-            x += side + gap
+            let distance = focus.map { abs(CGFloat(index) - $0) } ?? 2.5
+            let weight = distance >= 2.5 ? 0 : (1 + cos(.pi * distance / 2.5)) / 2
+            let size = side + delta * weight
+            baseFrames.append(CGRect(x: baseX, y: 0, width: side + gap, height: side + 16 * unit))
+            frames.append(CGRect(x: x, y: 0, width: size + gap, height: size + 16 * unit))
+            x += size + gap
+            baseX += side + gap
         }
+        var shift = leadingSpace
+        if let focus, let baseAnchor = position(focus, in: baseFrames), let waveAnchor = position(focus, in: frames) {
+            // Map the continuous lens to an immutable base coordinate, not its
+            // animated frame. A stationary pointer never feeds back into layout.
+            let terminalFocus = focus <= 0 || focus >= CGFloat(itemCount - 1)
+            let anchor = terminalFocus ? (lensAnchorX ?? baseAnchor) : baseAnchor
+            shift = anchor - waveAnchor
+            // Constrain a continuously interpolated lens, never a rounded
+            // icon index: switching that index can jump an entire icon width.
+            let lower = Int(floor(focus))
+            let upper = min(lower + 1, itemCount - 1)
+            let fraction = focus - CGFloat(lower)
+            let left = frames[lower].minX + (frames[upper].minX - frames[lower].minX) * fraction + gap / 2 + shift
+            let right = frames[lower].maxX + (frames[upper].maxX - frames[lower].maxX) * fraction - gap / 2 + shift
+            if left < visibleOffset { shift += visibleOffset - left }
+            else if right > visibleOffset + viewportWidth { shift -= right - visibleOffset - viewportWidth }
+        }
+        frames = frames.map { $0.offsetBy(dx: shift, dy: 0) }
+        if let value = divider { divider = value + shift }
         let backdropHeight = side + 18 * unit
         let height = (itemCount > 0 ? peakSide : side) + 18 * unit
         return DockWaveLayout(tileFrames: frames,

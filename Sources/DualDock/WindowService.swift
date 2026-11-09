@@ -36,16 +36,17 @@ final class WindowService {
             return []
         }
         guard !Task.isCancelled else { return [] }
-        let knownWindowIDs = accessibleWindowIDs(processIDs: processIDs)
+        let accessibility = accessibleWindows(processIDs: processIDs)
         var seenWindowIDs: Set<CGWindowID> = []
         let windows = content.windows.filter { window in
             guard let owner = window.owningApplication else { return false }
             return processIDs.contains(owner.processID) && window.windowLayer == 0
                 && window.frame.width >= 80 && window.frame.height >= 50
+                && !(accessibility.companionOverlayIDs[owner.processID]?.contains(window.windowID) ?? false)
                 && PreviewWindowPolicy.shouldInclude(
                     isOnScreen: window.isOnScreen,
                     title: window.title,
-                    hasAccessibleWindow: knownWindowIDs[owner.processID].map { $0.contains(window.windowID) }
+                    hasAccessibleWindow: accessibility.knownWindowIDs[owner.processID].map { $0.contains(window.windowID) }
                 )
                 && seenWindowIDs.insert(window.windowID).inserted
         }.sorted { left, right in
@@ -152,20 +153,75 @@ final class WindowService {
         return try await request.value
     }
 
-    private func accessibleWindowIDs(processIDs: Set<pid_t>) -> [pid_t: Set<CGWindowID>] {
-        guard AXIsProcessTrusted(), native.canResolveWindowIDs else { return [:] }
-        var result: [pid_t: Set<CGWindowID>] = [:]
+    private struct AccessibleWindows {
+        var knownWindowIDs: [pid_t: Set<CGWindowID>] = [:]
+        var companionOverlayIDs: [pid_t: Set<CGWindowID>] = [:]
+    }
+
+    private func accessibleWindows(processIDs: Set<pid_t>) -> AccessibleWindows {
+        var result = AccessibleWindows()
+        guard AXIsProcessTrusted(), native.canResolveWindowIDs else { return result }
         for pid in processIDs {
             let application = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(application, 0.2)
             var value: CFTypeRef?
             guard AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value) == .success,
                   let windows = value as? [AXUIElement] else { continue }
-            let ids = windows.compactMap { native.windowID(for: $0) }
+            let identified = windows.compactMap { element -> (CGWindowID, AXUIElement)? in
+                native.windowID(for: element).map { ($0, element) }
+            }
             // A failed ID lookup or AX query is unknown coverage, not an absent window.
-            if ids.count == windows.count { result[pid] = Set(ids) }
+            if identified.count == windows.count { result.knownWindowIDs[pid] = Set(identified.map { $0.0 }) }
+
+            // ScreenCaptureKit also exposes app-owned overlays (for example a
+            // watermark layer). They may have valid pixels and a different ID
+            // even though they are not an independently usable window.
+            let typed = identified.map { id, element in
+                AXUIElementSetMessagingTimeout(element, 0.12)
+                return (id, element, axValue(element, kAXSubroleAttribute as CFString) as? String)
+            }
+            guard typed.contains(where: { $0.2 == kAXUnknownSubrole }),
+                  typed.contains(where: { $0.2 == kAXStandardWindowSubrole }) else { continue }
+            var metadata = typed.compactMap { id, element, subrole -> PreviewWindowPolicy.AccessibilityWindow? in
+                guard subrole == kAXUnknownSubrole || subrole == kAXStandardWindowSubrole else { return nil }
+                return .init(windowID: id, frame: axFrame(element),
+                             role: axValue(element, kAXRoleAttribute as CFString) as? String, subrole: subrole,
+                             isMain: nil, isFocused: nil, isModal: nil, isMinimized: nil, hasWindowControls: nil)
+            }
+            let candidates = PreviewWindowPolicy.possibleCompanionOverlayIDs(in: metadata)
+            for index in metadata.indices where candidates.contains(metadata[index].windowID) {
+                let record = metadata[index]
+                guard let element = identified.first(where: { $0.0 == record.windowID })?.1,
+                      axValue(element, kAXMainAttribute as CFString) as? Bool == false,
+                      axValue(element, kAXFocusedAttribute as CFString) as? Bool == false,
+                      axValue(element, kAXModalAttribute as CFString) as? Bool == false,
+                      axValue(element, kAXMinimizedAttribute as CFString) as? Bool == false,
+                      hasWindowControls(element) == false else { continue }
+                metadata[index] = .init(windowID: record.windowID, frame: record.frame,
+                                        role: record.role, subrole: record.subrole,
+                                        isMain: false, isFocused: false, isModal: false,
+                                        isMinimized: false, hasWindowControls: false)
+            }
+            result.companionOverlayIDs[pid] = PreviewWindowPolicy.companionOverlayIDs(in: metadata)
         }
         return result
+    }
+
+    private func hasWindowControls(_ element: AXUIElement) -> Bool? {
+        for attribute in [kAXCloseButtonAttribute, kAXMinimizeButtonAttribute, kAXZoomButtonAttribute, "AXFullScreenButton"] {
+            var value: CFTypeRef?
+            let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+            switch error {
+            case .success:
+                if value != nil { return true }
+            case .noValue, .attributeUnsupported:
+                continue
+            default:
+                // A timeout or failed query is not evidence that a control is absent.
+                return nil
+            }
+        }
+        return false
     }
 
     nonisolated private static func capture(_ window: SCWindow) async -> CGImage? {

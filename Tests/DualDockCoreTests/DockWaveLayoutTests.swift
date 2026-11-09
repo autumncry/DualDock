@@ -7,15 +7,25 @@ final class DockWaveLayoutTests: XCTestCase {
               focusIndex: focus, maxWidth: width, hasControls: false)
     }
 
-    func testOnlyPointedIconMagnifiesAndAllOtherSlotsStayFixed() {
+    func testMagnificationFallsOffSmoothlyAcrossTwoNeighbors() {
         let base = layout()
-        for index in 0..<9 {
-            let value = layout(focus: CGFloat(index))
-            XCTAssertEqual(value.tileFrames[index].height, 112, accuracy: 0.001)
-            XCTAssertEqual(value.tileFrames[index].midX, base.tileFrames[index].midX, accuracy: 0.001)
-            for other in 0..<9 where other != index {
-                XCTAssertEqual(value.tileFrames[other], base.tileFrames[other])
-            }
+        let value = layout(focus: 4)
+        let sizes = value.tileFrames.map { $0.height - 16 }
+        XCTAssertEqual(sizes[4], 96, accuracy: 0.001)
+        XCTAssertGreaterThan(sizes[3], sizes[2])
+        XCTAssertGreaterThan(sizes[2], 48)
+        XCTAssertEqual(sizes[3], sizes[5], accuracy: 0.001)
+        XCTAssertEqual(sizes[2], sizes[6], accuracy: 0.001)
+        XCTAssertEqual(sizes[1], 48)
+        XCTAssertEqual(sizes[7], 48)
+        XCTAssertEqual(value.position(for: 4)!, base.position(for: 4)!, accuracy: 0.001)
+    }
+
+    func testFractionalFocusIsContinuousAcrossIconBoundaries() {
+        for focus in stride(from: CGFloat(0.01), through: 7.99, by: 0.1) {
+            let before = layout(focus: focus - 0.001)
+            let after = layout(focus: focus + 0.001)
+            XCTAssertLessThan(before.maximumDifference(from: after), 0.25)
         }
     }
 
@@ -49,17 +59,22 @@ final class DockWaveLayoutTests: XCTestCase {
         XCTAssertEqual(layout(focus: 4, scale: 1).panelSize, layout(focus: 4, scale: 1).backdropSize)
     }
 
-    func testAnimationOnlyChangesSelectedIconWithinReservedCanvas() {
-        let start = layout()
-        let target = layout(focus: 3)
-        for fraction in stride(from: CGFloat(0), through: 1, by: 0.1) {
-            let value = start.interpolated(to: target, fraction: fraction)
-            XCTAssertEqual(value.backdropSize, start.backdropSize)
-            XCTAssertEqual(value.panelSize, start.panelSize)
-            for index in 0..<9 {
-                XCTAssertEqual(value.tileFrames[index].midX, start.tileFrames[index].midX, accuracy: 0.001)
-                XCTAssertLessThanOrEqual(value.tileFrames[index].maxY, value.viewportSize.height)
-                if index != 3 { XCTAssertEqual(value.tileFrames[index], start.tileFrames[index]) }
+    func testAnimatedWaveDoesNotOverlapOrChangeFixedCanvas() {
+        for focus in stride(from: CGFloat(0), through: 8, by: 0.125) {
+            let start = layout()
+            let target = layout(focus: focus)
+            for fraction: CGFloat in [0, 0.25, 0.5, 0.75, 1] {
+                let value = start.interpolated(to: target, fraction: fraction)
+                XCTAssertEqual(value.backdropSize, start.backdropSize)
+                XCTAssertEqual(value.panelSize, start.panelSize)
+                for pair in zip(value.tileFrames, value.tileFrames.dropFirst()) {
+                    XCTAssertLessThanOrEqual(pair.0.maxX, pair.1.minX + 0.001)
+                }
+                for frame in value.tileFrames {
+                    XCTAssertGreaterThanOrEqual(frame.minX, -0.001)
+                    XCTAssertLessThanOrEqual(frame.maxX, value.contentSize.width + 0.001)
+                    XCTAssertLessThanOrEqual(frame.maxY, value.viewportSize.height)
+                }
             }
         }
     }
@@ -74,13 +89,15 @@ final class DockWaveLayoutTests: XCTestCase {
         XCTAssertEqual(compact.controlsWidth, 0)
     }
 
-    func testDividerRemainsInItsBasePosition() {
+    func testDividerStaysBetweenItsAdjacentWaveIcons() {
         let base = DockWaveLayout.make(count: 4, iconSize: 48, spacing: 14, magnificationScale: 2,
                                       focusIndex: nil, maxWidth: 400, hasControls: false, dividerIndex: 2)
         let value = DockWaveLayout.make(count: 4, iconSize: 48, spacing: 14, magnificationScale: 2,
                                        focusIndex: 1, maxWidth: 400, hasControls: false, dividerIndex: 2)
         XCTAssertNotNil(value.dividerX)
-        XCTAssertEqual(value.dividerX, base.dividerX)
+        XCTAssertNotNil(base.dividerX)
+        XCTAssertGreaterThan(value.dividerX!, value.tileFrames[1].maxX)
+        XCTAssertLessThan(value.dividerX!, value.tileFrames[2].minX)
     }
 
     func testEmptyStateNeedsNoTransparentMagnificationSpace() {
@@ -107,6 +124,7 @@ final class DockWaveLayoutTests: XCTestCase {
         let base = layout()
         for focus in stride(from: CGFloat(0), through: 8, by: 0.125) {
             XCTAssertEqual(base.focusIndex(at: base.position(for: focus)!)!, focus, accuracy: 0.001)
+            XCTAssertEqual(layout(focus: focus).position(for: focus)!, base.position(for: focus)!, accuracy: 0.001)
         }
     }
 
@@ -118,16 +136,53 @@ final class DockWaveLayoutTests: XCTestCase {
             for pointer in [offset + 1, offset + base.viewportSize.width - 1] {
                 let focus = base.focusIndex(at: pointer)!
                 let value = DockWaveLayout.make(count: 40, iconSize: 48, spacing: 14, magnificationScale: 2,
-                                                focusIndex: focus, maxWidth: 700, hasControls: false, scrollOffset: offset)
+                                                focusIndex: focus, maxWidth: 700, hasControls: false, scrollOffset: offset,
+                                                lensAnchorX: pointer)
                 let index = min(39, max(0, Int(focus.rounded())))
                 let frame = value.tileFrames[index]
-                XCTAssertGreaterThanOrEqual(frame.minX + 7, offset - 0.001)
-                XCTAssertLessThanOrEqual(frame.maxX - 7, offset + value.viewportSize.width + 0.001)
+                XCTAssertGreaterThan(frame.maxX - 7, offset)
+                XCTAssertLessThan(frame.minX + 7, offset + value.viewportSize.width)
+                XCTAssertTrue(value.tileFrames.contains { $0.contains(CGPoint(x: pointer, y: 24)) })
                 XCTAssertEqual(value.contentSize, base.contentSize)
                 XCTAssertEqual(value.viewportSize, base.viewportSize)
-                for other in 0..<40 where other != index { XCTAssertEqual(value.tileFrames[other], base.tileFrames[other]) }
+                for pair in zip(value.tileFrames, value.tileFrames.dropFirst()) {
+                    XCTAssertLessThanOrEqual(pair.0.maxX, pair.1.minX + 0.001)
+                }
             }
         }
+    }
+
+    func testShiftedTerminalIconRemainsUnderPointerAfterNewHover() {
+        let base = layout()
+        let previous = layout(focus: 0)
+        let pointer = previous.tileFrames[8].midX
+        let target = DockWaveLayout.make(count: 9, iconSize: 48, spacing: 14, magnificationScale: 2,
+                                         focusIndex: base.focusIndex(at: pointer), maxWidth: 1800,
+                                         hasControls: false, lensAnchorX: pointer)
+        XCTAssertTrue(target.tileFrames[8].contains(CGPoint(x: pointer, y: 24)))
+        XCTAssertEqual(target.panelSize, previous.panelSize)
+        XCTAssertEqual(target.contentSize, previous.contentSize)
+        for fraction: CGFloat in [0, 0.25, 0.5, 0.75, 1] {
+            XCTAssertTrue(previous.interpolated(to: target, fraction: fraction).tileFrames[8]
+                .contains(CGPoint(x: pointer, y: 24)))
+        }
+    }
+
+    func testOverflowEdgeConstraintDoesNotJumpWhenRoundedFocusChanges() {
+        let base = DockWaveLayout.make(count: 40, iconSize: 48, spacing: 14, magnificationScale: 2,
+                                       focusIndex: nil, maxWidth: 320, hasControls: false)
+        let offset: CGFloat = 2108
+        let focus: CGFloat = 33.5
+        let x = base.position(for: focus)!
+        let before = DockWaveLayout.make(count: 40, iconSize: 48, spacing: 14, magnificationScale: 2,
+                                         focusIndex: focus - 0.0001, maxWidth: 320, hasControls: false,
+                                         scrollOffset: offset, lensAnchorX: x - 0.0062)
+        let after = DockWaveLayout.make(count: 40, iconSize: 48, spacing: 14, magnificationScale: 2,
+                                        focusIndex: focus + 0.0001, maxWidth: 320, hasControls: false,
+                                        scrollOffset: offset, lensAnchorX: x + 0.0062)
+        XCTAssertLessThan(before.maximumDifference(from: after), 0.1)
+        XCTAssertEqual(before.panelSize, after.panelSize)
+        XCTAssertEqual(before.backdropSize, after.backdropSize)
     }
 
     func testPhysicallyNarrowViewportLimitsOnlyThePeak() {

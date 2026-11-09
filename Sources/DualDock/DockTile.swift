@@ -72,8 +72,8 @@ final class DockTile: NSView, NSDraggingSource {
     override func draw(_ dirtyRect: NSRect) {
         NSGraphicsContext.current?.imageInterpolation = .high
         let iconRect = visualIconBounds
-        if hovered || mergeReady {
-            (mergeReady ? NSColor.controlAccentColor.withAlphaComponent(0.28) : NSColor.labelColor.withAlphaComponent(0.07)).setFill()
+        if mergeReady {
+            NSColor.controlAccentColor.withAlphaComponent(0.28).setFill()
             NSBezierPath(roundedRect: iconRect.insetBy(dx: -2 * unitScale, dy: -2 * unitScale), xRadius: 12 * unitScale, yRadius: 12 * unitScale).fill()
         }
         if entry.isGroup { drawFolder(in: iconRect) }
