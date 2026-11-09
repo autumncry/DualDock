@@ -84,6 +84,7 @@ struct SettingsView: View {
                 }
                 Slider(value: Binding(get: { store.configuration.magnificationScale }, set: { value in store.update { $0.magnificationScale = value } }), in: 1...2.5)
                     .disabled(!store.configuration.magnificationEnabled)
+                Text("仅放大鼠标指向的图标，Dock 底板和其他图标保持不变。").font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("显示消息数量角标", isOn: Binding(get: { store.configuration.showBadges }, set: { value in store.update { $0.showBadges = value } }))
@@ -144,6 +145,7 @@ struct SettingsView: View {
             instruction("2", "展开与编辑分组", "点击应用组横向展开。成员可拖回主栏，也可在组内重排。右键应用组可以重命名或展开为独立应用。")
             instruction("3", "切换窗口", "悬停运行中的应用显示窗口预览，点击缩略图切换。无法捕获有效截图的窗口不显示预览。")
             instruction("4", "在多屏上使用", "扩展屏各有一条 Dock，镜像屏随系统复制。显示器连接变化时自动调整，全部屏幕共享布局。")
+            instruction("5", "设置与显示模式", "右键 Dock 空白处，或点击菜单栏双矩形图标打开设置。在设置的“显示内容”中切换普通模式与仅运行模式。")
         }
     }
 

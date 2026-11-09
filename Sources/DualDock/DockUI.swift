@@ -38,12 +38,17 @@ final class DockPanel: NSPanel {
 final class DockDocumentView: NSView {
     var onDropAtEnd: ((NSDraggingInfo) -> Bool)?
     var onInteractionChanged: ((Bool) -> Void)?
+    var tileHitTest: ((NSPoint) -> NSView?)?
     private var dragActive = false
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         registerForDraggedTypes([DockDrag.pasteboardType, .fileURL])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        return tileHitTest?(local) ?? (bounds.contains(local) ? self : nil)
+    }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         if !dragActive { dragActive = true; onInteractionChanged?(true) }
         return DockDrag.read(sender) == nil ? .copy : .move
@@ -78,18 +83,18 @@ private final class DockAnimationTarget: NSObject {
 }
 
 @MainActor
-final class DockStripView: NSVisualEffectView {
+final class DockStripView: NSView {
+    private let backdrop = NSVisualEffectView()
+    var backdropFrame: NSRect { backdrop.frame }
     private let scrolling = DockScrollView()
     var scroll: NSScrollView { scrolling }
     let document = DockDocumentView(frame: .zero)
     private(set) var tiles: [DockTile] = []
     var settingsAction: (() -> Void)?
-    var modeAction: (() -> Void)?
-    var onGeometryChange: ((NSSize) -> Void)?
     private(set) var desiredWidth: CGFloat = 200
 
-    private var actions: [MenuAction] = []
-    private var controls: [NSButton] = []
+    private var localMouseMonitor: Any?
+    private var globalMouseMonitor: Any?
     private var divider: NSBox?
     private var emptyLabel: NSTextField?
     private var tracking: NSTrackingArea?
@@ -113,12 +118,16 @@ final class DockStripView: NSVisualEffectView {
 
     init() {
         super.init(frame: .zero)
-        material = .hudWindow
-        blendingMode = .behindWindow
-        state = .active
         wantsLayer = true
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.28).cgColor
+        registerForDraggedTypes([DockDrag.pasteboardType, .fileURL])
+        backdrop.material = .hudWindow
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.wantsLayer = true
+        backdrop.layer?.masksToBounds = true
+        backdrop.layer?.borderWidth = 0.5
+        backdrop.layer?.borderColor = NSColor.white.withAlphaComponent(0.28).cgColor
+        addSubview(backdrop)
         scrolling.drawsBackground = false
         scrolling.hasHorizontalScroller = false
         scrolling.hasVerticalScroller = false
@@ -128,6 +137,11 @@ final class DockStripView: NSVisualEffectView {
         scrolling.documentView = document
         scrolling.onUserScroll = { [weak self] in self?.updatePointer(force: true) }
         document.onInteractionChanged = { [weak self] active in self?.interactionChanged(active) }
+        document.tileHitTest = { [weak self] point in
+            guard let self else { return nil }
+            let local = self.convert(point, from: self.document)
+            return self.interactionTileIndex(at: local).map { self.tiles[$0] }
+        }
         addSubview(scrolling)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -143,7 +157,17 @@ final class DockStripView: NSVisualEffectView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil { stopAnimations() }
+        removeMouseMonitors()
+        if window == nil { stopAnimations(); return }
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.updatePointer()
+            return event
+        }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            self?.updatePointer()
+        }
+        updateMousePassthrough()
     }
 
     override func layout() {
@@ -152,13 +176,6 @@ final class DockStripView: NSVisualEffectView {
         let unit = baseSide / 48
         scrolling.frame = NSRect(x: currentLayout.horizontalInset, y: 0,
                                  width: currentLayout.viewportSize.width, height: currentLayout.viewportSize.height)
-        let controlSide = 24 * unit
-        let firstX = bounds.width - currentLayout.horizontalInset - currentLayout.controlsWidth
-        for (index, button) in controls.enumerated() {
-            button.frame = NSRect(x: firstX + CGFloat(index) * 30 * unit + 4 * unit,
-                                  y: 8 * unit + (baseSide - controlSide) / 2,
-                                  width: controlSide, height: controlSide)
-        }
         emptyLabel?.frame = NSRect(x: 10 * unit, y: 8 * unit + baseSide / 2 - 8 * unit,
                                   width: max(100, currentLayout.contentSize.width - 20 * unit), height: 20 * unit)
     }
@@ -167,8 +184,7 @@ final class DockStripView: NSVisualEffectView {
                   configure: (DockTile) -> Void) -> NSSize {
         stopAnimations()
         document.subviews.forEach { $0.removeFromSuperview() }
-        controls.forEach { $0.removeFromSuperview() }
-        tiles = []; controls = []; actions = []; divider = nil; emptyLabel = nil
+        tiles = []; divider = nil; emptyLabel = nil
         interactionDepth = 0
         waitingForMouseRelease = false
         baseSide = CGFloat(store.configuration.iconSize)
@@ -179,7 +195,7 @@ final class DockStripView: NSVisualEffectView {
             ? CGFloat(store.configuration.magnificationScale) : 1
         dividerIndex = groupID == nil && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
         let unit = baseSide / 48
-        layer?.cornerRadius = 18 * unit
+        backdrop.layer?.cornerRadius = 18 * unit
         for entry in entries {
             let tile = DockTile(entry: entry, groupID: groupID, store: store, size: baseSide)
             tile.onInteractionChanged = { [weak self] active in self?.interactionChanged(active) }
@@ -200,30 +216,11 @@ final class DockStripView: NSVisualEffectView {
             document.addSubview(label)
             emptyLabel = label
         }
-        if groupID == nil {
-            let items: [(String, String, () -> Void)] = [
-                (store.configuration.mode == .runningOnly ? "circle.grid.2x2" : "bolt.fill", "切换显示模式", { [weak self] in self?.modeAction?() }),
-                ("slider.horizontal.3", "DualDock 设置", { [weak self] in self?.settingsAction?() })
-            ]
-            for (symbol, title, action) in items {
-                let callback = MenuAction(action)
-                actions.append(callback)
-                let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: callback, action: #selector(MenuAction.invoke))
-                button.bezelStyle = .inline
-                button.isBordered = false
-                button.contentTintColor = .secondaryLabelColor
-                button.imageScaling = .scaleProportionallyUpOrDown
-                button.toolTip = title
-                button.setAccessibilityLabel(title)
-                addSubview(button)
-                controls.append(button)
-            }
-        }
         let base = makeLayout(focus: nil)
         baseLayout = base
         currentLayout = base
         targetLayout = base
-        apply(base, notify: false)
+        apply(base)
         scrolling.contentView.scroll(to: NSPoint(x: base.initialScrollOffset, y: 0))
         return base.panelSize
     }
@@ -245,7 +242,7 @@ final class DockStripView: NSVisualEffectView {
         guard let baseLayout else { return }
         currentLayout = baseLayout
         targetLayout = baseLayout
-        apply(baseLayout, notify: true)
+        apply(baseLayout)
     }
 
     override func mouseEntered(with event: NSEvent) { updatePointer() }
@@ -257,28 +254,113 @@ final class DockStripView: NSVisualEffectView {
         if !bounds.contains(local) { updatePointer(force: true) }
     }
 
+    /// Only the opaque Dock strip and the visible magnified icon capture mouse input.
+    /// The reserved transparent band above the strip must pass clicks to other apps.
+    func containsInteractivePoint(_ point: NSPoint) -> Bool {
+        backdropFrame.contains(point) || tileIndex(at: point) != nil
+    }
+
+    private func tileIndex(at local: NSPoint) -> Int? {
+        guard scrolling.frame.contains(local), let baseLayout else { return nil }
+        let point = document.convert(local, from: self)
+        if backdropFrame.contains(local) {
+            // Stable base slots own the bottom row even when a larger icon overlaps them.
+            return baseLayout.tileFrames.firstIndex { $0.contains(point) }
+        }
+        guard let focused = focusIndex.map({ Int($0.rounded()) }), tiles.indices.contains(focused) else { return nil }
+        let tile = tiles[focused]
+        return tile.visualIconBounds.contains(tile.convert(local, from: self)) ? focused : nil
+    }
+
+    private func interactionTileIndex(at local: NSPoint) -> Int? {
+        guard let index = tileIndex(at: local) else { return nil }
+        let tile = tiles[index]
+        let point = tile.convert(local, from: self)
+        if tile.visualIconBounds.contains(point) { return index }
+        let unit = baseSide / 48
+        let runningIndicator = NSRect(x: tile.bounds.midX - 4 * unit, y: 0,
+                                      width: 8 * unit, height: 6 * unit)
+        return runningIndicator.contains(point) ? index : nil
+    }
+
+    func updateMousePassthrough() {
+        guard interactionDepth == 0, let window else { return }
+        let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        window.ignoresMouseEvents = !containsInteractivePoint(local)
+    }
+
+    private func removeMouseMonitors() {
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
+        if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
+        localMouseMonitor = nil
+        globalMouseMonitor = nil
+    }
+
+    deinit {
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
+        if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        guard containsInteractivePoint(local) else { return nil }
+        if let index = interactionTileIndex(at: local) { return tiles[index] }
+        // Blank regions route here so context menus and scrolling remain available.
+        return self
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { document.draggingEntered(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { document.draggingUpdated(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { document.draggingExited(sender) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { document.prepareForDragOperation(sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { document.performDragOperation(sender) }
+
+    override func scrollWheel(with event: NSEvent) { scrolling.scrollWheel(with: event) }
+
+    override func rightMouseDown(with event: NSEvent) { showBlankAreaMenu(event) }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { showBlankAreaMenu(event) }
+    }
+
+    private func showBlankAreaMenu(_ event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        guard backdropFrame.contains(local), interactionTileIndex(at: local) == nil, settingsAction != nil else { return }
+        interactionChanged(true)
+        defer { interactionChanged(false) }
+        let menu = NSMenu()
+        menu.addAction("DualDock 设置…") { [weak self] in self?.settingsAction?() }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
     private func makeLayout(focus: CGFloat?) -> DockWaveLayout {
         DockWaveLayout.make(count: tiles.count, iconSize: baseSide, spacing: spacing,
                             magnificationScale: magnificationScale, focusIndex: focus,
-                            maxWidth: maximumWidth, hasControls: !isGroup, dividerIndex: dividerIndex,
+                            maxWidth: maximumWidth, hasControls: false, dividerIndex: dividerIndex,
                             scrollOffset: scrolling.contentView.bounds.origin.x)
     }
 
     private func updatePointer(force: Bool = false) {
-        guard interactionDepth == 0, let window, let currentLayout else { return }
-        if NSEvent.pressedMouseButtons != 0 { waitingForMouseRelease = true; startAnimation(); return }
+        guard interactionDepth == 0, let window, window.isVisible, let currentLayout else { return }
+        updateMousePassthrough()
+        if NSEvent.pressedMouseButtons != 0 {
+            // Desktop drags unrelated to this Dock must not wake an idle display link.
+            if focusIndex != nil || baseLayout.map({ currentLayout.maximumDifference(from: $0) > 0.08 }) == true {
+                waitingForMouseRelease = true
+                startAnimation()
+            }
+            return
+        }
         let global = NSEvent.mouseLocation
         if !force, let previous = lastMousePoint, hypot(global.x - previous.x, global.y - previous.y) < 0.05 { return }
         lastMousePoint = global
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
-        let point = document.convert(local, from: self)
-        let insideViewport = scrolling.frame.contains(local)
-        let index = insideViewport ? currentLayout.tileFrames.firstIndex(where: { $0.contains(point) }) : nil
+        let index = tileIndex(at: local)
         changeHoveredIndex(index)
-        if index != nil, !isGroup, magnificationScale > 1 {
-            focusIndex = baseLayout?.focusIndex(at: point.x)
-        } else { focusIndex = nil }
-        targetLayout = makeLayout(focus: focusIndex)
+        focusIndex = !isGroup && magnificationScale > 1 ? index.map(CGFloat.init) : nil
+        let next = makeLayout(focus: focusIndex)
+        guard targetLayout != next || currentLayout.maximumDifference(from: next) > 0.08 else { return }
+        targetLayout = next
         startAnimation()
     }
 
@@ -286,7 +368,11 @@ final class DockStripView: NSVisualEffectView {
         guard hoveredIndex != index else { return }
         if let old = hoveredIndex, tiles.indices.contains(old) { tiles[old].setHovered(false) }
         hoveredIndex = index
-        if let index, tiles.indices.contains(index) { tiles[index].setHovered(true) }
+        if let index, tiles.indices.contains(index) {
+            let tile = tiles[index]
+            document.addSubview(tile, positioned: .above, relativeTo: nil)
+            tile.setHovered(true)
+        }
     }
 
     private func interactionChanged(_ active: Bool) {
@@ -304,13 +390,13 @@ final class DockStripView: NSVisualEffectView {
         guard interactionDepth == 0, window != nil else { return }
         if isGroup, let targetLayout {
             currentLayout = targetLayout
-            apply(targetLayout, notify: false)
+            apply(targetLayout)
             displayLink?.isPaused = true
             return
         }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let targetLayout {
             currentLayout = targetLayout
-            apply(targetLayout, notify: true)
+            apply(targetLayout)
             return
         }
         if displayLink == nil {
@@ -339,7 +425,7 @@ final class DockStripView: NSVisualEffectView {
         let remaining = currentLayout.maximumDifference(from: targetLayout)
         let next = remaining < 0.08 ? targetLayout : currentLayout.interpolated(to: targetLayout, fraction: fraction)
         self.currentLayout = next
-        apply(next, notify: true)
+        apply(next)
         if remaining < 0.08 {
             link.isPaused = true
             lastTimestamp = nil
@@ -348,16 +434,15 @@ final class DockStripView: NSVisualEffectView {
     }
 
     private func refreshHoveredIndex() {
-        guard interactionDepth == 0, let window, let currentLayout else { return }
+        guard interactionDepth == 0, let window else { return }
         let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
-        let point = document.convert(local, from: self)
-        let index = scrolling.frame.contains(local)
-            ? currentLayout.tileFrames.firstIndex(where: { $0.contains(point) }) : nil
-        changeHoveredIndex(index)
+        changeHoveredIndex(tileIndex(at: local))
+        updateMousePassthrough()
     }
 
-    private func apply(_ value: DockWaveLayout, notify: Bool) {
+    private func apply(_ value: DockWaveLayout) {
         frame.size = value.panelSize
+        backdrop.frame = NSRect(origin: .zero, size: value.backdropSize)
         document.frame.size = value.contentSize
         for (tile, itemFrame) in zip(tiles, value.tileFrames) {
             let sizeChanged = tile.frame.size != itemFrame.size
@@ -373,7 +458,7 @@ final class DockStripView: NSVisualEffectView {
         layoutSubtreeIfNeeded()
         // Horizontal extents are constant across hover frames. Only explicit
         // wheel/trackpad input (or a new configuration) changes the scroll offset.
-        if notify { onGeometryChange?(value.panelSize) }
+        updateMousePassthrough()
         scrolling.reflectScrolledClipView(scrolling.contentView)
     }
 

@@ -78,11 +78,7 @@ final class DisplayCoordinator {
             let panel = old?.panel ?? DockPanel()
             let strip = old?.strip ?? DockStripView()
             panel.title = "DualDock · \(screen.localizedName)"
-            strip.onGeometryChange = { [weak self] size in
-                self?.resizeDockHeight(id: id, height: size.height)
-            }
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
-            strip.modeAction = { [weak self] in self?.store.update { $0.mode = $0.mode == .standard ? .runningOnly : .standard } }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
             let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: screen.frame.width - 32) { [weak self] tile in self?.configure(tile, on: screen) }
             panel.contentView = strip
@@ -90,18 +86,10 @@ final class DisplayCoordinator {
             let nativeInset = max(0, screen.visibleFrame.minY - screen.frame.minY)
             let y = screen.frame.minY + (store.configuration.hideSystemDock ? 8 : max(8, nativeInset + 6))
             panel.setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: y, width: size.width, height: size.height), display: true)
+            strip.updateMousePassthrough()
             docks[id] = ScreenDock(screen: screen, panel: panel, strip: strip)
         }
         applyFullscreenState()
-    }
-
-    private func resizeDockHeight(id: CGDirectDisplayID, height: CGFloat) {
-        guard let dock = docks[id], height.isFinite, height > 0 else { return }
-        // Horizontal geometry belongs to the saved layout and screen setup.
-        // Magnification only grows upward, never following the pointer sideways.
-        var frame = dock.panel.frame
-        frame.size.height = ceil(height)
-        if dock.panel.frame != frame { dock.panel.setFrame(frame, display: true) }
     }
 
     func resetMagnification() {
@@ -174,6 +162,7 @@ final class DisplayCoordinator {
         popupAnchor = tileRect(tile)
         popupScreen = Self.id(screen)
         panel.setFrame(popupFrame(size: size, anchor: popupAnchor, screen: screen), display: true)
+        strip.updateMousePassthrough()
         groupPanel = panel
         panel.orderFrontRegardless()
         pointerOutsideSince = nil
@@ -334,7 +323,10 @@ final class DisplayCoordinator {
                 if dock.panel.isVisible { dock.strip.resetMagnification() }
                 dock.panel.orderOut(nil)
                 if popupScreen == id || pendingPreviewScreen == id { dismissPopups() }
-            } else if !dock.panel.isVisible { dock.panel.orderFrontRegardless() }
+            } else if !dock.panel.isVisible {
+                dock.panel.orderFrontRegardless()
+                dock.strip.updateMousePassthrough()
+            }
         }
     }
 

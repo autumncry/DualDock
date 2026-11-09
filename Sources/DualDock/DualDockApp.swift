@@ -53,7 +53,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem?.button?.toolTip = "DualDock"
         let menu = NSMenu()
         menu.addAction("DualDock 设置…") { [weak self] in self?.openSettings() }
-        menu.addAction("切换显示模式") { [weak self] in self?.store.update { $0.mode = $0.mode == .standard ? .runningOnly : .standard } }
         menu.addAction("添加应用…") { [weak self] in self?.store.addApplications() }
         menu.addItem(.separator())
         menu.addAction("恢复系统 Dock") { [weak self] in self?.store.restoreSystemDock() }
@@ -105,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let screens: [[String: Any]] = coordinator.docks.map { id, dock in
             ["id": id, "name": dock.screen.localizedName, "visible": dock.panel.isVisible,
              "frame": NSStringFromRect(dock.panel.frame), "screenFrame": NSStringFromRect(dock.screen.frame),
+             "backdropFrame": NSStringFromRect(dock.strip.backdropFrame),
+             "ignoresMouseEvents": dock.panel.ignoresMouseEvents,
+             "iconWidths": dock.strip.tiles.map { $0.visualIconBounds.width },
              "tiles": dock.strip.tiles.count,
              "firstTileWidth": dock.strip.tiles.first?.frame.width ?? 0,
              "firstIconWidth": dock.strip.tiles.first?.visualIconBounds.width ?? 0,
