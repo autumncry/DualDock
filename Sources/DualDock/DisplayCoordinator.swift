@@ -18,6 +18,7 @@ final class DisplayCoordinator {
     private var localClickMonitor: Any?
     private var poll: Timer?
     private var previewTask: Task<Void, Never>?
+    private weak var previewSource: DockTile?
     private var previewGeneration = 0
     private var pendingPreviewScreen: CGDirectDisplayID?
     private var previewPanel: DockPanel?
@@ -82,6 +83,9 @@ final class DisplayCoordinator {
             panel.hasShadow = false
             let strip = old?.strip ?? DockStripView()
             panel.title = "DualDock · \(screen.localizedName)"
+            strip.pointerIsOccluded = { [weak self] point in
+                self?.pointerIsOverPopup(point, includeGroup: true) ?? false
+            }
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
             let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: CGFloat(store.sizingLimits.maxWidth)) { [weak self] tile in self?.configure(tile, on: screen) }
@@ -130,7 +134,14 @@ final class DisplayCoordinator {
         tile.onHover = { [weak self, weak tile] inside in
             guard let self, let tile else { return }
             if inside { self.hover(tile, screen: screen) }
-            else { self.cancelPreviewRequest(); self.pointerOutsideSince = Date() }
+            else {
+                // Monitors from different strips may report enter/leave in
+                // either order. A stale main-strip leave must not cancel a
+                // newer request from a member of the floating group.
+                guard self.previewSource == nil || self.previewSource === tile else { return }
+                if self.previewSource === tile { self.cancelPreviewRequest() }
+                self.pointerOutsideSince = Date()
+            }
         }
         tile.menuProvider = { [weak self, weak tile] in
             guard let self, let tile else { return NSMenu() }
@@ -154,6 +165,9 @@ final class DisplayCoordinator {
     private func openGroup(_ tile: DockTile, screen: NSScreen) {
         dismissPopups()
         let strip = DockStripView()
+        strip.pointerIsOccluded = { [weak self] point in
+            self?.pointerIsOverPopup(point, includeGroup: false) ?? false
+        }
         let members = tile.entry.apps.map { DockEntry(name: $0.name, apps: [$0]) }
         let size = strip.populate(entries: members, groupID: tile.entry.id, store: store, maxWidth: screen.frame.width - 32) { [weak self] child in self?.configure(child, on: screen) }
         strip.document.onDropAtEnd = { [weak self] info in
@@ -169,40 +183,50 @@ final class DisplayCoordinator {
         strip.updateMousePassthrough()
         groupPanel = panel
         panel.orderFrontRegardless()
+        refreshMousePassthrough()
         pointerOutsideSince = nil
     }
 
     private func hover(_ tile: DockTile, screen: NSScreen) {
+        // A higher popup owns the pointer even if a lower transparent Dock
+        // canvas also geometrically contains that screen coordinate.
+        guard !pointerIsOverPopup(NSEvent.mouseLocation, includeGroup: tile.groupID == nil) else { return }
         cancelPreviewRequest()
         pointerOutsideSince = nil
         guard !tile.entry.isGroup, store.configuration.showPreviews,
               let app = tile.entry.apps.first, store.isRunning(app) else { return }
+        previewSource = tile
         // The previous popup must not cancel this new hover while its capture
         // is pending. Only a member's own group remains as its interaction area.
         previewPanel?.close()
         previewPanel = nil
-        if tile.groupID == nil {
-            (groupPanel?.contentView as? DockStripView)?.stopAnimations()
-            groupPanel?.close()
-            groupPanel = nil
-            popupScreen = nil
-        }
+        refreshMousePassthrough()
         let generation = previewGeneration
         pendingPreviewScreen = Self.id(screen)
         previewTask = Task { [weak self, weak tile] in
             do { try await Task.sleep(nanoseconds: 450_000_000) } catch { return }
-            guard let self, tile != nil, !Task.isCancelled, generation == self.previewGeneration else { return }
-            let previews = await self.store.windows.previews(for: app)
-            guard !Task.isCancelled, generation == self.previewGeneration,
-                  let tile, tile.window != nil,
-                  self.docks[Self.id(screen)]?.panel.isVisible == true,
-                  self.interactionRect(tile).contains(NSEvent.mouseLocation) else { return }
-            self.pendingPreviewScreen = nil
+            guard let self, let tile, !Task.isCancelled, generation == self.previewGeneration,
+                  tile.window != nil, self.docks[Self.id(screen)]?.panel.isVisible == true,
+                  self.interactionRect(tile).contains(NSEvent.mouseLocation),
+                  !self.pointerIsOverPopup(NSEvent.mouseLocation, includeGroup: tile.groupID == nil) else { return }
+            // Crossing a neighboring main-row icon on the way to a group
+            // member is not an intent to dismiss the group. Reuse the preview
+            // dwell, then retire the group before asynchronous capture starts.
             if tile.groupID == nil {
                 (self.groupPanel?.contentView as? DockStripView)?.stopAnimations()
                 self.groupPanel?.close()
                 self.groupPanel = nil
+                self.popupScreen = nil
+                self.pointerOutsideSince = nil
+                self.refreshMousePassthrough()
             }
+            let previews = await self.store.windows.previews(for: app)
+            guard !Task.isCancelled, generation == self.previewGeneration,
+                  tile.window != nil,
+                  self.docks[Self.id(screen)]?.panel.isVisible == true,
+                  self.interactionRect(tile).contains(NSEvent.mouseLocation),
+                  !self.pointerIsOverPopup(NSEvent.mouseLocation, includeGroup: tile.groupID == nil) else { return }
+            self.pendingPreviewScreen = nil
             self.showPreview(previews, app: app, anchor: self.tileRect(tile), sourceRect: self.interactionRect(tile), screen: screen)
         }
     }
@@ -255,11 +279,14 @@ final class DisplayCoordinator {
         let size = NSSize(width: layout.panelWidth, height: 182)
         background.frame.size = size
         panel.contentView = background
-        popupAnchor = groupPanel == nil ? sourceRect : popupAnchor.union(sourceRect)
+        // The group frame already contains its members. Keep its original
+        // source anchor so the short transition bridge remains stable.
+        if groupPanel == nil { popupAnchor = sourceRect }
         popupScreen = Self.id(screen)
         panel.setFrame(popupFrame(size: size, anchor: anchor, screen: screen), display: true)
         previewPanel = panel
         panel.orderFrontRegardless()
+        refreshMousePassthrough()
     }
 
     private func closePreview(_ item: WindowPreview, app: AppReference) {
@@ -285,9 +312,33 @@ final class DisplayCoordinator {
         return NSRect(origin: NSPoint(x: x, y: y), size: size)
     }
 
+    private func pointerIsOverPopup(_ point: NSPoint, includeGroup: Bool) -> Bool {
+        if let previewPanel, previewPanel.isVisible, previewPanel.frame.contains(point) { return true }
+        if includeGroup, let groupPanel, groupPanel.isVisible {
+            let frame = groupPanel.frame
+            if frame.contains(point) { return true }
+            // Protect only the gap above the captured source icon, without
+            // making real neighboring main-row icons unclickable.
+            let height = frame.minY - popupAnchor.maxY
+            if height > 0 {
+                let left = min(popupAnchor.minX, frame.minX)
+                let right = max(popupAnchor.maxX, frame.maxX)
+                let bridge = NSRect(x: left, y: popupAnchor.maxY, width: right - left, height: height)
+                if bridge.contains(point) { return true }
+            }
+        }
+        return false
+    }
+
+    private func refreshMousePassthrough() {
+        docks.values.forEach { $0.strip.updateMousePassthrough() }
+        (groupPanel?.contentView as? DockStripView)?.updateMousePassthrough()
+    }
+
     private func cancelPreviewRequest() {
         previewTask?.cancel()
         previewTask = nil
+        previewSource = nil
         previewGeneration += 1
         pendingPreviewScreen = nil
     }
@@ -296,6 +347,7 @@ final class DisplayCoordinator {
         cancelPreviewRequest()
         previewPanel?.close()
         previewPanel = nil
+        refreshMousePassthrough()
         if groupPanel == nil { popupScreen = nil; pointerOutsideSince = nil }
     }
 
@@ -304,6 +356,7 @@ final class DisplayCoordinator {
         (groupPanel?.contentView as? DockStripView)?.stopAnimations()
         groupPanel?.close(); groupPanel = nil
         previewPanel?.close(); previewPanel = nil
+        refreshMousePassthrough()
         popupScreen = nil
         pointerOutsideSince = nil
     }

@@ -71,6 +71,31 @@ struct DockViewChecks {
                               "Spacing slider resized application icons")
                     }
                 }
+                // A higher popup owns hover even when its screen coordinates
+                // overlap a lower strip's transparent canvas.
+                strip.scroll.contentView.scroll(to: .zero)
+                strip.scroll.reflectScrolledClipView(strip.scroll.contentView)
+                let tile = strip.tiles[0]
+                var enters = 0
+                var leaves = 0
+                var covered = false
+                tile.onHover = { if $0 { enters += 1 } else { leaves += 1 } }
+                strip.pointerIsOccluded = { _ in covered }
+                let icon = tile.visualIconBounds
+                let local = tile.convert(NSPoint(x: icon.midX, y: icon.midY), to: nil)
+                let pointer = panel.convertToScreen(NSRect(origin: local, size: .zero)).origin
+                strip.updatePointer(at: pointer, buttonsPressed: false, force: true)
+                check(enters == 1, "Initial icon hover missing")
+                covered = true
+                strip.updatePointer(at: pointer, buttonsPressed: false, force: true)
+                check(enters == 1 && leaves == 1, "Covered strip must end hover once without another enter")
+                check(panel.ignoresMouseEvents, "Covered strip must not intercept the popup")
+                strip.updatePointer(at: pointer, buttonsPressed: false, force: true)
+                check(enters == 1 && leaves == 1, "Covered pointer repeatedly changed hover ownership")
+                covered = false
+                strip.updatePointer(at: pointer, buttonsPressed: false)
+                check(enters == 2, "Returning to the same icon must reopen hover")
+                check(!panel.ignoresMouseEvents, "Uncovered icon must be clickable again")
                 strip.stopAnimations()
                 panel.close()
                 store.stopBackgroundServices()

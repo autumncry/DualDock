@@ -100,6 +100,9 @@ final class DockStripView: NSView {
     let document = DockDocumentView(frame: .zero)
     private(set) var tiles: [DockTile] = []
     var settingsAction: (() -> Void)?
+    /// Higher-level popups own pointer input over their entire visible panel,
+    /// including padding that overlaps this strip's transparent canvas.
+    var pointerIsOccluded: ((NSPoint) -> Bool)?
     private(set) var desiredWidth: CGFloat = 200
 
     private var localMouseMonitor: Any?
@@ -309,8 +312,16 @@ final class DockStripView: NSView {
     }
 
     func updateMousePassthrough() {
+        updateMousePassthrough(at: NSEvent.mouseLocation)
+    }
+
+    func updateMousePassthrough(at global: NSPoint) {
         guard interactionDepth == 0, let window else { return }
-        let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        guard pointerIsOccluded?(global) != true else {
+            window.ignoresMouseEvents = true
+            return
+        }
+        let local = convert(window.convertPoint(fromScreen: global), from: nil)
         window.ignoresMouseEvents = !containsInteractivePoint(local)
     }
 
@@ -367,9 +378,19 @@ final class DockStripView: NSView {
     }
 
     private func updatePointer(force: Bool = false) {
-        guard interactionDepth == 0, let window, window.isVisible, let currentLayout else { return }
-        updateMousePassthrough()
-        if NSEvent.pressedMouseButtons != 0 {
+        guard window?.isVisible == true else { return }
+        updatePointer(at: NSEvent.mouseLocation, buttonsPressed: NSEvent.pressedMouseButtons != 0, force: force)
+    }
+
+    /// Process one pointer snapshot independently from the OS event source.
+    func updatePointer(at global: NSPoint, buttonsPressed: Bool, force: Bool = false) {
+        guard interactionDepth == 0, let window, let currentLayout else { return }
+        updateMousePassthrough(at: global)
+        if pointerIsOccluded?(global) == true {
+            pauseForPointerOcclusion()
+            return
+        }
+        if buttonsPressed {
             // Desktop drags unrelated to this Dock must not wake an idle display link.
             if focusIndex != nil || baseLayout.map({ currentLayout.maximumDifference(from: $0) > 0.08 }) == true {
                 waitingForMouseRelease = true
@@ -377,7 +398,6 @@ final class DockStripView: NSView {
             }
             return
         }
-        let global = NSEvent.mouseLocation
         if !force, let previous = lastMousePoint, hypot(global.x - previous.x, global.y - previous.y) < 0.05 { return }
         lastMousePoint = global
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
@@ -450,6 +470,12 @@ final class DockStripView: NSView {
             animationTiming.pause()
             return
         }
+        if pointerIsOccluded?(NSEvent.mouseLocation) == true {
+            link.isPaused = true
+            pauseForPointerOcclusion()
+            updateMousePassthrough()
+            return
+        }
         if NSEvent.pressedMouseButtons != 0 {
             waitingForMouseRelease = true
             animationTiming.pause()
@@ -474,9 +500,25 @@ final class DockStripView: NSView {
 
     private func refreshHoveredIndex() {
         guard interactionDepth == 0, let window else { return }
-        let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        let global = NSEvent.mouseLocation
+        guard pointerIsOccluded?(global) != true else {
+            pauseForPointerOcclusion()
+            updateMousePassthrough()
+            return
+        }
+        let local = convert(window.convertPoint(fromScreen: global), from: nil)
         changeHoveredIndex(tileIndex(at: local))
         updateMousePassthrough()
+    }
+
+    private func pauseForPointerOcclusion() {
+        // Keep the geometry/focus frozen, but end hover ownership once. The
+        // coordinator scopes leaves to their source; a later return to the same
+        // icon must deliver a fresh enter after its preview has been dismissed.
+        displayLink?.isPaused = true
+        animationTiming.pause()
+        lastMousePoint = nil
+        changeHoveredIndex(nil)
     }
 
     private func apply(_ value: DockWaveLayout) {
