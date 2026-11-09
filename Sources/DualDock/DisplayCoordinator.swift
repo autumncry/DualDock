@@ -145,6 +145,10 @@ final class DisplayCoordinator {
         tile.window?.convertToScreen(tile.convert(tile.visualIconBounds, to: nil)) ?? .zero
     }
 
+    private func interactionRect(_ tile: DockTile) -> NSRect {
+        tile.window?.convertToScreen(tile.convert(tile.visibleRect, to: nil)) ?? .zero
+    }
+
     private func openGroup(_ tile: DockTile, screen: NSScreen) {
         dismissPopups()
         let strip = DockStripView()
@@ -170,6 +174,17 @@ final class DisplayCoordinator {
         pointerOutsideSince = nil
         guard !tile.entry.isGroup, store.configuration.showPreviews,
               let app = tile.entry.apps.first, store.isRunning(app) else { return }
+        // The previous popup must not cancel this new hover while its capture
+        // is pending. Only a member's own group remains as its interaction area.
+        previewPanel?.close()
+        previewPanel = nil
+        previewActions = []
+        if tile.groupID == nil {
+            (groupPanel?.contentView as? DockStripView)?.stopAnimations()
+            groupPanel?.close()
+            groupPanel = nil
+            popupScreen = nil
+        }
         let generation = previewGeneration
         pendingPreviewScreen = Self.id(screen)
         previewTask = Task { [weak self, weak tile] in
@@ -179,18 +194,18 @@ final class DisplayCoordinator {
             guard !Task.isCancelled, generation == self.previewGeneration,
                   let tile, tile.window != nil,
                   self.docks[Self.id(screen)]?.panel.isVisible == true,
-                  self.tileRect(tile).insetBy(dx: -4, dy: -4).contains(NSEvent.mouseLocation) else { return }
+                  self.interactionRect(tile).contains(NSEvent.mouseLocation) else { return }
             self.pendingPreviewScreen = nil
             if tile.groupID == nil {
                 (self.groupPanel?.contentView as? DockStripView)?.stopAnimations()
                 self.groupPanel?.close()
                 self.groupPanel = nil
             }
-            self.showPreview(previews, app: app, anchor: self.tileRect(tile), screen: screen)
+            self.showPreview(previews, app: app, anchor: self.tileRect(tile), sourceRect: self.interactionRect(tile), screen: screen)
         }
     }
 
-    private func showPreview(_ items: [WindowPreview], app: AppReference, anchor: NSRect, screen: NSScreen) {
+    private func showPreview(_ items: [WindowPreview], app: AppReference, anchor: NSRect, sourceRect: NSRect, screen: NSScreen) {
         previewPanel?.close()
         previewPanel = nil
         previewActions = []
@@ -250,7 +265,7 @@ final class DisplayCoordinator {
         let size = NSSize(width: layout.panelWidth, height: 182)
         background.frame.size = size
         panel.contentView = background
-        popupAnchor = groupPanel == nil ? anchor : popupAnchor.union(anchor)
+        popupAnchor = groupPanel == nil ? sourceRect : popupAnchor.union(sourceRect)
         popupScreen = Self.id(screen)
         panel.setFrame(popupFrame(size: size, anchor: anchor, screen: screen), display: true)
         previewPanel = panel
