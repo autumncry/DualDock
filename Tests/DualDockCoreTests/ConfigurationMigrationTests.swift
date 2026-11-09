@@ -2,6 +2,45 @@ import XCTest
 @testable import DualDockCore
 
 final class ConfigurationMigrationTests: XCTestCase {
+    func testVersionFourDefersWidthMigrationUntilLiveRowIsKnown() throws {
+        let decoded = try JSONDecoder().decode(DockConfiguration.self,
+            from: Data("{\"version\":4,\"iconSize\":40.8,\"iconSpacing\":10,\"dockWidthReferenceSpacing\":6.48}".utf8))
+        XCTAssertNil(decoded.dockWidth)
+        XCTAssertEqual(decoded.version, DockConfiguration.currentVersion)
+        XCTAssertEqual(decoded.iconSize, 40.8)
+        XCTAssertEqual(decoded.iconSpacing, 10)
+        XCTAssertEqual(decoded.dockWidthReferenceSpacing, 6.48)
+    }
+
+    func testRequestedWidthAndTallHeightPersistWithoutScreenClamping() throws {
+        var config = DockConfiguration()
+        config.dockWidth = 2200
+        config.iconSize = 180
+        config.normalizeAppearance()
+        let decoded = try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(config))
+        XCTAssertEqual(decoded.dockWidth, 2200)
+        XCTAssertEqual(decoded.iconSize, 180)
+    }
+
+    func testInvalidWidthRequestsFallBackToDeferredInitialization() {
+        for width in [Double.nan, .infinity, -.infinity, 0, -100] {
+            var config = DockConfiguration()
+            config.dockWidth = width
+            config.normalizeAppearance()
+            XCTAssertNil(config.dockWidth)
+        }
+    }
+
+    func testLegacyOversizedHeightKeepsItsPreviousNormalizedValue() throws {
+        let old = try JSONDecoder().decode(DockConfiguration.self,
+            from: Data("{\"version\":4,\"iconSize\":400}".utf8))
+        XCTAssertEqual(old.iconSize, 96)
+        let current = try JSONDecoder().decode(DockConfiguration.self,
+            from: Data("{\"version\":5,\"iconSize\":400,\"dockWidth\":1278}".utf8))
+        XCTAssertEqual(current.iconSize, 400)
+        XCTAssertEqual(current.dockWidth, 1278)
+    }
+
     func testLegacyConfigurationKeepsUserGroupsAndSettings() throws {
         var saved = DockConfiguration()
         let app = AppReference(id: "com.example.A", name: "A", path: "/Applications/A.app")

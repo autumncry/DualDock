@@ -2,6 +2,33 @@ import XCTest
 @testable import DualDockCore
 
 final class DockWaveLayoutTests: XCTestCase {
+    func testExplicitWidthIsIndependentOfHeightSpacingAndApplicationCount() {
+        for count in [0, 1, 5, 30] {
+            for side: CGFloat in [24, 48, 96, 120] {
+                for spacing: CGFloat in [0, 14, 32] {
+                    let layout = DockWaveLayout.make(count: count, iconSize: side, spacing: spacing,
+                        magnificationScale: 1.64, focusIndex: nil, maxWidth: 1800, hasControls: false,
+                        fixedPanelWidth: 640)
+                    XCTAssertEqual(layout.panelSize.width, 640)
+                    XCTAssertEqual(layout.backdropSize.width, 640)
+                    XCTAssertEqual(layout.backdropSize.height, side * 66 / 48, accuracy: 0.000001)
+                }
+            }
+        }
+    }
+
+    func testExplicitWidthClampsToScreenAndLimitsPeakWithinActualViewport() {
+        let narrow = DockWaveLayout.make(count: 3, iconSize: 96, spacing: 0,
+            magnificationScale: 2.5, focusIndex: 1, maxWidth: 1800, hasControls: false, fixedPanelWidth: 240)
+        XCTAssertEqual(narrow.panelSize.width, 240)
+        XCTAssertEqual(narrow.tileFrames[1].height - 32, narrow.viewportSize.width)
+        XCTAssertEqual(narrow.backdropSize.height, 132)
+        let constrained = DockWaveLayout.make(count: 20, iconSize: 48, spacing: 14,
+            magnificationScale: 1.6, focusIndex: nil, maxWidth: 800, hasControls: false, fixedPanelWidth: 1600)
+        XCTAssertEqual(constrained.panelSize.width, 800)
+        XCTAssertGreaterThan(constrained.contentSize.width, constrained.viewportSize.width)
+    }
+
     func testMainDockSpacingChangesContentButNeverItsEnvelope() {
         let reference: CGFloat = 6.479771784232365
         for side: CGFloat in [24, 40.8, 47.69190871369294, 96] {

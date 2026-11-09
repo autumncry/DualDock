@@ -63,7 +63,9 @@ final class DisplayCoordinator {
 
     func refreshDisplays() {
         dismissPopups()
-        let screens = NSScreen.screens.filter { CGDisplayMirrorsDisplay(Self.id($0)) == kCGNullDirectDisplay }
+        let allScreens = NSScreen.screens
+        store.updateDisplayLimits(screenSizes: allScreens.map { $0.frame.size })
+        let screens = allScreens.filter { CGDisplayMirrorsDisplay(Self.id($0)) == kCGNullDirectDisplay }
         let valid = Set(screens.map(Self.id))
         for id in Array(docks.keys) where !valid.contains(id) {
             if let removed = docks.removeValue(forKey: id) {
@@ -82,7 +84,7 @@ final class DisplayCoordinator {
             panel.title = "DualDock · \(screen.localizedName)"
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
-            let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: screen.frame.width - 32) { [weak self] tile in self?.configure(tile, on: screen) }
+            let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: CGFloat(store.sizingLimits.maxWidth)) { [weak self] tile in self?.configure(tile, on: screen) }
             panel.contentView = strip
             // Respect the native Dock's reserved edge while the user keeps it visible.
             let nativeInset = max(0, screen.visibleFrame.minY - screen.frame.minY)

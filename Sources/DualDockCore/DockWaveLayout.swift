@@ -19,7 +19,8 @@ public struct DockWaveLayout: Equatable, Sendable {
                             dividerIndex: Int? = nil,
                             scrollOffset: CGFloat? = nil,
                             lensAnchorX: CGFloat? = nil,
-                            widthReferenceSpacing: CGFloat? = nil) -> DockWaveLayout {
+                            widthReferenceSpacing: CGFloat? = nil,
+                            fixedPanelWidth: CGFloat? = nil) -> DockWaveLayout {
         let itemCount = max(0, count)
         let side = max(1, iconSize)
         let unit = side / 48
@@ -27,7 +28,14 @@ public struct DockWaveLayout: Equatable, Sendable {
         let widthGap = max(0, widthReferenceSpacing ?? spacing) * unit
         let inset = 10 * unit
         let controls = hasControls ? 62 * unit : 0
-        let availableWidth = max(1, maxWidth - controls - 2 * inset)
+        let maximumWidth = maxWidth.isFinite ? max(1, maxWidth) : 1
+        let explicitWidth = fixedPanelWidth.flatMap { width -> CGFloat? in
+            guard width.isFinite, width > 0 else { return nil }
+            return min(maximumWidth, max(1, width))
+        }
+        // Explicit main-bar widths bound magnification too; using the screen
+        // width here could let an icon exceed its much narrower actual viewport.
+        let availableWidth = max(1, (explicitWidth ?? maximumWidth) - controls - 2 * inset)
         // Only physically narrower viewports limit the peak; base sizes stay shared.
         let peakSide = min(side * max(1, magnificationScale), max(side, availableWidth))
         let delta = peakSide - side
@@ -38,7 +46,7 @@ public struct DockWaveLayout: Equatable, Sendable {
         let dividerWidth: CGFloat = dividerIndex.map { $0 > 0 && $0 < itemCount ? 13 * unit : 0 } ?? 0
         let baseWidth = itemCount == 0 ? 160 * unit : CGFloat(itemCount) * (side + gap) + dividerWidth
         let referenceWidth = itemCount == 0 ? 160 * unit : CGFloat(itemCount) * (side + widthGap) + dividerWidth
-        let panelWidth = min(max(1, maxWidth), referenceWidth + reserve * 2 + controls + 2 * inset)
+        let panelWidth = explicitWidth ?? min(maximumWidth, referenceWidth + reserve * 2 + controls + 2 * inset)
         let viewportWidth = max(1, panelWidth - controls - 2 * inset)
         // Only the base application row can create a scroll range. Hover never scrolls it.
         let contentWidth = max(baseWidth, viewportWidth)

@@ -62,19 +62,42 @@ struct SettingsView: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Dock 大小").font(.headline)
+                    Text("Dock 高度").font(.headline)
                     Spacer()
-                    Text("\(Int((store.configuration.iconSize / 48 * 100).rounded()))%").foregroundStyle(.secondary).monospacedDigit()
+                    Text("\(Int(store.effectiveDockHeight.rounded())) pt").foregroundStyle(.secondary).monospacedDigit()
                 }
-                Slider(value: Binding(get: { store.configuration.iconSize }, set: { value in store.update { $0.iconSize = value } }), in: 24...96)
-                HStack { Text("小"); Spacer(); Text("大") }.font(.caption).foregroundStyle(.secondary)
+                Slider(value: Binding(get: { store.effectiveDockHeight }, set: { value in
+                    store.update { $0.iconSize = value / DockSizingLimits.heightPerIconPoint }
+                }), in: store.sizingLimits.minHeight...store.sizingLimits.maxHeight)
+                    .disabled(store.sizingLimits.minHeight >= store.sizingLimits.maxHeight)
+                    .accessibilityLabel("Dock 高度")
+                HStack { Text("低"); Spacer(); Text("高") }.font(.caption).foregroundStyle(.secondary)
+                Text("底板上限 \(Int(store.sizingLimits.maxHeight.rounded(.down))) pt，为最矮屏幕有效高度的 12%。图标等比例变化，悬停放大按下方设置。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Dock 宽度").font(.headline)
+                    Spacer()
+                    Text("\(Int(store.effectiveDockWidth.rounded())) pt").foregroundStyle(.secondary).monospacedDigit()
+                }
+                Slider(value: Binding(get: { store.effectiveDockWidth }, set: { value in
+                    store.update { $0.dockWidth = value }
+                }), in: store.sizingLimits.minWidth...store.sizingLimits.maxWidth)
+                    .disabled(store.sizingLimits.minWidth >= store.sizingLimits.maxWidth)
+                    .accessibilityLabel("Dock 宽度")
+                HStack { Text("窄"); Spacer(); Text("宽") }.font(.caption).foregroundStyle(.secondary)
+                Text("上限 \(Int(store.sizingLimits.maxWidth.rounded(.down))) pt，为最窄屏幕的有效宽度。两项尺寸独立调整。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("图标间距").font(.headline)
                 Slider(value: Binding(get: { store.configuration.iconSpacing }, set: { value in store.update { $0.iconSpacing = value } }), in: 0...32)
+                    .accessibilityLabel("图标间距")
                 HStack { Text("紧凑"); Spacer(); Text("宽松") }.font(.caption).foregroundStyle(.secondary)
             }
-            Text("所有屏幕同步设置。图标间距只调整栏内疏密，不改变主栏宽度；内容超出时可横向滚动。").font(.caption).foregroundStyle(.secondary)
+            Text("所有屏幕同步设置。接入较小屏幕时自动限制实际尺寸，并保留原始选择。图标间距只调整栏内疏密；内容超出时可横向滚动。")
+                .font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("鼠标悬停放大", isOn: Binding(get: { store.configuration.magnificationEnabled }, set: { value in store.update { $0.magnificationEnabled = value } }))
                 HStack {

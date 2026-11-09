@@ -110,6 +110,7 @@ final class DockStripView: NSView {
     private var baseSide: CGFloat = 48
     private var spacing: CGFloat = 14
     private var widthReferenceSpacing: CGFloat?
+    private var fixedPanelWidth: CGFloat?
     private var maximumWidth: CGFloat = 1800
     private var magnificationScale: CGFloat = 1
     private var isGroup = false
@@ -209,11 +210,12 @@ final class DockStripView: NSView {
         tiles = []; divider = nil; emptyLabel = nil
         interactionDepth = 0
         waitingForMouseRelease = false
-        baseSide = CGFloat(store.configuration.iconSize)
+        baseSide = CGFloat(store.effectiveIconSize)
         spacing = CGFloat(store.configuration.iconSpacing)
         maximumWidth = max(1, maxWidth)
         isGroup = groupID != nil
         widthReferenceSpacing = isGroup ? nil : CGFloat(store.configuration.dockWidthReferenceSpacing)
+        fixedPanelWidth = isGroup ? nil : CGFloat(store.effectiveDockWidth)
         magnificationScale = !isGroup && store.configuration.magnificationEnabled
             ? CGFloat(store.configuration.magnificationScale) : 1
         dividerIndex = groupID == nil && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
@@ -361,7 +363,7 @@ final class DockStripView: NSView {
                             magnificationScale: magnificationScale, focusIndex: focus,
                             maxWidth: maximumWidth, hasControls: false, dividerIndex: dividerIndex,
                             scrollOffset: scrolling.contentView.bounds.origin.x, lensAnchorX: lensAnchorX,
-                            widthReferenceSpacing: widthReferenceSpacing)
+                            widthReferenceSpacing: widthReferenceSpacing, fixedPanelWidth: fixedPanelWidth)
     }
 
     private func updatePointer(force: Bool = false) {

@@ -32,14 +32,17 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 4
+    public static let currentVersion = 5
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
     public var iconSize: Double = 48
     public var iconSpacing: Double = 14
-    /// Main Dock width baseline; changing visual spacing must not resize the bar.
+    /// Legacy automatic-width baseline, retained for migration to explicit width.
     public var dockWidthReferenceSpacing: Double = 14
+    /// Requested main-bar width. Nil legacy values are initialized once using
+    /// the live application row, before the app first renders and saves them.
+    public var dockWidth: Double?
     public var magnificationEnabled: Bool = true
     public var magnificationScale: Double = 5.0 / 3.0
     public var showPreviews: Bool = true
@@ -49,7 +52,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing
+        case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth
         case magnificationEnabled, magnificationScale, showPreviews, showBadges, hideSystemDock
     }
 
@@ -60,10 +63,12 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         entries = try values.decodeIfPresent([DockEntry].self, forKey: .entries) ?? []
         mode = try values.decodeIfPresent(DockMode.self, forKey: .mode) ?? .standard
         iconSize = try values.decodeIfPresent(Double.self, forKey: .iconSize) ?? 48
+        if storedVersion < 5, iconSize.isFinite { iconSize = min(96, iconSize) }
         iconSpacing = try values.decodeIfPresent(Double.self, forKey: .iconSpacing) ?? 14
         // Preserve an existing installation's width at migration. Once stored,
         // this baseline remains independent from later spacing-slider changes.
         dockWidthReferenceSpacing = try values.decodeIfPresent(Double.self, forKey: .dockWidthReferenceSpacing) ?? iconSpacing
+        dockWidth = try values.decodeIfPresent(Double.self, forKey: .dockWidth)
         magnificationEnabled = try values.decodeIfPresent(Bool.self, forKey: .magnificationEnabled) ?? true
         magnificationScale = try values.decodeIfPresent(Double.self, forKey: .magnificationScale) ?? 5.0 / 3.0
         showPreviews = try values.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? true
@@ -73,7 +78,10 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     }
 
     public mutating func normalizeAppearance() {
-        iconSize = iconSize.isFinite ? min(96, max(24, iconSize)) : 48
+        // Store the requested height independently from currently connected
+        // displays. DockSizingLimits clamps it before any rendering arithmetic.
+        iconSize = iconSize.isFinite ? max(24, iconSize) : 48
+        if let width = dockWidth, !width.isFinite || width <= 0 { dockWidth = nil }
         iconSpacing = iconSpacing.isFinite ? min(32, max(0, iconSpacing)) : 14
         dockWidthReferenceSpacing = dockWidthReferenceSpacing.isFinite ? min(32, max(0, dockWidthReferenceSpacing)) : 14
         magnificationScale = magnificationScale.isFinite ? min(2.5, max(1, magnificationScale)) : 5.0 / 3.0

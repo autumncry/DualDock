@@ -8,6 +8,7 @@ import DualDockCore
 @MainActor
 final class AppStore: ObservableObject {
     @Published private(set) var configuration: DockConfiguration
+    @Published private(set) var sizingLimits: DockSizingLimits = .fallback
     @Published private(set) var runningApps: [AppReference] = []
     @Published private(set) var badgeLabels: [String: String] = [:]
     @Published private(set) var badgeStatus: DockBadgeStatus = .disabled
@@ -22,6 +23,7 @@ final class AppStore: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var icons: [String: NSImage] = [:]
     private var readOnly = false
+    private var initialSetupComplete = false
 
     init(directory: URL) {
         self.directory = directory
@@ -60,6 +62,7 @@ final class AppStore: ObservableObject {
             if initial.hideSystemDock && !readOnly { try systemDock.setHidden(true) }
         } catch { message = "系统 Dock 恢复失败：\(error.localizedDescription)" }
         refreshRunningApps()
+        updateDisplayLimits(screenSizes: NSScreen.screens.map { $0.frame.size })
         badgeService.onUpdate = { [weak self] labels, status in
             guard let self else { return }
             if self.badgeLabels != labels { self.badgeLabels = labels }
@@ -73,6 +76,7 @@ final class AppStore: ObservableObject {
                 Task { @MainActor in self?.refreshRunningApps() }
             })
         }
+        initialSetupComplete = true
         save()
     }
 
@@ -85,6 +89,36 @@ final class AppStore: ObservableObject {
     }
 
     var pinnedCount: Int { configuration.mode == .standard ? configuration.entries.count : 0 }
+
+    var effectiveIconSize: Double { sizingLimits.clampIconSize(configuration.iconSize) }
+    var effectiveDockHeight: Double { sizingLimits.height(forIconSize: configuration.iconSize) }
+    var effectiveDockWidth: Double { sizingLimits.clampWidth(configuration.dockWidth ?? sizingLimits.maxWidth) }
+
+    func updateDisplayLimits(screenSizes: [CGSize]) {
+        // A temporary empty screen list must not discard the last useful range
+        // or write a transient display constraint into the user's preferences.
+        guard let next = DockSizingLimits(screenSizes: screenSizes) else { return }
+        if next != sizingLimits { sizingLimits = next }
+        // Resolve legacy width only against a real display snapshot, never the
+        // startup fallback. An empty-screen launch must not shrink preferences.
+        if initializeDockWidthIfNeeded(), initialSetupComplete { save() }
+    }
+
+    @discardableResult
+    private func initializeDockWidthIfNeeded() -> Bool {
+        guard configuration.dockWidth == nil else { return false }
+        let count = displayedEntries.count
+        let divider = pinnedCount > 0 && pinnedCount < count ? pinnedCount : nil
+        // Reconstruct the pre-independent-width layout once, including live
+        // unpinned apps. Subsequent height/spacing/count changes keep this width.
+        let legacy = DockWaveLayout.make(count: count, iconSize: CGFloat(min(96, configuration.iconSize)),
+            spacing: CGFloat(configuration.iconSpacing),
+            magnificationScale: configuration.magnificationEnabled ? CGFloat(configuration.magnificationScale) : 1,
+            focusIndex: nil, maxWidth: CGFloat(max(1, sizingLimits.maxWidth - 32)), hasControls: false,
+            dividerIndex: divider, widthReferenceSpacing: CGFloat(configuration.dockWidthReferenceSpacing))
+        configuration.dockWidth = sizingLimits.clampWidth(Double(ceil(legacy.panelSize.width)))
+        return true
+    }
 
     func update(_ change: (inout DockConfiguration) -> Void) {
         guard !readOnly else { message = "配置目前为只读，请先检查配置文件。"; return }
