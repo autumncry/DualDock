@@ -94,7 +94,7 @@ struct SettingsView: View {
                 Text("上限 \(Int(store.sizingLimits.maxWidth.rounded(.down))) pt，为最窄屏幕的有效宽度。")
                     .font(.caption).foregroundStyle(.secondary)
                 if store.configuration.autoAdjustWidth {
-                    Text("按当前图标大小和应用数量自动调整宽度，间距仍只影响内部排列。高度仍可手动设置；关闭后恢复上次手动宽度。")
+                    Text("按当前图标大小、间距和应用数量自动调整宽度。高度仍可手动设置；关闭后恢复上次手动宽度。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -104,7 +104,7 @@ struct SettingsView: View {
                     .accessibilityLabel("图标间距")
                 HStack { Text("紧凑"); Spacer(); Text("宽松") }.font(.caption).foregroundStyle(.secondary)
             }
-            Text("所有屏幕同步设置。接入较小屏幕时自动限制实际尺寸，并保留原始选择。图标间距只调整栏内疏密；内容超出时可横向滚动。")
+            Text("所有屏幕同步设置。接入较小屏幕时自动限制实际尺寸，并保留原始选择。固定宽度模式下，间距只调整内部排列；内容超出时可横向滚动。")
                 .font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("鼠标悬停放大", isOn: Binding(get: { store.configuration.magnificationEnabled }, set: { value in store.update { $0.magnificationEnabled = value } }))

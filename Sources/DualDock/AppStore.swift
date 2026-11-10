@@ -104,7 +104,7 @@ final class AppStore: ObservableObject {
             spacing: CGFloat(configuration.iconSpacing),
             magnificationScale: configuration.magnificationEnabled ? CGFloat(configuration.magnificationScale) : 1,
             focusIndex: nil, maxWidth: CGFloat(sizingLimits.maxWidth), hasControls: false,
-            dividerIndex: divider, widthReferenceSpacing: CGFloat(configuration.dockWidthReferenceSpacing))
+            dividerIndex: divider)
         return sizingLimits.clampWidth(Double(ceil(automatic.panelSize.width)))
     }
 

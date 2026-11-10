@@ -38,7 +38,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public var mode: DockMode = .standard
     public var iconSize: Double = 48
     public var iconSpacing: Double = 14
-    /// Spacing baseline for automatic width and legacy explicit-width migration.
+    /// Legacy spacing baseline retained for migration to explicit manual width.
     public var dockWidthReferenceSpacing: Double = 14
     /// Saved manual width, retained during automatic mode. Nil values are initialized once using
     /// the live application row, before the app first renders and saves them.

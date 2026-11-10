@@ -62,7 +62,7 @@ Change the mode in Settings; every display updates together.
 
 Adjust Dock height and width with separate continuous sliders. Icon spacing changes the density inside the bar. Nearby icons magnify gradually around the pointer, with an adjustable strength and an on/off switch, while the backdrop stays fixed. Overflow can be scrolled horizontally without a visible scrollbar.
 
-The optional automatic-width mode adjusts the bar as pinned apps, collapsed groups, and running apps are added or removed. It disables the manual width slider while leaving height adjustable. Turning it off restores the last manual width. Icon spacing still affects only the contents, and automatic width respects the shared display limit. It is off by default, so upgrading preserves your existing fixed-width choice.
+The optional automatic-width mode fits the current icon size, spacing, and visible app count: adding apps or increasing spacing expands the bar, while removing apps or tightening spacing makes it narrower. It disables the manual width slider while leaving height adjustable. Turning it off restores the last manual width, where spacing changes only the contents. Automatic width respects the shared display limit. It is off by default, so upgrading preserves your existing fixed-width choice.
 
 All displays share size limits: the maximum width is the narrowest display's effective width, and the maximum backdrop height is **12%** of the shortest display's effective height. Dimensions use macOS logical points after display scaling. Connecting a smaller display constrains the rendered size without overwriting your preference, so it can be restored after disconnection.
 
