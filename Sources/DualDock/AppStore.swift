@@ -92,7 +92,21 @@ final class AppStore: ObservableObject {
 
     var effectiveIconSize: Double { sizingLimits.clampIconSize(configuration.iconSize) }
     var effectiveDockHeight: Double { sizingLimits.height(forIconSize: configuration.iconSize) }
-    var effectiveDockWidth: Double { sizingLimits.clampWidth(configuration.dockWidth ?? sizingLimits.maxWidth) }
+    var effectiveDockWidth: Double {
+        guard configuration.autoAdjustWidth else {
+            return sizingLimits.clampWidth(configuration.dockWidth ?? sizingLimits.maxWidth)
+        }
+        let count = displayedEntries.count
+        let divider = pinnedCount > 0 && pinnedCount < count ? pinnedCount : nil
+        // Compute once for the current row, not for individual hover frames.
+        // The saved manual width remains available when automatic mode ends.
+        let automatic = DockWaveLayout.make(count: count, iconSize: CGFloat(effectiveIconSize),
+            spacing: CGFloat(configuration.iconSpacing),
+            magnificationScale: configuration.magnificationEnabled ? CGFloat(configuration.magnificationScale) : 1,
+            focusIndex: nil, maxWidth: CGFloat(sizingLimits.maxWidth), hasControls: false,
+            dividerIndex: divider, widthReferenceSpacing: CGFloat(configuration.dockWidthReferenceSpacing))
+        return sizingLimits.clampWidth(Double(ceil(automatic.panelSize.width)))
+    }
 
     func updateDisplayLimits(screenSizes: [CGSize]) {
         // A temporary empty screen list must not discard the last useful range

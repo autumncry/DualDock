@@ -124,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "dockHeight": store.effectiveDockHeight, "dockWidth": store.effectiveDockWidth,
             "requestedIconSize": store.configuration.iconSize,
             "requestedDockWidth": store.configuration.dockWidth ?? 0,
+            "autoAdjustWidth": store.configuration.autoAdjustWidth,
             "sizeLimits": ["minWidth": store.sizingLimits.minWidth, "maxWidth": store.sizingLimits.maxWidth,
                            "minHeight": store.sizingLimits.minHeight, "maxHeight": store.sizingLimits.maxHeight],
             "magnificationEnabled": store.configuration.magnificationEnabled,

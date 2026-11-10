@@ -101,6 +101,51 @@ struct DockViewChecks {
                 store.stopBackgroundServices()
             }
         }
+        // Keep the running-app universe inside one collapsed fixture group so
+        // add/remove checks do not depend on the host's application count.
+        do {
+            var configuration = DockConfiguration()
+            configuration.dockWidth = 1000
+            configuration.magnificationScale = 1.5
+            configuration.showBadges = false
+            configuration.showPreviews = false
+            let directory = root.appendingPathComponent("automatic-width")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try JSONEncoder().encode(configuration).write(to: directory.appendingPathComponent("configuration.json"))
+            let store = AppStore(directory: directory)
+            store.updateDisplayLimits(screenSizes: [CGSize(width: 1600, height: 1000)])
+            let apps = (0..<4).map { index in
+                AppReference(id: "test.auto.\(index)", name: "Fixture", path: "/System/Applications/Notes.app")
+            }
+            let members = store.runningApps.isEmpty ? [apps[0]] : store.runningApps
+            store.update {
+                $0.entries = [DockEntry(name: "Group", apps: members, isGroup: true)]
+                    + apps[1...2].map { DockEntry(name: $0.name, apps: [$0]) }
+                $0.autoAdjustWidth = true
+            }
+            check(store.displayedEntries.count == 3, "Collapsed running-app group must count as one item")
+            let height = store.effectiveDockHeight
+            let width = store.effectiveDockWidth
+            store.update { $0.insert([apps[3]]) }
+            check(store.effectiveDockWidth > width, "Adding an app did not expand automatic width")
+            check(store.effectiveDockHeight == height, "Automatic width changed the height")
+            store.update { $0.removeApp(id: apps[3].id) }
+            check(store.effectiveDockWidth == width, "Removing an app did not restore automatic width")
+            store.update { $0.iconSpacing = 32 }
+            check(store.effectiveDockWidth == width, "Spacing must retain the existing independent-width rule")
+            check(store.configuration.dockWidth == 1000, "Automatic width overwrote the saved manual width")
+            let strip = DockStripView()
+            let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: 1600) { _ in }
+            check(size.width == width && strip.backdropFrame.height == height, "Rendered automatic dimensions differ")
+            store.update { $0.iconSize = 60 }
+            check(store.effectiveDockHeight > height, "Height must remain adjustable in automatic mode")
+            let changedHeight = store.effectiveDockHeight
+            store.update { $0.autoAdjustWidth = false }
+            check(store.effectiveDockWidth == 1000, "Disabling automatic width must restore the manual choice")
+            check(store.effectiveDockHeight == changedHeight, "Width-mode toggle changed the chosen height")
+            strip.stopAnimations()
+            store.stopBackgroundServices()
+        }
         for size in [NSSize(width: 480, height: 320), NSSize(width: 180, height: 600),
                      NSSize(width: 3000, height: 50), NSSize(width: 80, height: 3000)] {
             let image = NSImage(size: size)

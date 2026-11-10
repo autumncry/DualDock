@@ -81,14 +81,22 @@ struct SettingsView: View {
                     Spacer()
                     Text("\(Int(store.effectiveDockWidth.rounded())) pt").foregroundStyle(.secondary).monospacedDigit()
                 }
+                Toggle("自动调整 Dock 宽度", isOn: Binding(get: { store.configuration.autoAdjustWidth }, set: { value in
+                    store.update { $0.autoAdjustWidth = value }
+                }))
                 Slider(value: Binding(get: { store.effectiveDockWidth }, set: { value in
+                    guard !store.configuration.autoAdjustWidth else { return }
                     store.update { $0.dockWidth = value }
                 }), in: store.sizingLimits.minWidth...store.sizingLimits.maxWidth)
-                    .disabled(store.sizingLimits.minWidth >= store.sizingLimits.maxWidth)
+                    .disabled(store.configuration.autoAdjustWidth || store.sizingLimits.minWidth >= store.sizingLimits.maxWidth)
                     .accessibilityLabel("Dock 宽度")
                 HStack { Text("窄"); Spacer(); Text("宽") }.font(.caption).foregroundStyle(.secondary)
-                Text("上限 \(Int(store.sizingLimits.maxWidth.rounded(.down))) pt，为最窄屏幕的有效宽度。两项尺寸独立调整。")
+                Text("上限 \(Int(store.sizingLimits.maxWidth.rounded(.down))) pt，为最窄屏幕的有效宽度。")
                     .font(.caption).foregroundStyle(.secondary)
+                if store.configuration.autoAdjustWidth {
+                    Text("按当前图标大小和应用数量自动调整宽度，间距仍只影响内部排列。高度仍可手动设置；关闭后恢复上次手动宽度。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("图标间距").font(.headline)

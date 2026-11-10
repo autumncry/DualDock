@@ -32,17 +32,19 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 5
+    public static let currentVersion = 6
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
     public var iconSize: Double = 48
     public var iconSpacing: Double = 14
-    /// Legacy automatic-width baseline, retained for migration to explicit width.
+    /// Spacing baseline for automatic width and legacy explicit-width migration.
     public var dockWidthReferenceSpacing: Double = 14
-    /// Requested main-bar width. Nil legacy values are initialized once using
+    /// Saved manual width, retained during automatic mode. Nil values are initialized once using
     /// the live application row, before the app first renders and saves them.
     public var dockWidth: Double?
+    /// Optional content-driven width; the stored dockWidth remains the manual choice.
+    public var autoAdjustWidth: Bool = false
     public var magnificationEnabled: Bool = true
     public var magnificationScale: Double = 5.0 / 3.0
     public var showPreviews: Bool = true
@@ -52,7 +54,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth
+        case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth, autoAdjustWidth
         case magnificationEnabled, magnificationScale, showPreviews, showBadges, hideSystemDock
     }
 
@@ -69,6 +71,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         // this baseline remains independent from later spacing-slider changes.
         dockWidthReferenceSpacing = try values.decodeIfPresent(Double.self, forKey: .dockWidthReferenceSpacing) ?? iconSpacing
         dockWidth = try values.decodeIfPresent(Double.self, forKey: .dockWidth)
+        autoAdjustWidth = try values.decodeIfPresent(Bool.self, forKey: .autoAdjustWidth) ?? false
         magnificationEnabled = try values.decodeIfPresent(Bool.self, forKey: .magnificationEnabled) ?? true
         magnificationScale = try values.decodeIfPresent(Double.self, forKey: .magnificationScale) ?? 5.0 / 3.0
         showPreviews = try values.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? true

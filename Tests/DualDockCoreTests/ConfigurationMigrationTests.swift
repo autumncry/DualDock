@@ -2,6 +2,59 @@ import XCTest
 @testable import DualDockCore
 
 final class ConfigurationMigrationTests: XCTestCase {
+    func testVersionFiveKeepsManualSizeAndLayoutWithAutoWidthOff() throws {
+        var saved = DockConfiguration()
+        saved.dockWidth = 1325.375
+        saved.iconSize = 180.25
+        saved.iconSpacing = 6.875
+        saved.dockWidthReferenceSpacing = 8.125
+        saved.mode = .runningOnly
+        saved.showBadges = false
+        saved.entries = [DockEntry(name: "Work", apps: [
+            .init(id: "test.a", name: "A", path: "/Applications/A.app"),
+            .init(id: "test.b", name: "B", path: "/Applications/B.app")
+        ], isGroup: true)]
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
+        legacy["version"] = 5
+        legacy.removeValue(forKey: "autoAdjustWidth")
+        let restored = try JSONDecoder().decode(DockConfiguration.self, from: JSONSerialization.data(withJSONObject: legacy))
+        var expected = saved
+        expected.version = 6
+        XCTAssertEqual(restored, expected)
+        XCTAssertFalse(restored.autoAdjustWidth)
+    }
+
+    func testAutoWidthPersistsWithoutReplacingManualSizeOrOtherSettings() throws {
+        var saved = DockConfiguration()
+        saved.autoAdjustWidth = true
+        saved.dockWidth = 1477.625
+        saved.iconSize = 123.456
+        saved.iconSpacing = 9.75
+        saved.magnificationScale = 1.82
+        saved.hideSystemDock = true
+        saved.entries = [DockEntry(name: "Group", apps: [
+            .init(id: "test.app", name: "App", path: "/Applications/App.app")
+        ], isGroup: true)]
+        let restored = try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(saved))
+        XCTAssertTrue(restored.autoAdjustWidth)
+        XCTAssertEqual(restored, saved)
+        var manual = restored
+        manual.autoAdjustWidth = false
+        let reopened = try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(manual))
+        XCTAssertFalse(reopened.autoAdjustWidth)
+        XCTAssertEqual(reopened.dockWidth, saved.dockWidth)
+        XCTAssertEqual(reopened.iconSize, saved.iconSize)
+        XCTAssertEqual(reopened.entries, saved.entries)
+    }
+
+    func testAutoWidthDoesNotInventAMissingManualWidthDuringDecode() throws {
+        let restored = try JSONDecoder().decode(DockConfiguration.self,
+            from: Data("{\"version\":6,\"autoAdjustWidth\":true,\"iconSize\":72}".utf8))
+        XCTAssertTrue(restored.autoAdjustWidth)
+        XCTAssertNil(restored.dockWidth)
+        XCTAssertEqual(restored.iconSize, 72)
+    }
+
     func testVersionFourDefersWidthMigrationUntilLiveRowIsKnown() throws {
         let decoded = try JSONDecoder().decode(DockConfiguration.self,
             from: Data("{\"version\":4,\"iconSize\":40.8,\"iconSpacing\":10,\"dockWidthReferenceSpacing\":6.48}".utf8))
