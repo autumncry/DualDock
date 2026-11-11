@@ -6,6 +6,7 @@ import DualDockCore
 final class DisplayCoordinator {
     struct ScreenDock {
         let screen: NSScreen
+        let displayID: String
         let panel: DockPanel
         let strip: DockStripView
     }
@@ -25,6 +26,11 @@ final class DisplayCoordinator {
     private var groupPanel: DockPanel?
     private var popupScreen: CGDirectDisplayID?
     private var popupAnchor = NSRect.zero
+    private var groupEdge: DockEdge = .bottom
+    private var previewEdge: DockEdge = .bottom
+    private var previewAnchor = NSRect.zero
+    private var geometryRefreshScheduled = false
+    private var stopped = false
     private var pointerOutsideSince: Date?
     private var contextMenuTracking = false
     private var menuTrackingObserver: MenuTrackingObserver?
@@ -43,6 +49,13 @@ final class DisplayCoordinator {
         }.store(in: &subscriptions)
         store.$badgeLabels.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.redrawBadges() }
+        }.store(in: &subscriptions)
+        store.$nativeDockMetrics.dropFirst().sink { [weak self] _ in
+            guard let self, self.store.configuration.adaptiveSizing else { return }
+            DispatchQueue.main.async { self.refreshDisplays() }
+        }.store(in: &subscriptions)
+        store.$resizeRevision.dropFirst().sink { [weak self] _ in
+            self?.scheduleGeometryRefresh()
         }.store(in: &subscriptions)
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.dismissPopups(); self?.refreshDisplays() }
@@ -63,9 +76,12 @@ final class DisplayCoordinator {
     }
 
     func refreshDisplays() {
+        guard !stopped else { return }
+        docks.values.forEach { $0.strip.cancelResize() }
         dismissPopups()
         let allScreens = NSScreen.screens
-        store.updateDisplayLimits(screenSizes: allScreens.map { $0.frame.size })
+        let info = DockDisplayInfo.current()
+        store.updateDisplays(info)
         let screens = allScreens.filter { CGDisplayMirrorsDisplay(Self.id($0)) == kCGNullDirectDisplay }
         let valid = Set(screens.map(Self.id))
         for id in Array(docks.keys) where !valid.contains(id) {
@@ -76,6 +92,8 @@ final class DisplayCoordinator {
         }
         for screen in screens {
             let id = Self.id(screen)
+            guard let display = info.first(where: { $0.runtimeID == id }) else { continue }
+            let presentation = store.presentation(for: display.id)
             let old = docks[id]
             let panel = old?.panel ?? DockPanel()
             // A shadow on the transparent canvas also outlines magnified icons.
@@ -87,17 +105,47 @@ final class DisplayCoordinator {
                 self?.pointerIsOverPopup(point, includeGroup: true) ?? false
             }
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
+            strip.resizeInteractionAllowed = { [weak self] in
+                guard let self else { return false }
+                return self.groupPanel == nil && self.previewPanel == nil && !self.contextMenuTracking
+            }
+            strip.onResizeBegan = { [weak self] in self?.dismissPopups() }
+            strip.onResizeChanged = { [weak self] value in self?.store.setResizePreview(value, for: display.id) }
+            strip.onResizeEnded = { [weak self] value in
+                guard let self else { return }
+                if let value { self.store.commitManualResize(value, for: display.id) }
+                else { self.store.setResizePreview(nil, for: display.id) }
+            }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
-            let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: CGFloat(store.sizingLimits.maxWidth)) { [weak self] tile in self?.configure(tile, on: screen) }
+            _ = strip.populate(entries: store.displayedEntries, store: store, maxWidth: presentation.maximumLength,
+                               presentation: presentation) { [weak self] tile in
+                self?.configure(tile, on: screen, displayID: display.id, edge: presentation.edge)
+            }
             panel.contentView = strip
-            // Respect the native Dock's reserved edge while the user keeps it visible.
-            let nativeInset = max(0, screen.visibleFrame.minY - screen.frame.minY)
-            let y = screen.frame.minY + (store.configuration.hideSystemDock ? 8 : max(8, nativeInset + 6))
-            panel.setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: y, width: size.width, height: size.height), display: true)
+            if let geometry = strip.layoutGeometry {
+                panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: true)
+            }
             strip.updateMousePassthrough()
-            docks[id] = ScreenDock(screen: screen, panel: panel, strip: strip)
+            docks[id] = ScreenDock(screen: screen, displayID: display.id, panel: panel, strip: strip)
         }
         applyFullscreenState()
+    }
+
+    private func scheduleGeometryRefresh() {
+        guard !stopped, !geometryRefreshScheduled else { return }
+        geometryRefreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            self.geometryRefreshScheduled = false
+            for dock in self.docks.values {
+                guard let display = self.store.displays.first(where: { $0.id == dock.displayID }) else { continue }
+                _ = dock.strip.updatePresentation(self.store.presentation(for: dock.displayID))
+                if let geometry = dock.strip.layoutGeometry {
+                    dock.panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: true)
+                }
+                dock.strip.updateMousePassthrough()
+            }
+        }
     }
 
     func resetMagnification() {
@@ -115,25 +163,27 @@ final class DisplayCoordinator {
     }
 
     func stop() {
+        stopped = true
         poll?.invalidate()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
         subscriptions.removeAll()
         dismissPopups()
-        docks.values.forEach { $0.strip.stopAnimations(); $0.panel.close() }
+        docks.values.forEach { $0.strip.cancelResize(); $0.strip.stopAnimations(); $0.panel.close() }
         docks.removeAll()
     }
 
-    private func configure(_ tile: DockTile, on screen: NSScreen) {
+    private func configure(_ tile: DockTile, on screen: NSScreen, displayID: String, edge: DockEdge) {
+        tile.menuEdge = edge
         tile.onPress = { [weak self, weak tile] in
             guard let self, let tile else { return }
-            if tile.entry.isGroup { self.openGroup(tile, screen: screen) }
+            if tile.entry.isGroup { self.openGroup(tile, screen: screen, displayID: displayID, edge: edge) }
             else if let app = tile.entry.apps.first { self.dismissPopups(); self.store.launch(app) }
         }
         tile.onHover = { [weak self, weak tile] inside in
             guard let self, let tile else { return }
-            if inside { self.hover(tile, screen: screen) }
+            if inside { self.hover(tile, screen: screen, edge: edge) }
             else {
                 // Monitors from different strips may report enter/leave in
                 // either order. A stale main-strip leave must not cancel a
@@ -162,14 +212,18 @@ final class DisplayCoordinator {
         tile.window?.convertToScreen(tile.convert(tile.visibleRect, to: nil)) ?? .zero
     }
 
-    private func openGroup(_ tile: DockTile, screen: NSScreen) {
+    private func openGroup(_ tile: DockTile, screen: NSScreen, displayID: String, edge: DockEdge) {
         dismissPopups()
         let strip = DockStripView()
         strip.pointerIsOccluded = { [weak self] point in
             self?.pointerIsOverPopup(point, includeGroup: false) ?? false
         }
         let members = tile.entry.apps.map { DockEntry(name: $0.name, apps: [$0]) }
-        let size = strip.populate(entries: members, groupID: tile.entry.id, store: store, maxWidth: screen.frame.width - 32) { [weak self] child in self?.configure(child, on: screen) }
+        let presentation = store.presentation(for: displayID, group: true)
+        let size = strip.populate(entries: members, groupID: tile.entry.id, store: store,
+                                  maxWidth: presentation.maximumLength, presentation: presentation) { [weak self] child in
+            self?.configure(child, on: screen, displayID: displayID, edge: edge)
+        }
         strip.document.onDropAtEnd = { [weak self] info in
             self?.handleDrop(info, target: nil, groupID: tile.entry.id, merge: true, after: true) ?? false
         }
@@ -178,8 +232,9 @@ final class DisplayCoordinator {
         panel.level = .popUpMenu
         panel.contentView = strip
         popupAnchor = tileRect(tile)
+        groupEdge = edge
         popupScreen = Self.id(screen)
-        panel.setFrame(popupFrame(size: size, anchor: popupAnchor, screen: screen), display: true)
+        panel.setFrame(popupFrame(size: size, anchor: popupAnchor, screen: screen, edge: edge), display: true)
         strip.updateMousePassthrough()
         groupPanel = panel
         panel.orderFrontRegardless()
@@ -187,7 +242,7 @@ final class DisplayCoordinator {
         pointerOutsideSince = nil
     }
 
-    private func hover(_ tile: DockTile, screen: NSScreen) {
+    private func hover(_ tile: DockTile, screen: NSScreen, edge: DockEdge) {
         // A higher popup owns the pointer even if a lower transparent Dock
         // canvas also geometrically contains that screen coordinate.
         guard !pointerIsOverPopup(NSEvent.mouseLocation, includeGroup: tile.groupID == nil) else { return }
@@ -227,15 +282,17 @@ final class DisplayCoordinator {
                   self.interactionRect(tile).contains(NSEvent.mouseLocation),
                   !self.pointerIsOverPopup(NSEvent.mouseLocation, includeGroup: tile.groupID == nil) else { return }
             self.pendingPreviewScreen = nil
-            self.showPreview(previews, app: app, anchor: self.tileRect(tile), sourceRect: self.interactionRect(tile), screen: screen)
+            self.showPreview(previews, app: app, anchor: self.tileRect(tile), sourceRect: self.interactionRect(tile), screen: screen, edge: edge)
         }
     }
 
-    private func showPreview(_ items: [WindowPreview], app: AppReference, anchor: NSRect, sourceRect: NSRect, screen: NSScreen) {
+    private func showPreview(_ items: [WindowPreview], app: AppReference, anchor: NSRect, sourceRect: NSRect, screen: NSScreen, edge: DockEdge) {
         previewPanel?.close()
         previewPanel = nil
         let visibleItems = items.filter { $0.image != nil }
-        guard let layout = PreviewStripLayout(itemCount: visibleItems.count, maxWidth: screen.frame.width - 40) else {
+        let available = placementBounds(for: screen)
+        guard let layout = PreviewStripLayout(itemCount: visibleItems.count,
+                                               maxWidth: min(screen.frame.width - 40, available.width - 24)) else {
             if groupPanel == nil { popupScreen = nil }
             return
         }
@@ -282,8 +339,10 @@ final class DisplayCoordinator {
         // The group frame already contains its members. Keep its original
         // source anchor so the short transition bridge remains stable.
         if groupPanel == nil { popupAnchor = sourceRect }
+        previewAnchor = anchor
+        previewEdge = edge
         popupScreen = Self.id(screen)
-        panel.setFrame(popupFrame(size: size, anchor: anchor, screen: screen), display: true)
+        panel.setFrame(popupFrame(size: size, anchor: anchor, screen: screen, edge: edge), display: true)
         previewPanel = panel
         panel.orderFrontRegardless()
         refreshMousePassthrough()
@@ -305,33 +364,29 @@ final class DisplayCoordinator {
         alert.runModal()
     }
 
-    private func popupFrame(size: NSSize, anchor: NSRect, screen: NSScreen) -> NSRect {
-        let usable = screen.frame.insetBy(dx: 12, dy: 12)
-        let x = min(max(anchor.midX - size.width / 2, usable.minX), usable.maxX - size.width)
-        let y = min(anchor.maxY + 10, usable.maxY - size.height)
-        return NSRect(origin: NSPoint(x: x, y: y), size: size)
+    private func popupFrame(size: NSSize, anchor: NSRect, screen: NSScreen, edge: DockEdge) -> NSRect {
+        DockPopupPlacement.frame(size: size, anchor: anchor, edge: edge, visibleScreen: placementBounds(for: screen))
+    }
+
+    private func placementBounds(for screen: NSScreen) -> NSRect {
+        store.displays.first(where: { $0.runtimeID == Self.id(screen) })?.visibleFrame ?? screen.visibleFrame
     }
 
     private func pointerIsOverPopup(_ point: NSPoint, includeGroup: Bool) -> Bool {
-        if let previewPanel, previewPanel.isVisible, previewPanel.frame.contains(point) { return true }
+        if let previewPanel, previewPanel.isVisible {
+            if previewPanel.frame.contains(point) { return true }
+            if DockPopupPlacement.bridge(source: previewAnchor, popup: previewPanel.frame, edge: previewEdge)?.contains(point) == true { return true }
+        }
         if includeGroup, let groupPanel, groupPanel.isVisible {
             let frame = groupPanel.frame
             if frame.contains(point) { return true }
-            // Protect only the gap above the captured source icon, without
-            // making real neighboring main-row icons unclickable.
-            let height = frame.minY - popupAnchor.maxY
-            if height > 0 {
-                let left = min(popupAnchor.minX, frame.minX)
-                let right = max(popupAnchor.maxX, frame.maxX)
-                let bridge = NSRect(x: left, y: popupAnchor.maxY, width: right - left, height: height)
-                if bridge.contains(point) { return true }
-            }
+            if DockPopupPlacement.bridge(source: popupAnchor, popup: frame, edge: groupEdge)?.contains(point) == true { return true }
         }
         return false
     }
 
     private func refreshMousePassthrough() {
-        docks.values.forEach { $0.strip.updateMousePassthrough() }
+        docks.values.forEach { $0.strip.updateMousePassthrough(); $0.strip.refreshResizeCursors() }
         (groupPanel?.contentView as? DockStripView)?.updateMousePassthrough()
     }
 

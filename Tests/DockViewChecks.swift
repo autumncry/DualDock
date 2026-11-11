@@ -11,7 +11,7 @@ struct DockViewChecks {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         var checks = 0
         func check(_ value: Bool, _ message: String) {
-            precondition(value, message)
+            if !value { fputs("FAIL: \(message)\n", stderr); exit(1) }
             checks += 1
         }
         for count in [5, 20] {
@@ -131,22 +131,26 @@ struct DockViewChecks {
             check(store.effectiveDockHeight == height, "Automatic width changed the height")
             store.update { $0.removeApp(id: apps[3].id) }
             check(store.effectiveDockWidth == width, "Removing an app did not restore automatic width")
-            store.update { $0.iconSpacing = 32 }
-            let roomyWidth = store.effectiveDockWidth
-            check(roomyWidth > width, "Automatic width must expand when actual icon spacing grows")
-            check(store.effectiveDockHeight == height, "Automatic spacing changed the height")
+            let saved = store.configuration
+            store.updateManualSizing(for: nil) {
+                $0.iconSpacing = 32; $0.length = 1400; $0.thickness = 100; $0.iconScale = 0.5
+            }
+            check(store.configuration == saved, "Complete adaptive mode must reject manual size changes")
+            check(store.effectiveDockWidth == width, "Manual settings changed native adaptive width")
+            check(store.effectiveDockHeight == height, "Manual settings changed native adaptive height")
             check(store.configuration.dockWidth == 1000, "Automatic width overwrote the saved manual width")
             let strip = DockStripView()
             let size = strip.populate(entries: store.displayedEntries, store: store, maxWidth: 1600) { _ in }
-            check(size.width == roomyWidth && strip.backdropFrame.height == height, "Rendered automatic dimensions differ")
-            store.update { $0.iconSpacing = 0 }
-            check(store.effectiveDockWidth < roomyWidth, "Automatic width must shrink when spacing becomes compact")
-            store.update { $0.iconSize = 60 }
-            check(store.effectiveDockHeight > height, "Height must remain adjustable in automatic mode")
-            let changedHeight = store.effectiveDockHeight
-            store.update { $0.autoAdjustWidth = false }
+            check(abs(Double(strip.layoutGeometry?.bodyLength ?? 0) - width) < 0.001
+                    && abs(Double(strip.backdropFrame.height) - height) < 0.001,
+                  "Rendered native adaptive dimensions differ")
+            check(size.width >= strip.backdropFrame.width, "Magnification canvas cannot crop the backdrop")
+            check(!store.presentation(for: nil).canResize, "Adaptive mode must disable edge resizing")
+            store.setAdaptiveSizing(false)
             check(store.effectiveDockWidth == 1000, "Disabling automatic width must restore the manual choice")
-            check(store.effectiveDockHeight == changedHeight, "Width-mode toggle changed the chosen height")
+            check(store.effectiveDockHeight == 66, "Disabling adaptive sizing must restore manual thickness")
+            store.updateManualSizing(for: nil) { $0.thickness = 82.5 }
+            check(store.effectiveDockHeight == 82.5, "Manual thickness control must remain available")
             store.update { $0.iconSpacing = 32 }
             check(store.effectiveDockWidth == 1000, "Spacing must not change the restored manual width")
             strip.stopAnimations()

@@ -100,29 +100,43 @@ final class DockStripView: NSView {
     let document = DockDocumentView(frame: .zero)
     private(set) var tiles: [DockTile] = []
     var settingsAction: (() -> Void)?
-    /// Higher-level popups own pointer input over their entire visible panel,
-    /// including padding that overlaps this strip's transparent canvas.
     var pointerIsOccluded: ((NSPoint) -> Bool)?
+    var resizeInteractionAllowed: (() -> Bool)?
+    var onResizeBegan: (() -> Void)?
+    var onResizeChanged: ((DockManualSizing) -> Void)?
+    var onResizeEnded: ((DockManualSizing?) -> Void)?
     private(set) var desiredWidth: CGFloat = 200
+    var layoutGeometry: DockGeometry? { currentGeometry }
+    var isResizing: Bool { resizeSession?.started == true }
+    var scrollOffset: CGFloat {
+        currentGeometry?.canonicalScrollOffset(clipBounds: scrolling.contentView.bounds,
+                                               actualDocumentSize: document.frame.size) ?? 0
+    }
 
+    private struct ResizeSession {
+        let point: NSPoint
+        let handle: DockResizeHandle
+        let edge: DockEdge
+        let sizing: DockManualSizing
+        let bounds: DockResizeBounds
+        let clickTile: DockTile?
+        var started = false
+        var proposed: DockManualSizing
+    }
+    private var resizeSession: ResizeSession?
+    private var presentation: DockPresentation?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var divider: NSBox?
     private var emptyLabel: NSTextField?
     private var tracking: NSTrackingArea?
-    private var baseSide: CGFloat = 48
-    private var spacing: CGFloat = 14
-    private var widthReferenceSpacing: CGFloat?
-    private var fixedPanelWidth: CGFloat?
-    private var maximumWidth: CGFloat = 1800
-    private var magnificationScale: CGFloat = 1
     private var isGroup = false
     private var dividerIndex: Int?
-    private var baseLayout: DockWaveLayout?
-    private var currentLayout: DockWaveLayout?
-    private var targetLayout: DockWaveLayout?
+    private var baseGeometry: DockGeometry?
+    private var currentGeometry: DockGeometry?
+    private var targetGeometry: DockGeometry?
     private var focusIndex: CGFloat?
-    private var lensAnchorX: CGFloat?
+    private var lensAnchor: CGFloat?
     private var hoveredIndex: Int?
     private var interactionDepth = 0
     private var waitingForMouseRelease = false
@@ -130,6 +144,13 @@ final class DockStripView: NSView {
     private var displayLink: CADisplayLink?
     private var animationTarget: DockAnimationTarget?
     private var animationTiming = DockAnimationTiming()
+    private struct CursorLayout: Equatable {
+        let frame: NSRect
+        let edge: DockEdge
+        let enabled: Bool
+    }
+    private var cursorLayout: CursorLayout?
+    private var ownsResizeCursor = false
 
     init() {
         super.init(frame: .zero)
@@ -160,6 +181,7 @@ final class DockStripView: NSView {
         addSubview(scrolling)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         if tracking == nil {
@@ -173,165 +195,162 @@ final class DockStripView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeMouseMonitors()
-        if window == nil { stopAnimations(); return }
+        cursorLayout = nil
+        if window == nil { cancelResize(); stopAnimations(); return }
         needsLayout = true
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             self?.updatePointer()
             return event
         }
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
-            self?.updatePointer()
-        }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in self?.updatePointer() }
         updateMousePassthrough()
     }
 
     override func layout() {
         super.layout()
-        guard let currentLayout else { return }
-        let unit = baseSide / 48
-        let viewport = NSRect(x: currentLayout.horizontalInset, y: 0,
-                              width: currentLayout.viewportSize.width, height: currentLayout.viewportSize.height)
-        scrolling.frame = backingAlignedRect(viewport, options: [.alignAllEdgesOutward])
+        guard let geometry = currentGeometry else { return }
+        scrolling.frame = backingAlignedRect(geometry.viewportRect, options: [.alignAllEdgesOutward])
         scrolling.layoutSubtreeIfNeeded()
-        let clipSize = scrolling.contentView.bounds.size
-        let overflows = currentLayout.contentSize.width > currentLayout.viewportSize.width + 0.001
-        scrolling.allowsHorizontalScrolling = overflows
-        document.frame.size = NSSize(width: overflows ? max(currentLayout.contentSize.width, clipSize.width) : clipSize.width,
-                                     height: clipSize.height)
-        if !overflows, scrolling.contentView.bounds.origin != .zero {
-            scrolling.contentView.scroll(to: .zero)
+        let clip = scrolling.contentView.bounds.size
+        let proposed = geometry.documentSize
+        let overflow = geometry.scrollRange > 0.001
+        scrolling.allowsHorizontalScrolling = overflow
+        if geometry.edge.isHorizontal {
+            document.frame.size = NSSize(width: overflow ? max(proposed.width, clip.width) : clip.width, height: clip.height)
+        } else {
+            document.frame.size = NSSize(width: clip.width, height: overflow ? max(proposed.height, clip.height) : clip.height)
         }
-        emptyLabel?.frame = NSRect(x: 10 * unit, y: 8 * unit + baseSide / 2 - 8 * unit,
-                                  width: max(100, currentLayout.contentSize.width - 20 * unit), height: 20 * unit)
+        if !overflow, scrolling.contentView.bounds.origin != .zero { scrolling.contentView.scroll(to: .zero) }
+        let bodyInDocument = document.convert(backdropFrame, from: self)
+        emptyLabel?.frame = NSRect(x: bodyInDocument.minX + 6, y: bodyInDocument.midY - 9,
+                                  width: max(20, bodyInDocument.width - 12), height: 18)
+        refreshResizeCursors()
     }
 
     func populate(entries: [DockEntry], groupID: UUID? = nil, store: AppStore, maxWidth: CGFloat,
-                  configure: (DockTile) -> Void) -> NSSize {
+                  presentation supplied: DockPresentation? = nil, configure: (DockTile) -> Void) -> NSSize {
+        cancelResize()
         stopAnimations()
         document.subviews.forEach { $0.removeFromSuperview() }
         tiles = []; divider = nil; emptyLabel = nil
         interactionDepth = 0
         waitingForMouseRelease = false
-        baseSide = CGFloat(store.effectiveIconSize)
-        spacing = CGFloat(store.configuration.iconSpacing)
-        maximumWidth = max(1, maxWidth)
         isGroup = groupID != nil
-        widthReferenceSpacing = isGroup ? nil : CGFloat(store.configuration.dockWidthReferenceSpacing)
-        fixedPanelWidth = isGroup ? nil : CGFloat(store.effectiveDockWidth)
-        magnificationScale = !isGroup && store.configuration.magnificationEnabled
-            ? CGFloat(store.configuration.magnificationScale) : 1
-        dividerIndex = groupID == nil && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
-        let unit = baseSide / 48
-        backdrop.layer?.cornerRadius = 18 * unit
+        var resolved = supplied ?? store.presentation(for: nil, group: isGroup)
+        resolved.maximumLength = min(resolved.maximumLength, max(1, maxWidth))
+        presentation = resolved
+        dividerIndex = !isGroup && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
         for entry in entries {
-            let tile = DockTile(entry: entry, groupID: groupID, store: store, size: baseSide)
+            let tile = DockTile(entry: entry, groupID: groupID, store: store, size: resolved.style.iconSize)
             tile.onInteractionChanged = { [weak self] active in self?.interactionChanged(active) }
             configure(tile)
             document.addSubview(tile)
             tiles.append(tile)
         }
         if dividerIndex != nil {
-            let line = NSBox()
-            line.boxType = .separator
-            document.addSubview(line)
-            divider = line
+            let line = NSBox(); line.boxType = .separator
+            document.addSubview(line); divider = line
         }
         if entries.isEmpty {
-            let label = NSTextField(labelWithString: groupID == nil ? "拖入应用，开始整理" : "将应用拖到这里")
+            let label = NSTextField(labelWithString: isGroup ? "将应用拖到这里" : "拖入应用，开始整理")
             label.textColor = .secondaryLabelColor
-            label.font = .systemFont(ofSize: 12 * unit)
-            document.addSubview(label)
-            emptyLabel = label
+            label.font = .systemFont(ofSize: 11)
+            label.alignment = .center
+            document.addSubview(label); emptyLabel = label
         }
-        let base = makeLayout(focus: nil)
-        baseLayout = base
-        currentLayout = base
-        targetLayout = base
+        return installBaseGeometry(preservingOffset: 0)
+    }
+
+    /// Geometry-only update: keep existing tiles and the active resize gesture alive.
+    @discardableResult
+    func updatePresentation(_ value: DockPresentation) -> NSSize {
+        let offset = scrollOffset
+        if value.edge != presentation?.edge || !value.canResize { cancelResize() }
+        stopAnimations()
+        presentation = value
+        return installBaseGeometry(preservingOffset: offset)
+    }
+
+    private func installBaseGeometry(preservingOffset offset: CGFloat) -> NSSize {
+        let base = makeGeometry(focus: nil, offset: offset)
+        baseGeometry = base; currentGeometry = base; targetGeometry = base
         apply(base)
-        scrolling.contentView.scroll(to: NSPoint(x: base.initialScrollOffset, y: 0))
-        return base.panelSize
+        let point = base.scrollOrigin(forCanonicalOffset: offset, actualDocumentSize: document.frame.size,
+                                      actualViewportSize: scrolling.contentView.bounds.size)
+        scrolling.contentView.scroll(to: point)
+        scrolling.reflectScrolledClipView(scrolling.contentView)
+        return base.canvasSize
     }
 
     func stopAnimations() {
-        displayLink?.invalidate()
-        displayLink = nil
-        animationTarget = nil
-        animationTiming.pause()
-        focusIndex = nil
-        lensAnchorX = nil
-        lastMousePoint = nil
+        displayLink?.invalidate(); displayLink = nil; animationTarget = nil
+        animationTiming.pause(); focusIndex = nil; lensAnchor = nil; lastMousePoint = nil
         changeHoveredIndex(nil)
     }
 
     func resetMagnification() {
-        stopAnimations()
-        interactionDepth = 0
-        waitingForMouseRelease = false
-        guard let baseLayout else { return }
-        currentLayout = baseLayout
-        targetLayout = baseLayout
-        apply(baseLayout)
+        if resizeSession != nil { cancelResize() }
+        stopAnimations(); interactionDepth = 0; waitingForMouseRelease = false
+        guard let baseGeometry else { return }
+        currentGeometry = baseGeometry; targetGeometry = baseGeometry; apply(baseGeometry)
     }
 
-    override func mouseEntered(with event: NSEvent) { updatePointer() }
-    override func mouseMoved(with event: NSEvent) { updatePointer() }
-    override func mouseExited(with event: NSEvent) {
-        guard interactionDepth == 0 else { return }
+    override func mouseEntered(with event: NSEvent) { updatePointer(); updateResizeCursor() }
+    override func mouseMoved(with event: NSEvent) { updatePointer(); updateResizeCursor() }
+    override func cursorUpdate(with event: NSEvent) { updateResizeCursor() }
+
+    private func updateResizeCursor() {
         guard let window else { return }
+        if pointerIsOccluded?(NSEvent.mouseLocation) == true {
+            if ownsResizeCursor { NSCursor.arrow.set(); ownsResizeCursor = false }
+            return
+        }
+        let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        if let handle = resizeSession?.handle ?? resizeHandle(at: local), let edge = presentation?.edge {
+            DockResizeCursor.cursor(for: handle, edge: edge).set()
+            ownsResizeCursor = true
+        } else if ownsResizeCursor {
+            NSCursor.arrow.set()
+            ownsResizeCursor = false
+        }
+    }
+    override func mouseExited(with event: NSEvent) {
+        guard interactionDepth == 0, resizeSession == nil, let window else { return }
+        updateResizeCursor()
         let local = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
         if !bounds.contains(local) { updatePointer(force: true) }
     }
 
-    /// Only the opaque Dock strip and the visible magnified icon capture mouse input.
-    /// The reserved transparent band above the strip must pass clicks to other apps.
     func containsInteractivePoint(_ point: NSPoint) -> Bool {
-        backdropFrame.contains(point) || interactionTileIndex(at: point) != nil
+        backdropFrame.contains(point) || interactionTileIndex(at: point) != nil || resizeHandle(at: point) != nil
     }
 
     private func tileIndex(at local: NSPoint) -> Int? {
-        guard scrolling.frame.contains(local), let currentLayout else { return nil }
+        guard scrolling.frame.contains(local), let geometry = currentGeometry else { return nil }
         let point = document.convert(local, from: self)
-        // Actual frames own hover/preview targets. Their widths never overlap,
-        // while the lens itself uses a separate immutable coordinate mapping.
-        return currentLayout.tileFrames.firstIndex { $0.contains(point) }
+        return geometry.tileFrames.firstIndex { $0.contains(point) }
     }
 
     private func interactionTileIndex(at local: NSPoint) -> Int? {
         guard let index = tileIndex(at: local) else { return nil }
-        // Keep the row's small inter-icon padding clickable as part of its
-        // tile. Above the backdrop only the visible icon captures input.
         if backdropFrame.contains(local) { return index }
         let tile = tiles[index]
-        let point = tile.convert(local, from: self)
-        if tile.visualIconBounds.contains(point) { return index }
-        let unit = baseSide / 48
-        let runningIndicator = NSRect(x: tile.bounds.midX - 4 * unit, y: 0,
-                                      width: 8 * unit, height: 6 * unit)
-        return runningIndicator.contains(point) ? index : nil
+        return tile.visualIconBounds.contains(tile.convert(local, from: self)) ? index : nil
     }
 
-    func updateMousePassthrough() {
-        updateMousePassthrough(at: NSEvent.mouseLocation)
-    }
-
+    func updateMousePassthrough() { updateMousePassthrough(at: NSEvent.mouseLocation) }
     func updateMousePassthrough(at global: NSPoint) {
-        guard interactionDepth == 0, let window else { return }
-        guard pointerIsOccluded?(global) != true else {
-            window.ignoresMouseEvents = true
-            return
-        }
+        guard resizeSession == nil, interactionDepth == 0, let window else { return }
+        if pointerIsOccluded?(global) == true { window.ignoresMouseEvents = true; return }
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
         window.ignoresMouseEvents = !containsInteractivePoint(local)
     }
-
     private func removeMouseMonitors() {
         if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
         if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
-        localMouseMonitor = nil
-        globalMouseMonitor = nil
+        localMouseMonitor = nil; globalMouseMonitor = nil
     }
-
     deinit {
         if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
         if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
@@ -340,78 +359,173 @@ final class DockStripView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         guard containsInteractivePoint(local) else { return nil }
+        if resizeHandle(at: local) != nil { return self }
         if let index = interactionTileIndex(at: local) { return tiles[index] }
-        // Blank regions route here so context menus and scrolling remain available.
         return self
     }
-
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { document.draggingEntered(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { document.draggingUpdated(sender) }
     override func draggingExited(_ sender: NSDraggingInfo?) { document.draggingExited(sender) }
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { document.prepareForDragOperation(sender) }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { document.performDragOperation(sender) }
+    override func scrollWheel(with event: NSEvent) { if resizeSession == nil { scrolling.scrollWheel(with: event) } }
+    override func rightMouseDown(with event: NSEvent) { showContextMenu(event) }
 
-    override func scrollWheel(with event: NSEvent) { scrolling.scrollWheel(with: event) }
-
-    override func rightMouseDown(with event: NSEvent) { showBlankAreaMenu(event) }
-
-    override func mouseDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.control) { showBlankAreaMenu(event) }
+    private func resizeHandle(at local: NSPoint) -> DockResizeHandle? {
+        guard !isGroup, let p = presentation, p.canResize, onResizeEnded != nil,
+              resizeInteractionAllowed?() != false else { return nil }
+        return DockResizePolicy.handle(at: local, backdrop: backdropFrame, edge: p.edge,
+                                       edgeBand: 6, cornerBand: max(16, min(32, p.style.barThickness * 0.56)))
     }
 
-    private func showBlankAreaMenu(_ event: NSEvent) {
+    func refreshResizeCursors() {
+        guard let p = presentation else { return }
+        let state = CursorLayout(frame: backdropFrame, edge: p.edge,
+            enabled: !isGroup && p.canResize && onResizeEnded != nil && resizeInteractionAllowed?() != false)
+        guard state != cursorLayout else { return }
+        cursorLayout = state
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard !isGroup, let p = presentation, p.canResize, onResizeEnded != nil,
+              resizeInteractionAllowed?() != false else { return }
+        let body = backdropFrame
+        let length = p.edge.isHorizontal ? body.width : body.height
+        let depth = p.edge.isHorizontal ? body.height : body.width
+        let transform = DockAxisTransform(edge: p.edge, length: length, thickness: depth)
+        let corner: CGFloat = max(8, min(16, depth * 0.28))
+        let regions: [(DockResizeHandle, CGRect)] = [
+            (.leading, CGRect(x: -3, y: 0, width: 6, height: depth)),
+            (.trailing, CGRect(x: length - 3, y: 0, width: 6, height: depth)),
+            (.inward, CGRect(x: 0, y: depth - 3, width: length, height: 6)),
+            (.leadingCorner, CGRect(x: -corner, y: depth - corner, width: corner * 2, height: corner * 2)),
+            (.trailingCorner, CGRect(x: length - corner, y: depth - corner, width: corner * 2, height: corner * 2))
+        ]
+        for (handle, canonical) in regions {
+            let rect = transform.rectToPhysical(canonical).offsetBy(dx: body.minX, dy: body.minY).intersection(bounds)
+            if !rect.isEmpty { addCursorRect(rect, cursor: DockResizeCursor.cursor(for: handle, edge: p.edge)) }
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { showContextMenu(event); return }
+        guard let window, let p = presentation else { return }
+        let point = window.convertPoint(toScreen: event.locationInWindow)
         let local = convert(event.locationInWindow, from: nil)
-        guard backdropFrame.contains(local), interactionTileIndex(at: local) == nil, settingsAction != nil else { return }
-        interactionChanged(true)
-        defer { interactionChanged(false) }
+        guard let handle = resizeHandle(at: local) else { return }
+        let clickTile = interactionTileIndex(at: local).map { tiles[$0] }.flatMap { tile in
+            tile.visualIconBounds.contains(tile.convert(local, from: self)) ? tile : nil
+        }
+        resizeSession = ResizeSession(point: point, handle: handle, edge: p.edge,
+            sizing: p.requestedManualSizing, bounds: p.resizeBounds, clickTile: clickTile,
+            proposed: p.requestedManualSizing)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard var session = resizeSession else { return }
+        let point = NSEvent.mouseLocation
+        let delta = CGSize(width: point.x - session.point.x, height: point.y - session.point.y)
+        guard session.started || hypot(delta.width, delta.height) >= 2 else { return }
+        if !session.started {
+            session.started = true; resizeSession = session
+            interactionChanged(true)
+            onResizeBegan?()
+        }
+        guard resizeSession != nil else { return }
+        session.proposed = DockResizePolicy.propose(start: session.sizing, handle: session.handle,
+                                                   edge: session.edge, screenDelta: delta, bounds: session.bounds)
+        resizeSession = session
+        DockResizeCursor.cursor(for: session.handle, edge: session.edge).set()
+        ownsResizeCursor = true
+        onResizeChanged?(session.proposed)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let session = resizeSession else { return }
+        resizeSession = nil
+        if session.started {
+            onResizeEnded?(session.proposed)
+            interactionChanged(false)
+            updateResizeCursor()
+            window?.invalidateCursorRects(for: self)
+        } else if let tile = session.clickTile, let window {
+            let local = tile.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+            if tile.visualIconBounds.contains(local) { tile.onPress?() }
+        }
+    }
+
+    func cancelResize() {
+        guard let session = resizeSession else { return }
+        resizeSession = nil
+        if session.started {
+            onResizeEnded?(nil)
+            interactionDepth = max(0, interactionDepth - 1)
+            NSCursor.arrow.set()
+            ownsResizeCursor = false
+            window?.invalidateCursorRects(for: self)
+        }
+    }
+
+    private func showContextMenu(_ event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        // Resize handles take hit-testing priority, but secondary clicks on
+        // an icon crossing that edge still belong to the application menu.
+        if let index = interactionTileIndex(at: local) {
+            tiles[index].rightMouseDown(with: event)
+            return
+        }
+        guard backdropFrame.contains(local), settingsAction != nil else { return }
+        interactionChanged(true); defer { interactionChanged(false) }
         let menu = NSMenu()
         menu.addAction("DualDock 设置…") { [weak self] in self?.settingsAction?() }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 
-    private func makeLayout(focus: CGFloat?) -> DockWaveLayout {
-        DockWaveLayout.make(count: tiles.count, iconSize: baseSide, spacing: spacing,
-                            magnificationScale: magnificationScale, focusIndex: focus,
-                            maxWidth: maximumWidth, hasControls: false, dividerIndex: dividerIndex,
-                            scrollOffset: scrolling.contentView.bounds.origin.x, lensAnchorX: lensAnchorX,
-                            widthReferenceSpacing: widthReferenceSpacing, fixedPanelWidth: fixedPanelWidth)
+    private func makeGeometry(focus: CGFloat?, offset: CGFloat? = nil) -> DockGeometry {
+        guard let p = presentation else {
+            return .make(count: 0, edge: .bottom,
+                         style: .init(iconSize: 48, barThickness: 66, gap: 14, leadingPadding: 6, trailingPadding: 6), maximumLength: 240)
+        }
+        return .make(count: tiles.count, edge: p.edge, style: p.style, maximumLength: p.maximumLength,
+                     fixedLength: p.fixedLength, focusIndex: focus, dividerIndex: dividerIndex,
+                     scrollOffset: offset ?? scrollOffset, lensAnchor: lensAnchor, resizeMargin: p.resizeMargin)
     }
 
     private func updatePointer(force: Bool = false) {
         guard window?.isVisible == true else { return }
         updatePointer(at: NSEvent.mouseLocation, buttonsPressed: NSEvent.pressedMouseButtons != 0, force: force)
     }
-
-    /// Process one pointer snapshot independently from the OS event source.
     func updatePointer(at global: NSPoint, buttonsPressed: Bool, force: Bool = false) {
-        guard interactionDepth == 0, let window, let currentLayout else { return }
+        guard resizeSession == nil, interactionDepth == 0, let window, let geometry = currentGeometry else { return }
         updateMousePassthrough(at: global)
-        if pointerIsOccluded?(global) == true {
-            pauseForPointerOcclusion()
-            return
-        }
+        if pointerIsOccluded?(global) == true { pauseForPointerOcclusion(); return }
         if buttonsPressed {
-            // Desktop drags unrelated to this Dock must not wake an idle display link.
-            if focusIndex != nil || baseLayout.map({ currentLayout.maximumDifference(from: $0) > 0.08 }) == true {
-                waitingForMouseRelease = true
-                startAnimation()
+            if focusIndex != nil || baseGeometry.map({ geometry.maximumDifference(from: $0) > 0.08 }) == true {
+                waitingForMouseRelease = true; startAnimation()
             }
             return
         }
         if !force, let previous = lastMousePoint, hypot(global.x - previous.x, global.y - previous.y) < 0.05 { return }
         lastMousePoint = global
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
-        let index = tileIndex(at: local)
-        changeHoveredIndex(index)
-        if !isGroup, magnificationScale > 1, scrolling.frame.contains(local), let baseLayout {
+        if resizeHandle(at: local) != nil {
+            // Cursor feedback only; do not collapse or grow icons while the
+            // pointer is aiming at a resize edge.
+            changeHoveredIndex(nil); displayLink?.isPaused = true; animationTiming.pause()
+            return
+        }
+        changeHoveredIndex(tileIndex(at: local))
+        if !isGroup, (presentation?.style.magnificationScale ?? 1) > 1,
+           scrolling.frame.contains(local), let baseGeometry {
             let point = document.convert(local, from: self)
-            focusIndex = currentLayout.magnificationFocus(at: point, basedOn: baseLayout)
-            lensAnchorX = focusIndex == nil ? nil : point.x
-        } else { focusIndex = nil; lensAnchorX = nil }
-        let next = makeLayout(focus: focusIndex)
-        guard targetLayout != next || currentLayout.maximumDifference(from: next) > 0.08 else { return }
-        targetLayout = next
-        startAnimation()
+            focusIndex = geometry.magnificationFocus(at: point, basedOn: baseGeometry)
+            lensAnchor = focusIndex == nil ? nil : geometry.documentPointToCanonical(point).x
+        } else { focusIndex = nil; lensAnchor = nil }
+        let next = makeGeometry(focus: focusIndex)
+        guard targetGeometry != next || geometry.maximumDifference(from: next) > 0.08 else { return }
+        targetGeometry = next; startAnimation()
     }
 
     private func changeHoveredIndex(_ index: Int?) {
@@ -424,124 +538,63 @@ final class DockStripView: NSView {
             tile.setHovered(true)
         }
     }
-
     private func interactionChanged(_ active: Bool) {
         interactionDepth = max(0, interactionDepth + (active ? 1 : -1))
-        if active {
-            displayLink?.isPaused = true
-            animationTiming.pause()
-            changeHoveredIndex(nil)
-        } else if interactionDepth == 0 {
-            updatePointer(force: true)
-            startAnimation()
-        }
+        if active { displayLink?.isPaused = true; animationTiming.pause(); changeHoveredIndex(nil) }
+        else if interactionDepth == 0 { updatePointer(force: true); startAnimation() }
     }
-
     private func startAnimation() {
         guard interactionDepth == 0, window != nil else { return }
-        if isGroup, let targetLayout {
-            currentLayout = targetLayout
-            apply(targetLayout)
-            displayLink?.isPaused = true
-            animationTiming.pause()
-            return
-        }
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let targetLayout {
-            currentLayout = targetLayout
-            apply(targetLayout)
-            displayLink?.isPaused = true
-            animationTiming.pause()
-            return
+        if isGroup || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            if let targetGeometry { currentGeometry = targetGeometry; apply(targetGeometry) }
+            displayLink?.isPaused = true; animationTiming.pause(); return
         }
         if displayLink == nil {
-            let proxy = DockAnimationTarget(self)
-            animationTarget = proxy
+            let proxy = DockAnimationTarget(self); animationTarget = proxy
             let link = self.displayLink(target: proxy, selector: #selector(DockAnimationTarget.tick(_:)))
-            link.add(to: .main, forMode: .common)
-            displayLink = link
+            link.add(to: .main, forMode: .common); displayLink = link
         }
-        animationTiming.resume()
-        displayLink?.isPaused = false
+        animationTiming.resume(); displayLink?.isPaused = false
     }
-
     fileprivate func animationTick(_ link: CADisplayLink) {
-        guard interactionDepth == 0, let currentLayout, let targetLayout else {
-            link.isPaused = true
-            animationTiming.pause()
-            return
+        guard resizeSession == nil, interactionDepth == 0, let geometry = currentGeometry, let targetGeometry else {
+            link.isPaused = true; animationTiming.pause(); return
         }
-        if pointerIsOccluded?(NSEvent.mouseLocation) == true {
-            link.isPaused = true
-            pauseForPointerOcclusion()
-            updateMousePassthrough()
-            return
-        }
-        if NSEvent.pressedMouseButtons != 0 {
-            waitingForMouseRelease = true
-            animationTiming.pause()
-            return
-        }
-        if waitingForMouseRelease {
-            waitingForMouseRelease = false
-            updatePointer(force: true)
-            return
-        }
+        if pointerIsOccluded?(NSEvent.mouseLocation) == true { pauseForPointerOcclusion(); updateMousePassthrough(); return }
+        if NSEvent.pressedMouseButtons != 0 { waitingForMouseRelease = true; animationTiming.pause(); return }
+        if waitingForMouseRelease { waitingForMouseRelease = false; updatePointer(force: true); return }
         let fraction = animationTiming.fraction(at: link.timestamp, returningToRest: focusIndex == nil)
-        let remaining = currentLayout.maximumDifference(from: targetLayout)
-        let next = remaining < 0.08 ? targetLayout : currentLayout.interpolated(to: targetLayout, fraction: fraction)
-        self.currentLayout = next
-        apply(next)
-        if remaining < 0.08 {
-            link.isPaused = true
-            animationTiming.pause()
-            refreshHoveredIndex()
-        }
+        let remaining = geometry.maximumDifference(from: targetGeometry)
+        let next = remaining < 0.08 ? targetGeometry : geometry.interpolated(to: targetGeometry, fraction: fraction)
+        currentGeometry = next; apply(next)
+        if remaining < 0.08 { link.isPaused = true; animationTiming.pause(); refreshHoveredIndex() }
     }
-
     private func refreshHoveredIndex() {
-        guard interactionDepth == 0, let window else { return }
+        guard resizeSession == nil, interactionDepth == 0, let window else { return }
         let global = NSEvent.mouseLocation
-        guard pointerIsOccluded?(global) != true else {
-            pauseForPointerOcclusion()
-            updateMousePassthrough()
-            return
-        }
+        if pointerIsOccluded?(global) == true { pauseForPointerOcclusion(); updateMousePassthrough(); return }
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
-        changeHoveredIndex(tileIndex(at: local))
+        changeHoveredIndex(resizeHandle(at: local) == nil ? tileIndex(at: local) : nil)
         updateMousePassthrough()
     }
-
     private func pauseForPointerOcclusion() {
-        // Keep the geometry/focus frozen, but end hover ownership once. The
-        // coordinator scopes leaves to their source; a later return to the same
-        // icon must deliver a fresh enter after its preview has been dismissed.
-        displayLink?.isPaused = true
-        animationTiming.pause()
-        lastMousePoint = nil
-        changeHoveredIndex(nil)
+        displayLink?.isPaused = true; animationTiming.pause(); lastMousePoint = nil; changeHoveredIndex(nil)
     }
-
-    private func apply(_ value: DockWaveLayout) {
-        frame.size = value.panelSize
-        backdrop.frame = NSRect(origin: .zero, size: value.backdropSize)
-        for (tile, itemFrame) in zip(tiles, value.tileFrames) {
-            let sizeChanged = tile.frame.size != itemFrame.size
-            tile.frame = itemFrame
-            if sizeChanged { tile.needsDisplay = true }
+    private func apply(_ value: DockGeometry) {
+        frame.size = value.canvasSize
+        backdrop.frame = value.backdropRect
+        backdrop.layer?.cornerRadius = min(18, value.barThickness * 0.28)
+        let frames = value.tileFrames, icons = value.iconFrames, dots = value.dotFrames
+        for index in tiles.indices {
+            tiles[index].applyGeometry(frame: frames[index], iconFrame: icons[index], dotFrame: dots[index],
+                                       baseIconSize: presentation?.style.iconSize ?? 48, edge: value.edge)
         }
-        let unit = baseSide / 48
-        if let x = value.dividerX {
-            divider?.frame = NSRect(x: x, y: 10 * unit, width: max(0.5, unit), height: max(1, baseSide - 4 * unit))
-        }
-        desiredWidth = value.contentSize.width + value.controlsWidth + 2 * value.horizontalInset
-        needsLayout = true
-        layoutSubtreeIfNeeded()
-        // Horizontal extents are constant across hover frames. Only explicit
-        // wheel/trackpad input (or a new configuration) changes the scroll offset.
+        divider?.frame = value.dividerFrame ?? .zero
+        desiredWidth = value.bodyLength
+        needsLayout = true; layoutSubtreeIfNeeded()
         updateMousePassthrough()
         scrolling.reflectScrolledClipView(scrolling.contentView)
     }
-
 }
 
 @MainActor

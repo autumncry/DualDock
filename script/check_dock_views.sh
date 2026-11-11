@@ -12,6 +12,9 @@ xcrun swiftc -swift-version 5 -O -emit-module -emit-library -module-name DualDoc
 xcrun swiftc -swift-version 5 -O \
   "$ROOT_DIR/Sources/DualDock/DockUI.swift" "$ROOT_DIR/Sources/DualDock/DockTile.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowPreviewCardView.swift" \
+  "$ROOT_DIR/Sources/DualDock/DockResizeCursor.swift" \
+  "$ROOT_DIR/Sources/DualDock/DockDisplayInfo.swift" "$ROOT_DIR/Sources/DualDock/DockPresentation.swift" \
+  "$ROOT_DIR/Sources/DualDock/NativeDockMetricsService.swift" \
   "$ROOT_DIR/Sources/DualDock/AppStore.swift" "$ROOT_DIR/Sources/DualDock/WindowService.swift" \
   "$ROOT_DIR/Sources/DualDock/SystemDockService.swift" "$ROOT_DIR/Sources/DualDock/DockBadgeService.swift" \
   "$ROOT_DIR/Tests/DockViewChecks.swift" \

@@ -6,7 +6,7 @@ import DualDockCore
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var store: AppStore!
     var coordinator: DisplayCoordinator!
-    var settingsWindow: NSWindow?
+    private var settingsController: SettingsWindowController?
     var statusItem: NSStatusItem?
     private var diagnosticsTimer: Timer?
     private var terminationSignals: [DispatchSourceSignal] = []
@@ -64,18 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func openSettings() {
         coordinator?.resetMagnification()
-        if settingsWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 550, height: 580), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            window.title = "DualDock"
-            window.titlebarAppearsTransparent = true
-            window.contentView = NSHostingView(rootView: SettingsView(store: store))
-            window.isReleasedWhenClosed = false
-            window.center()
-            settingsWindow = window
-        }
+        if settingsController == nil { settingsController = SettingsWindowController(store: store) }
         store.refreshPermissions()
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsController?.show()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { openSettings(); return true }
@@ -96,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         diagnosticsTimer?.invalidate()
+        settingsController?.stop()
         coordinator?.stop()
         store?.stopBackgroundServices()
     }
@@ -105,12 +97,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             ["id": id, "name": dock.screen.localizedName, "visible": dock.panel.isVisible,
              "frame": NSStringFromRect(dock.panel.frame), "screenFrame": NSStringFromRect(dock.screen.frame),
              "backdropFrame": NSStringFromRect(dock.strip.backdropFrame),
+             "displayKey": dock.displayID,
+             "edge": dock.strip.layoutGeometry?.edge.rawValue ?? "bottom",
+             "bodyLength": dock.strip.layoutGeometry?.bodyLength ?? 0,
+             "bodyThickness": dock.strip.layoutGeometry?.barThickness ?? 0,
              "ignoresMouseEvents": dock.panel.ignoresMouseEvents,
              "iconWidths": dock.strip.tiles.map { $0.visualIconBounds.width },
              "tiles": dock.strip.tiles.count,
              "firstTileWidth": dock.strip.tiles.first?.frame.width ?? 0,
              "firstIconWidth": dock.strip.tiles.first?.visualIconBounds.width ?? 0,
              "scrollOffsetX": dock.strip.scroll.contentView.bounds.origin.x,
+             "scrollOffset": dock.strip.scrollOffset,
              "horizontalScrollerEnabled": dock.strip.scroll.hasHorizontalScroller,
              "viewportWidth": dock.strip.scroll.contentView.bounds.width,
              "documentWidth": dock.strip.document.frame.width,
@@ -125,6 +122,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "requestedIconSize": store.configuration.iconSize,
             "requestedDockWidth": store.configuration.dockWidth ?? 0,
             "autoAdjustWidth": store.configuration.autoAdjustWidth,
+            "adaptiveSizing": store.configuration.adaptiveSizing,
+            "synchronizeSizes": store.configuration.synchronizeSizes,
+            "nativeDock": ["iconSize": store.nativeDockMetrics.iconSize,
+                           "thickness": store.nativeDockMetrics.barThickness,
+                           "leadingPadding": store.nativeDockMetrics.leadingPadding,
+                           "trailingPadding": store.nativeDockMetrics.trailingPadding,
+                           "magnifiedIconSize": store.nativeDockMetrics.magnifiedIconSize],
             "sizeLimits": ["minWidth": store.sizingLimits.minWidth, "maxWidth": store.sizingLimits.maxWidth,
                            "minHeight": store.sizingLimits.minHeight, "maxHeight": store.sizingLimits.maxHeight],
             "magnificationEnabled": store.configuration.magnificationEnabled,

@@ -9,9 +9,14 @@ final class DockTile: NSView, NSDraggingSource {
     var onPress: (() -> Void)?
     var onHover: ((Bool) -> Void)?
     var onDrop: ((NSDraggingInfo, Bool, Bool) -> Bool)?
-    var menuProvider: (() -> NSMenu)?
+    var menuProvider: (() -> NSMenu?)?
+    /// Group rows stay horizontal, while their menus follow the parent Dock edge.
+    var menuEdge: DockEdge?
     var onInteractionChanged: ((Bool) -> Void)?
-    private let unitScale: CGFloat
+    private var unitScale: CGFloat
+    private var layoutEdge: DockEdge = .bottom
+    private var explicitIconBounds: NSRect?
+    private var explicitDotBounds: NSRect?
     private var hovered = false
     private var dragStart: NSPoint?
     private var dragging = false
@@ -48,8 +53,31 @@ final class DockTile: NSView, NSDraggingSource {
     }
 
     var visualIconBounds: NSRect {
+        if let explicitIconBounds { return explicitIconBounds }
         let side = max(1, bounds.height - 16 * unitScale)
         return NSRect(x: (bounds.width - side) / 2, y: 8 * unitScale, width: side, height: side)
+    }
+
+    /// All rectangles arrive in the document coordinate space. Only positions
+    /// transform between edges; the image, folder and badge remain upright.
+    func applyGeometry(frame: NSRect, iconFrame: NSRect, dotFrame: NSRect,
+                       baseIconSize: CGFloat, edge: DockEdge) {
+        let icon = iconFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        let dot = dotFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        let scale = (baseIconSize.isFinite ? max(1, baseIconSize) : 48) / 48
+        let changed = self.frame != frame || explicitIconBounds != icon || explicitDotBounds != dot
+            || unitScale != scale || layoutEdge != edge
+        self.frame = frame
+        explicitIconBounds = icon
+        explicitDotBounds = dot
+        unitScale = scale
+        layoutEdge = edge
+        if changed { needsDisplay = true }
+    }
+
+    var runningIndicatorBounds: NSRect {
+        explicitDotBounds ?? NSRect(x: bounds.midX - 2 * unitScale, y: 2 * unitScale,
+                                     width: 4 * unitScale, height: 4 * unitScale)
     }
 
     func setHovered(_ value: Bool) {
@@ -80,18 +108,41 @@ final class DockTile: NSView, NSDraggingSource {
         else if let app = entry.apps.first { store.icon(for: app).draw(in: iconRect) }
         if entry.apps.contains(where: store.isRunning) {
             NSColor.labelColor.withAlphaComponent(0.8).setFill()
-            NSBezierPath(ovalIn: NSRect(x: bounds.midX - 2 * unitScale, y: 2 * unitScale, width: 4 * unitScale, height: 4 * unitScale)).fill()
+            NSBezierPath(ovalIn: runningIndicatorBounds).fill()
         }
         if dragInside && !mergeReady {
             NSColor.controlAccentColor.setFill()
             let width = max(1, 2 * unitScale)
-            NSBezierPath(roundedRect: NSRect(x: dropAfter ? bounds.maxX - width : 0, y: 6 * unitScale,
-                                           width: width, height: bounds.height - 12 * unitScale), xRadius: width / 2, yRadius: width / 2).fill()
+            let marker: NSRect
+            if layoutEdge.isHorizontal {
+                marker = NSRect(x: dropAfter ? bounds.maxX - width : bounds.minX,
+                                y: bounds.minY + 6 * unitScale, width: width,
+                                height: max(1, bounds.height - 12 * unitScale))
+            } else {
+                marker = NSRect(x: bounds.minX + 6 * unitScale,
+                                y: dropAfter ? bounds.minY : bounds.maxY - width,
+                                width: max(1, bounds.width - 12 * unitScale), height: width)
+            }
+            NSBezierPath(roundedRect: marker, xRadius: width / 2, yRadius: width / 2).fill()
         }
         if let label = store.badgeLabel(for: entry) { drawBadge(label, in: iconRect) }
     }
 
     private func drawBadge(_ label: String, in icon: NSRect) {
+        if min(icon.width, icon.height) < 18 {
+            // The normal count pill has a 12 pt minimum. On a deliberately
+            // tiny icon, show a bounded unread dot and keep the full label in AX.
+            let available = icon.intersection(bounds)
+            guard !available.isNull, available.width.isFinite, available.height.isFinite,
+                  available.width > 0, available.height > 0 else { return }
+            let side = min(available.width, available.height)
+            let diameter = min(side, min(6, max(2, side * 0.35)))
+            let dot = NSRect(x: available.maxX - diameter, y: available.maxY - diameter,
+                             width: diameter, height: diameter)
+            NSColor.systemRed.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            return
+        }
         let scale = icon.width / 48
         let maximumWidth = max(12, min(bounds.width - 2, icon.width * 0.88))
         var fontSize = max(7, icon.width * 0.22)
@@ -198,7 +249,8 @@ final class DockTile: NSView, NSDraggingSource {
         guard let screen, let menu = menuProvider?() else { return }
         onHover?(false)
         menu.update()
-        let origin = DockMenuPlacement.origin(icon: icon, menuSize: menu.size, visibleScreen: screen.visibleFrame)
+        let origin = DockMenuPlacement.origin(icon: icon, menuSize: menu.size, visibleScreen: screen.visibleFrame,
+                                              edge: menuEdge ?? layoutEdge)
         menu.popUp(positioning: nil, at: origin, in: nil)
     }
 
@@ -223,8 +275,9 @@ final class DockTile: NSView, NSDraggingSource {
 
     private func updateDropPosition(_ sender: NSDraggingInfo) {
         let point = convert(sender.draggingLocation, from: nil)
-        dropAfter = point.x > bounds.midX
-        let central = point.x > bounds.width * 0.22 && point.x < bounds.width * 0.78
+        let position = dropPosition(at: point)
+        dropAfter = position.after
+        let central = position.central
         let payload = DockDrag.read(sender)
         let canMerge = groupID == nil && central && (payload?.appID != nil || payload == nil)
             && payload?.appID != entry.apps.first?.id
@@ -235,6 +288,14 @@ final class DockTile: NSView, NSDraggingSource {
         } else if !canMerge { dwell?.cancel(); dwell = nil; mergeReady = false }
         centralDrop = canMerge
         needsDisplay = true
+    }
+
+    /// Express order along the visible row: left-to-right or top-to-bottom.
+    func dropPosition(at point: NSPoint) -> (after: Bool, central: Bool) {
+        let fraction = layoutEdge.isHorizontal
+            ? (point.x - bounds.minX) / max(1, bounds.width)
+            : (bounds.maxY - point.y) / max(1, bounds.height)
+        return (fraction > 0.5, fraction > 0.22 && fraction < 0.78)
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { clearDrop() }

@@ -1,4 +1,4 @@
-DualDock 1.4.1
+DualDock 2.0.0
 
 系统要求
 macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。
@@ -7,14 +7,18 @@ macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。
 1. 将 DualDock.app 拖到本窗口的 Applications 文件夹。
 2. 弹出 DualDock 磁盘映像，再从“应用程序”打开 DualDock。
 3. 右键 Dock 空白处或点击菜单栏双矩形图标打开设置，在“权限”页授予屏幕录制与辅助功能。
-4. 系统 Dock 隐藏默认关闭，可在设置中主动开启。
+4. 在“外观与尺寸”选择完全自适应或手动尺寸，在“屏幕与位置”为每块屏幕选择位置。
+5. 系统 Dock 隐藏默认关闭，可在“通用”中主动开启。
+
+升级会保留应用组、顺序和手动配置。旧版“自动调整 Dock 宽度”开启时，
+升级后改为完全跟随系统 Dock 的尺寸与放大；关闭后恢复手动配置。
 
 此构建采用本地临时签名，未经过 Apple Developer ID 签名和公证。
 从 GitHub 下载后，macOS 可能阻止首次打开。确认来源后，可前往
 “系统设置 → 隐私与安全性”中选择“仍要打开”。
 
 源码、版本说明和 SHA-256 校验文件
-https://github.com/autumncry/DualDock/releases/tag/v1.4.1
+https://github.com/autumncry/DualDock/releases/tag/v2.0.0
 仓库及发布包公开提供。
 
 配置保存在 ~/Library/Application Support/DualDock/。

@@ -7,8 +7,7 @@ trap 'rm -rf "$CHECK_DIR"' EXIT
 
 xcrun swiftc -swift-version 5 -Onone \
     -emit-module -emit-library -module-name DualDockCore \
-    "$ROOT_DIR/Sources/DualDockCore/Models.swift" \
-    "$ROOT_DIR/Sources/DualDockCore/BadgeDisplayPolicy.swift" \
+    "$ROOT_DIR"/Sources/DualDockCore/*.swift \
     -emit-module-path "$CHECK_DIR/DualDockCore.swiftmodule" \
     -module-cache-path "$CHECK_DIR/module-cache" \
     -o "$CHECK_DIR/libDualDockCore.dylib"

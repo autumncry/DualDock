@@ -58,13 +58,31 @@ Windows without a usable screenshot are omitted. Screenshots are processed in lo
 
 Change the mode in Settings; every display updates together.
 
-### Independent dimensions and smooth magnification
+### Fully adaptive system Dock sizing
 
-Adjust Dock height and width with separate continuous sliders. Icon spacing changes the density inside the bar. Nearby icons magnify gradually around the pointer, with an adjustable strength and an on/off switch, while the backdrop stays fixed. Overflow can be scrolled horizontally without a visible scrollbar.
+Enable “完全自适应系统 Dock” to follow the system Dock's base icon size, bar thickness, icon spacing, end padding, and magnification. The bar grows or shrinks with the app count and stays centered on its display edge. Hovering changes the icons while keeping the backdrop fixed.
 
-The optional automatic-width mode fits the current icon size, spacing, and visible app count: adding apps or increasing spacing expands the bar, while removing apps or tightening spacing makes it narrower. It disables the manual width slider while leaving height adjustable. Turning it off restores the last manual width, where spacing changes only the contents. Automatic width respects the shared display limit. It is off by default, so upgrading preserves your existing fixed-width choice.
+Adaptive mode hides manual size and magnification controls and disables edge resizing. Turning it off restores the previous manual configuration. Users who enabled automatic width in an earlier version are migrated to fully adaptive sizing.
 
-All displays share size limits: the maximum width is the narrowest display's effective width, and the maximum backdrop height is **12%** of the shortest display's effective height. Dimensions use macOS logical points after display scaling. Connecting a smaller display constrains the rendered size without overwriting your preference, so it can be restored after disconnection.
+Dimensions are read from system preferences and Accessibility geometry without changing them. Temporary read failures retain the latest valid measurement; compatible values are used when there is no prior measurement. Accessibility bounds can differ from actual system rendering, so pixel-identical results are not guaranteed.
+
+### Per-display position and manual sizing
+
+Choose **bottom, top, left, or right** independently for each display. Top and bottom Docks use horizontal rows; side Docks use vertical rows with upright icons. App groups still expand horizontally, and popups open toward the inside of the screen.
+
+Manual mode provides length, thickness, icon-size, and spacing sliders. You can also resize the Dock directly:
+
+- **Inward edge:** adjust thickness.
+- **Either endpoint:** adjust length while keeping the bar centered.
+- **Two inward corners:** scale proportionally.
+
+Icon size is saved as a relative proportion, preserved when thickness changes or the bar is scaled. Spacing changes only the contents of the fixed bar. Overflow scrolls along the Dock's direction without a visible scrollbar. Nearby icons magnify smoothly, with a manual on/off switch and strength control.
+
+“所有屏幕同步尺寸” synchronizes sizes using the range available to all displays. Turn it off to configure each display within its own available bounds. Turning synchronization back on adopts the **currently selected display's effective size**, while positions remain independent. Manual thickness is capped at **12%** of the available short edge; maximum length follows the available length of the selected edge. Dimensions use macOS logical points.
+
+### Sidebar settings
+
+Settings use a category sidebar with configuration on the right: **General, Appearance & Size, Displays & Position, Interaction, Permissions, Help, and About**. The window can be resized and minimized. About includes the version, MIT license, and project links. The app interface remains in Simplified Chinese.
 
 ### More details
 
@@ -79,9 +97,9 @@ Download the latest `DualDock-<version>-arm64.dmg` and optional SHA-256 checksum
 
 1. Open the DMG and drag `DualDock.app` into `Applications`.
 2. Launch DualDock and grant **Screen Recording** and **Accessibility** access in its Permissions settings.
-3. Choose the display mode and dimensions in Settings, then organize app groups with drag-and-drop. Hiding the system Dock is off by default and can be enabled when desired.
+3. Choose the display mode, adaptive or manual sizing, and each display’s position in Settings, then organize app groups with drag-and-drop. Hiding the system Dock is off by default and can be enabled when desired.
 
-Screen Recording provides window thumbnails; Accessibility identifies, activates, and closes windows. If a permission change does not take effect, quit and reopen DualDock. To update, download the new DMG and replace the app; your local configuration is retained.
+Screen Recording provides window thumbnails; Accessibility identifies, activates, and closes windows, and reads system Dock layout and badge information. If a permission change does not take effect, quit and reopen DualDock. To update, download the new DMG and replace the app; your local configuration is retained.
 
 > [!NOTE]
 > The current release targets Apple Silicon and uses an ad-hoc signature for personal use. It is not notarized by Apple. If macOS blocks the first launch, consult the [installation notes](docs/installation.txt) (Chinese).
@@ -110,6 +128,9 @@ This is a Swift Package Manager project; no Xcode project needs to be created. T
 ./script/package_dmg.sh               # Release build, DMG, and SHA-256
 swift test -c release                 # Model, layout, and window-policy tests
 ./script/check_dock_views.sh          # Hidden AppKit component checks
+./script/check_four_edge_views.sh     # Four-edge layout, scroll, and input routing
+./script/check_display_sizing_store.sh # Per-display sizing, sync, and resize commits
+./script/check_native_dock_metrics.sh # Native Dock measurement and fallback checks
 ./script/check_badges.sh              # Badge reads and asynchronous state checks
 ./script/check_system_dock.sh         # Isolated system Dock recovery checks
 ```
@@ -121,6 +142,7 @@ The build-and-run script also supports `--logs`, `--telemetry`, and `--debug`. T
 - [Installation notes](docs/installation.txt) (Chinese)
 - [Validation records and known limitations](docs/validation.md) (Chinese)
 - [Implementation research and initial design](docs/superpowers/specs/2026-11-09-dualdock-design.md) (Chinese)
+- [2.0 adaptive sizing, per-display positions, and resizing](docs/superpowers/specs/2026-11-10-four-edge-adaptive.md) (Chinese)
 
 Window identity matching and full-screen detection use optional macOS private interfaces with fallbacks. macOS updates may require adjustments. Preview and window-control behavior for minimized windows, other Spaces, and protected content depends on the target app and macOS.
 

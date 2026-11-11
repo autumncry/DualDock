@@ -9,7 +9,7 @@ trap 'rm -rf "$CHECK_DIR"' EXIT
 # The driver always injects an in-memory environment; it never changes the Dock.
 xcrun swiftc -swift-version 5 -Onone \
     -emit-module -emit-library -module-name DualDockCore \
-    "$ROOT_DIR/Sources/DualDockCore/Models.swift" \
+    "$ROOT_DIR"/Sources/DualDockCore/*.swift \
     -emit-module-path "$CHECK_DIR/DualDockCore.swiftmodule" \
     -module-cache-path "$CHECK_DIR/module-cache" \
     -o "$CHECK_DIR/libDualDockCore.dylib"

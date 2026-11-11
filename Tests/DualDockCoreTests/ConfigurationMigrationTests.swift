@@ -19,7 +19,7 @@ final class ConfigurationMigrationTests: XCTestCase {
         legacy.removeValue(forKey: "autoAdjustWidth")
         let restored = try JSONDecoder().decode(DockConfiguration.self, from: JSONSerialization.data(withJSONObject: legacy))
         var expected = saved
-        expected.version = 6
+        expected.version = DockConfiguration.currentVersion
         XCTAssertEqual(restored, expected)
         XCTAssertFalse(restored.autoAdjustWidth)
     }
