@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func setupMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem?.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: "DualDock")
+        statusItem?.button?.image = StatusItemIcon.make()
         statusItem?.button?.toolTip = "DualDock"
         let menu = NSMenu()
         menu.addAction("DualDock 设置…") { [weak self] in self?.openSettings() }

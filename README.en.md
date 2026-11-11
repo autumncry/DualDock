@@ -4,7 +4,7 @@
 
 # DualDock
 
-### One workspace, across your screens.
+### Apps neatly organized. A Dock on every display.
 
 A native macOS Dock for multiple displays. Organize related apps into horizontal groups,
 preview their windows, and keep the same layout on your MacBook and external monitors.

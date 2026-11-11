@@ -15,7 +15,7 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("DualDock").font(.system(size: 26, weight: .semibold))
                     Text(versionDescription).foregroundStyle(.secondary)
-                    Text("每块屏幕，同一套工作空间。")
+                    Text("应用有序收纳，Dock 多屏同在。")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }

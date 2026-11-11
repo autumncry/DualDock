@@ -18,7 +18,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "gearshape"
         case .appearance: return "slider.horizontal.3"
-        case .displays: return "display.2"
+        case .displays: return "display"
         case .interaction: return "cursorarrow.click"
         case .permissions: return "lock.shield"
         case .help: return "questionmark.circle"

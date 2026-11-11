@@ -10,8 +10,20 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             List(SettingsSection.allCases, selection: $selection) { section in
-                Label(section.title, systemImage: section.symbol)
-                    .font(.system(size: 13)).padding(.vertical, 6).tag(section)
+                Label {
+                    Text(section.title)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                } icon: {
+                    Image(systemName: section.symbol)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .frame(width: 22, height: 20)
+                        .accessibilityHidden(true)
+                }
+                .padding(.vertical, 5)
+                .tag(section)
             }
             .listStyle(.sidebar)
             .frame(width: 184)
