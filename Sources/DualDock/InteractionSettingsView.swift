@@ -6,24 +6,42 @@ struct InteractionSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
+            SettingsGroup("自动隐藏") {
+                Toggle("窗口遮挡时隐藏 Dock", isOn: Binding(get: { store.configuration.autoHideWhenObstructed }, set: { value in
+                    store.update { $0.autoHideWhenObstructed = value }
+                }))
+                Text("普通窗口进入 Dock 区域时隐藏，鼠标移到该侧边缘稍作停留即可唤出。使用应用夹、预览和菜单时保持显示；全屏应用期间仍隐藏。顶部 Dock 的唤出位置在菜单栏下方。")
+                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             SettingsGroup("悬停放大") {
                 if store.configuration.adaptiveSizing {
                     LabeledContent("跟随系统 Dock", value: store.nativeDockMetrics.magnificationEnabled ? "已开启放大" : "未开启放大")
                     if store.nativeDockMetrics.magnificationEnabled {
                         LabeledContent("放大后图标", value: dockPoints(store.nativeDockMetrics.magnifiedIconSize))
                     }
-                    Text("完全自适应模式下，放大开关和尺寸由系统 Dock 决定。关闭自适应后可在这里手动调整。")
+                    Text("完全自适应模式下，放大继续跟随系统 Dock，不提供手动曲线控件。关闭自适应后可分别调整峰值和联动范围。")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Toggle("鼠标悬停放大", isOn: Binding(get: { store.configuration.magnificationEnabled }, set: { value in
                         store.update { $0.magnificationEnabled = value }
                     }))
-                    DockSettingsSlider(title: "放大幅度",
+                    DockSettingsSlider(title: "放大峰值",
                                        valueText: "\(Int((store.configuration.magnificationScale * 100).rounded()))%",
                                        value: Binding(get: { store.configuration.magnificationScale }, set: { value in
                         store.update { $0.magnificationScale = value }
                     }), range: 1...2.5)
                     .disabled(!store.configuration.magnificationEnabled)
+                    DockSettingsSlider(title: "联动范围",
+                                       valueText: String(format: "左右各 %.1f 个图标", store.configuration.magnificationRadius),
+                                       value: Binding(get: { store.configuration.magnificationRadius }, set: { value in
+                        store.update { $0.magnificationRadius = value }
+                    }), range: 1...4)
+                    .disabled(!store.configuration.magnificationEnabled)
+                    Text("峰值决定指针下的图标放多大；收窄联动范围，可减小两侧图标的放大效果。")
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    MagnificationCurvePreview(peak: store.configuration.magnificationScale,
+                                              radius: store.configuration.magnificationRadius,
+                                              enabled: store.configuration.magnificationEnabled)
                 }
                 Text("鼠标附近的图标逐级联动，底板保持稳定。")
                     .foregroundStyle(.secondary)

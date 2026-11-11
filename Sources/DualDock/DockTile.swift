@@ -28,6 +28,8 @@ final class DockTile: NSView, NSDraggingSource {
     private var dragInside = false
     private var dropAfter = false
     private var centralDrop = false
+    private var backingScale: CGFloat = 0
+    private var backingColorSpace: NSColorSpace?
 
     init(entry: DockEntry, groupID: UUID?, store: AppStore, size: CGFloat) {
         self.entry = entry
@@ -36,6 +38,10 @@ final class DockTile: NSView, NSDraggingSource {
         unitScale = size / 48
         super.init(frame: NSRect(x: 0, y: 0, width: size, height: size + 16 * unitScale))
         wantsLayer = true
+        // Geometry changes alone must not recache unchanged pixels. The local
+        // icon/dot checks below explicitly invalidate all appearance changes.
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layerContentsPlacement = .scaleAxesIndependently
         toolTip = entry.name
         registerForDraggedTypes([DockDrag.pasteboardType, .fileURL])
         setAccessibilityElement(true)
@@ -44,6 +50,19 @@ final class DockTile: NSView, NSDraggingSource {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        let scale = window?.backingScaleFactor ?? 1
+        let colorSpace = window?.colorSpace
+        guard backingScale != scale || backingColorSpace != colorSpace else { return }
+        backingScale = scale
+        backingColorSpace = colorSpace
+        needsDisplay = true
+    }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func accessibilityPerformPress() -> Bool { onPress?(); return true }
     override func accessibilityPerformShowMenu() -> Bool {
@@ -65,9 +84,20 @@ final class DockTile: NSView, NSDraggingSource {
         let icon = iconFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
         let dot = dotFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
         let scale = (baseIconSize.isFinite ? max(1, baseIconSize) : 48) / 48
-        let changed = self.frame != frame || explicitIconBounds != icon || explicitDotBounds != dot
+        // A translated layer keeps the same pixels. Only local drawing geometry
+        // invalidates its backing image; subtracting large document coordinates
+        // can introduce insignificant floating-point noise in those local rects.
+        func same(_ lhs: NSRect?, _ rhs: NSRect) -> Bool {
+            guard let lhs else { return false }
+            return abs(lhs.minX - rhs.minX) < 0.000001 && abs(lhs.minY - rhs.minY) < 0.000001
+                && abs(lhs.width - rhs.width) < 0.000001 && abs(lhs.height - rhs.height) < 0.000001
+        }
+        let sizeChanged = abs(self.frame.width - frame.width) >= 0.000001
+            || abs(self.frame.height - frame.height) >= 0.000001
+        let changed = sizeChanged || !same(explicitIconBounds, icon) || !same(explicitDotBounds, dot)
             || unitScale != scale || layoutEdge != edge
-        self.frame = frame
+        if self.frame.origin != frame.origin { setFrameOrigin(frame.origin) }
+        if sizeChanged { setFrameSize(frame.size) }
         explicitIconBounds = icon
         explicitDotBounds = dot
         unitScale = scale
@@ -83,7 +113,6 @@ final class DockTile: NSView, NSDraggingSource {
     func setHovered(_ value: Bool) {
         guard hovered != value else { return }
         hovered = value
-        needsDisplay = true
         onHover?(value)
     }
 

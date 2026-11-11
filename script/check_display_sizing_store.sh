@@ -13,6 +13,7 @@ xcrun swiftc -swift-version 5 -O \
   "$ROOT_DIR/Sources/DualDock/DockDisplayInfo.swift" "$ROOT_DIR/Sources/DualDock/DockPresentation.swift" \
   "$ROOT_DIR/Sources/DualDock/NativeDockMetricsService.swift" \
   "$ROOT_DIR/Sources/DualDock/AppStore.swift" "$ROOT_DIR/Sources/DualDock/WindowService.swift" \
+  "$ROOT_DIR/Sources/DualDock/FullscreenFallbackService.swift" "$ROOT_DIR/Sources/DualDock/ApplicationActivationService.swift" \
   "$ROOT_DIR/Sources/DualDock/SystemDockService.swift" "$ROOT_DIR/Sources/DualDock/DockBadgeService.swift" \
   "$ROOT_DIR/Tests/DisplaySizingStoreChecks.swift" \
   -I "$CHECK_DIR" -L "$CHECK_DIR" -lDualDockCore -Xlinker -rpath -Xlinker "$CHECK_DIR" \

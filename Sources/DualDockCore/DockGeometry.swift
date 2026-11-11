@@ -9,10 +9,12 @@ public struct DockGeometryStyle: Equatable, Sendable {
     public var trailingPadding: CGFloat
     public var separatorLength: CGFloat
     public var magnificationScale: CGFloat
+    public var magnificationRadius: CGFloat
 
     public init(iconSize: CGFloat, barThickness: CGFloat, gap: CGFloat,
                 leadingPadding: CGFloat, trailingPadding: CGFloat,
-                separatorLength: CGFloat = 13, magnificationScale: CGFloat = 1) {
+                separatorLength: CGFloat = 13, magnificationScale: CGFloat = 1,
+                magnificationRadius: CGFloat = 2.5) {
         self.iconSize = iconSize
         self.barThickness = barThickness
         self.gap = gap
@@ -20,6 +22,7 @@ public struct DockGeometryStyle: Equatable, Sendable {
         self.trailingPadding = trailingPadding
         self.separatorLength = separatorLength
         self.magnificationScale = magnificationScale
+        self.magnificationRadius = magnificationRadius
     }
 }
 
@@ -88,14 +91,21 @@ public struct DockGeometry: Equatable, Sendable {
         let bodyLength = min(limit, max(1, chosenLength))
         let fits = required <= bodyLength + 0.000001
         let scale = max(1, finite(style.magnificationScale, fallback: 1))
+        let curve = DockMagnificationCurve(radius: style.magnificationRadius)
         let peak = n == 0 ? side : min(side * scale, max(side, fits ? limit : bodyLength))
         let delta = peak - side
-        let factor: CGFloat = n == 1 ? 0.5 : (n == 2 ? 1.25 : 1.5)
+        // Keep the window's transparent reserve independent of whether the row
+        // currently fits. Dropping that reserve at the overflow threshold made
+        // a subpixel resize change the window by tens of points in one frame.
+        // Overflow still clips the document to the visible bar below.
+        let reservedPeak = n == 0 ? side : min(side * scale, max(side, limit))
+        let reservedDelta = reservedPeak - side
+        let factor = curve.reserveFactor(itemCount: n)
         let handleMargin = max(0, finite(resizeMargin, fallback: 0))
-        let desiredBleed = fits && n > 0 ? ceil(delta * factor) : 0
+        let desiredBleed = n > 0 ? ceil(reservedDelta * factor) : 0
         let endMargin = min(max(desiredBleed, handleMargin), max(0, (limit - bodyLength) / 2))
         let canvasLength = bodyLength + 2 * endMargin
-        let canvasDepth = thickness + max(delta, handleMargin)
+        let canvasDepth = thickness + max(reservedDelta, handleMargin)
         let viewport = CGRect(x: fits ? 0 : endMargin, y: 0,
                               width: fits ? canvasLength : bodyLength, height: canvasDepth)
         let documentLength = fits ? viewport.width : max(viewport.width, required)
@@ -120,8 +130,8 @@ public struct DockGeometry: Equatable, Sendable {
                 waveU += separator
                 baseU += separator
             }
-            let distance = focus.map { abs(CGFloat(index) - $0) } ?? 2.5
-            let weight = distance >= 2.5 ? 0 : (1 + cos(.pi * distance / 2.5)) / 2
+            let distance = focus.map { abs(CGFloat(index) - $0) } ?? curve.radius
+            let weight = curve.weight(atDistance: distance)
             let size = side + delta * weight
             baseIcons.append(CGRect(x: baseU, y: outerInset, width: side, height: side))
             icons.append(CGRect(x: waveU, y: outerInset, width: size, height: size))
@@ -206,20 +216,46 @@ public struct DockGeometry: Equatable, Sendable {
               canonicalCanvasSize == target.canonicalCanvasSize, canonicalDocumentSize == target.canonicalDocumentSize,
               canonicalBackdropRect == target.canonicalBackdropRect else { return target }
         let t = min(1, max(0, fraction))
+        if t == 0 { return self }
+        if t == 1 { return target }
+        func size(_ a: CGFloat, _ b: CGFloat) -> CGFloat {
+            // A new peak can keep the whole strip animating indefinitely. Let
+            // each imperceptible tail settle instead of resizing its bitmap for
+            // fractional-pixel differences on every later frame. Only shrink
+            // toward the target early: growing early could overlap a neighbor
+            // whose position is still approaching the same zero-gap boundary.
+            a >= b && a - b < 0.08 ? b : a + (b - a) * t
+        }
         func rect(_ a: CGRect, _ b: CGRect) -> CGRect {
             CGRect(x: a.minX + (b.minX - a.minX) * t, y: a.minY + (b.minY - a.minY) * t,
-                   width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
+                   width: size(a.width, b.width), height: size(a.height, b.height))
         }
         func frames(_ a: [CGRect], _ b: [CGRect]) -> [CGRect] { zip(a, b).map { rect($0.0, $0.1) } }
         let divider: CGRect?
         if let a = canonicalDividerFrame, let b = target.canonicalDividerFrame { divider = rect(a, b) }
         else { divider = target.canonicalDividerFrame }
+        let icons = frames(canonicalIconFrames, target.canonicalIconFrames)
+        let tiles = icons.indices.map { index -> CGRect in
+            let a = canonicalIconFrames[index], b = target.canonicalIconFrames[index]
+            let ta = canonicalTileFrames[index], tb = target.canonicalTileFrames[index]
+            func inset(_ from: CGFloat, _ to: CGFloat) -> CGFloat { from + (to - from) * t }
+            let left = inset(a.minX - ta.minX, b.minX - tb.minX)
+            let right = inset(ta.maxX - a.maxX, tb.maxX - b.maxX)
+            let bottom = inset(a.minY - ta.minY, b.minY - tb.minY)
+            let top = inset(ta.maxY - a.maxY, tb.maxY - b.maxY)
+            let icon = icons[index]
+            return CGRect(x: icon.minX - left, y: icon.minY - bottom,
+                          width: icon.width + left + right, height: icon.height + bottom + top)
+        }
+        let dots = zip(frames(canonicalDotFrames, target.canonicalDotFrames), icons).map { dot, icon in
+            CGRect(x: icon.midX - dot.width / 2, y: dot.minY, width: dot.width, height: dot.height)
+        }
         return DockGeometry(edge: edge, canonicalCanvasSize: canonicalCanvasSize,
             canonicalDocumentSize: canonicalDocumentSize, canonicalBackdropRect: canonicalBackdropRect,
             canonicalViewportRect: canonicalViewportRect,
-            canonicalTileFrames: frames(canonicalTileFrames, target.canonicalTileFrames),
-            canonicalIconFrames: frames(canonicalIconFrames, target.canonicalIconFrames),
-            canonicalDotFrames: frames(canonicalDotFrames, target.canonicalDotFrames),
+            canonicalTileFrames: tiles,
+            canonicalIconFrames: icons,
+            canonicalDotFrames: dots,
             canonicalDividerFrame: divider, bodyLength: bodyLength, barThickness: barThickness)
     }
 

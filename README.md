@@ -76,9 +76,24 @@
 - **两端：** 调整长度，保持居中。
 - **内侧两个角：** 等比缩放。
 
-图标大小以相对比例保存，后续调整厚度或等比缩放时保留该比例。间距只改变固定栏内的排列；内容超出时可沿 Dock 方向滚动，不显示滚动条。附近图标平滑联动放大，支持手动开关和幅度调整。
+图标大小以相对比例保存，后续调整厚度或等比缩放时保留该比例。间距只改变固定栏内的排列；内容超出时可沿 Dock 方向滚动，不显示滚动条。
 
 “所有屏幕同步尺寸”可统一调整各屏，限制取所有屏幕共同可用的范围；关闭后，每屏按自身可用范围分别设置。重新开启同步时，采用设置页**当前选中屏幕的有效尺寸**，各屏位置保持独立。手动厚度上限为可用短边的 **12%**，长度上限为所在边缘的可用长度，单位为 macOS 逻辑点。
+
+### 调整放大曲线
+
+在手动模式的“交互”页，使用两个连续滑块独立调整悬停效果：
+
+- **放大峰值：** 指针下的图标最多放多大。
+- **联动范围：** 两侧有多少图标跟着放大；收窄范围可以减小相邻图标的放大效果。
+
+曲线预览会随滑块更新，Dock 底板保持稳定。关闭悬停放大后，两项控件停用；开启完全自适应时仍跟随系统 Dock，不提供手动曲线调节。原手动峰值保留，新增联动范围默认延续旧版效果。
+
+### 窗口遮挡时自动隐藏
+
+可在“交互”页开启“窗口遮挡时隐藏 Dock”。普通窗口进入某块屏幕的 Dock 区域时，只隐藏该屏的 Dock；鼠标移到对应边缘稍作停留即可唤出。顶部 Dock 的唤出位置在菜单栏下方。
+
+使用应用夹、窗口预览、右键菜单或拖拽时保持显示，离开后再收起。真正的全屏应用优先隐藏，不通过边缘唤出。该选项默认关闭，开启后不会调整其他应用的窗口尺寸。
 
 ### 分页设置
 
@@ -131,6 +146,11 @@ swift test -c release                 # 模型、布局和窗口策略回归
 ./script/check_four_edge_views.sh     # 四向布局、滚动与输入路由检查
 ./script/check_display_sizing_store.sh # 各屏尺寸、同步与拖动提交检查
 ./script/check_native_dock_metrics.sh # 原生 Dock 尺寸读取与回退检查
+./script/check_dock_animation.sh      # 悬停重绘、布局与角标回归
+./script/check_dock_visibility.sh     # 可见性刷新时序与生命周期
+./script/check_fullscreen_fallback.sh # 全屏异步回退与过期结果保护
+./script/check_window_obstruction.sh  # 遮挡读取、缓存与请求合并
+./script/check_application_activation.sh # 应用与辅助进程激活路由
 ./script/check_badges.sh              # 角标读取与异步状态检查
 ./script/check_system_dock.sh         # 隔离环境下的系统 Dock 恢复检查
 ```
@@ -143,6 +163,7 @@ swift test -c release                 # 模型、布局和窗口策略回归
 - [验证记录与已知边界](docs/validation.md)
 - [实现分析与初始设计](docs/superpowers/specs/2026-11-09-dualdock-design.md)
 - [2.0 自适应、每屏位置与拖动尺寸设计](docs/superpowers/specs/2026-11-10-four-edge-adaptive.md)
+- [2.1 可见性、激活与动画修正](docs/superpowers/specs/2026-11-11-visibility-and-motion.md)
 
 窗口身份匹配和全屏检测使用可选的 macOS 私有接口，并提供回退。系统升级后可能需要适配；最小化、其他桌面和受保护窗口的预览及操作能力取决于目标应用和 macOS。
 

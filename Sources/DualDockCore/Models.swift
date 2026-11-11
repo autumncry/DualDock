@@ -32,7 +32,7 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 7
+    public static let currentVersion = 8
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
@@ -55,16 +55,19 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     }
     public var magnificationEnabled: Bool = true
     public var magnificationScale: Double = 5.0 / 3.0
+    /// Influence radius in icon-center distances; independent of peak size.
+    public var magnificationRadius: Double = 2.5
     public var showPreviews: Bool = true
     public var showBadges: Bool = true
     public var hideSystemDock: Bool = false
+    public var autoHideWhenObstructed: Bool = false
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth, autoAdjustWidth
         case manualIconScale, synchronizeSizes, displaySettings
-        case magnificationEnabled, magnificationScale, showPreviews, showBadges, hideSystemDock
+        case magnificationEnabled, magnificationScale, magnificationRadius, showPreviews, showBadges, hideSystemDock, autoHideWhenObstructed
     }
 
     public init(from decoder: Decoder) throws {
@@ -86,9 +89,11 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         displaySettings = try values.decodeIfPresent([String: DockDisplaySettings].self, forKey: .displaySettings) ?? [:]
         magnificationEnabled = try values.decodeIfPresent(Bool.self, forKey: .magnificationEnabled) ?? true
         magnificationScale = try values.decodeIfPresent(Double.self, forKey: .magnificationScale) ?? 5.0 / 3.0
+        magnificationRadius = try values.decodeIfPresent(Double.self, forKey: .magnificationRadius) ?? 2.5
         showPreviews = try values.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? true
         showBadges = try values.decodeIfPresent(Bool.self, forKey: .showBadges) ?? true
         hideSystemDock = try values.decodeIfPresent(Bool.self, forKey: .hideSystemDock) ?? false
+        autoHideWhenObstructed = try values.decodeIfPresent(Bool.self, forKey: .autoHideWhenObstructed) ?? false
         normalizeAppearance()
     }
 
@@ -104,6 +109,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         iconSpacing = iconSpacing.isFinite ? min(32, max(0, iconSpacing)) : 14
         dockWidthReferenceSpacing = dockWidthReferenceSpacing.isFinite ? min(32, max(0, dockWidthReferenceSpacing)) : 14
         magnificationScale = magnificationScale.isFinite ? min(2.5, max(1, magnificationScale)) : 5.0 / 3.0
+        magnificationRadius = magnificationRadius.isFinite ? min(4, max(1, magnificationRadius)) : 2.5
     }
 
     public var allAppIDs: Set<String> {

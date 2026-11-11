@@ -151,6 +151,23 @@ struct DisplaySizingStoreChecks {
     store.setEdge(.right, for: "M")
     store.updateManualSizing(for: "M") { $0.length = 99 }
     check(store.configuration == beforeMirror, "mirror target mutated configuration")
+    store.update {
+      $0.magnificationScale = 2.2
+      $0.magnificationRadius = 1.4
+    }
+    check(
+      same(Double(store.presentation(for: "A").style.magnificationScale), 2.2)
+        && same(Double(store.presentation(for: "A").style.magnificationRadius), 1.4),
+      "manual curve controls not applied independently")
+    check(
+      same(Double(store.presentation(for: "B").style.magnificationRadius), 1.4),
+      "manual curve range not shared across displays")
+    store.update { $0.magnificationEnabled = false }
+    check(
+      store.presentation(for: "A").style.magnificationScale == 1
+        && same(store.configuration.magnificationRadius, 1.4),
+      "disabling magnification changed saved curve range")
+    store.update { $0.magnificationEnabled = true }
     store.setResizePreview(DockManualSizing(length: 1300, thickness: 100), for: "A")
     check(same(store.effectiveManualSizing(for: "B").length, 1300), "synced draft not visible on B")
     let measured = store.nativeDockMetrics
@@ -164,6 +181,8 @@ struct DisplaySizingStoreChecks {
     check(
       nativeA.style.magnificationScale == measured.magnificationScale,
       "native magnification was not used")
+    check(nativeA.style.magnificationRadius == 2.5,
+          "manual curve range leaked into native adaptive mode")
     check(
       nativeA.maximumLength == 1800 && nativeB.maximumLength == 1692,
       "adaptive limits should follow own edge")
@@ -173,6 +192,10 @@ struct DisplaySizingStoreChecks {
     store.setSizeSynchronization(false, sourceDisplayID: "A")
     check(store.configuration == beforeAdaptive, "adaptive allowed manual size mutation")
     store.setAdaptiveSizing(false)
+    check(
+      same(Double(store.presentation(for: "A").style.magnificationRadius), 1.4)
+        && same(Double(store.presentation(for: "A").style.magnificationScale), 2.2),
+      "adaptive mode overwrote saved manual curve")
     check(
       same(store.effectiveManualSizing(for: "A").length, 1000),
       "adaptive overwrote saved manual size")

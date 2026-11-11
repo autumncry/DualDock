@@ -2,6 +2,47 @@ import XCTest
 @testable import DualDockCore
 
 final class DockGeometryTests: XCTestCase {
+    func testMovingWaveSettlesSubpixelSizeTailsIndependently() {
+        let style = DockGeometryStyle(iconSize: 48, barThickness: 66, gap: 3,
+            leadingPadding: 6, trailingPadding: 6, magnificationScale: 2)
+        let rest = DockGeometry.make(count: 28, edge: .bottom, style: style,
+                                     maximumLength: 1800, fixedLength: 1500)
+        let previousPeak = DockGeometry.make(count: 28, edge: .bottom, style: style,
+            maximumLength: 1800, fixedLength: 1500, focusIndex: 2)
+        let smallTail = rest.interpolated(to: previousPeak, fraction: 0.001)
+        let movingTarget = DockGeometry.make(count: 28, edge: .bottom, style: style,
+            maximumLength: 1800, fixedLength: 1500, focusIndex: 20.3)
+        let next = smallTail.interpolated(to: movingTarget, fraction: 0.1)
+        XCTAssertEqual(next.canonicalIconFrames[2].width, movingTarget.canonicalIconFrames[2].width,
+                       accuracy: 0.000001, "An invisible old size tail must not keep invalidating the icon bitmap")
+        XCTAssertGreaterThan(next.maximumDifference(from: movingTarget), 1,
+                             "The active wave must continue; this is not a whole-strip snap")
+    }
+
+    func testContinuousZeroGapWaveDoesNotOverlapIcons() {
+        let style = DockGeometryStyle(iconSize: 48, barThickness: 66, gap: 0,
+            leadingPadding: 6, trailingPadding: 6, magnificationScale: 2)
+        var current = DockGeometry.make(count: 28, edge: .bottom, style: style,
+                                        maximumLength: 1800, fixedLength: 1500)
+        for frame in 0..<360 {
+            let focus = CGFloat(frame % 180) / 179 * 27
+            let target = DockGeometry.make(count: 28, edge: .bottom, style: style,
+                maximumLength: 1800, fixedLength: 1500, focusIndex: focus)
+            current = current.interpolated(to: target, fraction: 0.09)
+            for index in current.canonicalIconFrames.indices {
+                let icon = current.canonicalIconFrames[index]
+                let tile = current.canonicalTileFrames[index]
+                let dot = current.canonicalDotFrames[index]
+                XCTAssertEqual(dot.midX, icon.midX, accuracy: 0.000001)
+                XCTAssertEqual(tile.width, icon.width, accuracy: 0.000001)
+            }
+            if let pair = zip(current.canonicalIconFrames, current.canonicalIconFrames.dropFirst())
+                .first(where: { $0.maxX > $1.minX + 0.000001 }) {
+                XCTFail("Icons overlap by \(pair.0.maxX - pair.1.minX) at frame \(frame)")
+                return
+            }
+        }
+    }
     private let style = DockGeometryStyle(iconSize: 48, barThickness: 66, gap: 6,
         leadingPadding: 6, trailingPadding: 8, magnificationScale: 2)
 
@@ -9,6 +50,50 @@ final class DockGeometryTests: XCTestCase {
                           focus: CGFloat? = nil, offset: CGFloat = 0) -> DockGeometry {
         .make(count: count, edge: edge, style: style, maximumLength: 1000,
               fixedLength: length, focusIndex: focus, scrollOffset: offset)
+    }
+
+    func testResizeCanvasStaysContinuousWhenGrowingIconsStartToOverflow() {
+        for edge in DockEdge.allCases {
+            for (count, length, ratio, magnification) in [(26, 1348.644, 1.0013, 1.638), (1, 120.0, 1.25, 2.5)] {
+                var previous: DockGeometry?
+                var observedFit = false, observedOverflow = false
+                for step in 0...896 {
+                    let thickness = 48 + CGFloat(step) / 8
+                    let sizing = DockManualSizing(length: length, thickness: Double(thickness), iconScale: ratio, iconSpacing: 0)
+                    let next = DockGeometry.make(count: count, edge: edge,
+                        style: .init(iconSize: CGFloat(sizing.resolvedIconSize), barThickness: thickness,
+                                     gap: 0, leadingPadding: 6, trailingPadding: 6,
+                                     magnificationScale: magnification),
+                        maximumLength: 1800, fixedLength: CGFloat(length), resizeMargin: 6)
+                    observedFit = observedFit || next.scrollRange == 0
+                    observedOverflow = observedOverflow || next.scrollRange > 0
+                    if let previous {
+                        // A 1/8pt input step may cross a whole-point bleed rounding
+                        // boundary, but must not discard an entire magnification gutter.
+                        XCTAssertLessThanOrEqual(abs(next.canonicalCanvasSize.width - previous.canonicalCanvasSize.width), 2.01)
+                        XCTAssertLessThanOrEqual(abs(next.canonicalCanvasSize.height - previous.canonicalCanvasSize.height), 1)
+                        XCTAssertLessThanOrEqual(abs(next.canonicalBackdropRect.minX - previous.canonicalBackdropRect.minX), 1.01)
+                    }
+                    previous = next
+                }
+                XCTAssertTrue(observedFit && observedOverflow, "The sweep must cross the fit/overflow boundary")
+            }
+        }
+    }
+
+    func testResizeLengthDoesNotDropCanvasReserveAtOverflowBoundary() {
+        for edge in DockEdge.allCases {
+            var previous: DockGeometry?
+            for step in 0...160 {
+                let next = DockGeometry.make(count: 5, edge: edge, style: style, maximumLength: 1000,
+                    fixedLength: 260 + CGFloat(step) / 4, resizeMargin: 6)
+                if let previous {
+                    XCTAssertLessThanOrEqual(abs(next.canonicalCanvasSize.width - previous.canonicalCanvasSize.width), 0.251)
+                    XCTAssertEqual(next.canonicalCanvasSize.height, previous.canonicalCanvasSize.height)
+                }
+                previous = next
+            }
+        }
     }
 
     func testFourEdgeTransformsRoundTripWithoutRotatingImageContent() {

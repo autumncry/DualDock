@@ -76,9 +76,24 @@ Manual mode provides length, thickness, icon-size, and spacing sliders. You can 
 - **Either endpoint:** adjust length while keeping the bar centered.
 - **Two inward corners:** scale proportionally.
 
-Icon size is saved as a relative proportion, preserved when thickness changes or the bar is scaled. Spacing changes only the contents of the fixed bar. Overflow scrolls along the Dock's direction without a visible scrollbar. Nearby icons magnify smoothly, with a manual on/off switch and strength control.
+Icon size is saved as a relative proportion, preserved when thickness changes or the bar is scaled. Spacing changes only the contents of the fixed bar. Overflow scrolls along the Dock's direction without a visible scrollbar.
 
 “所有屏幕同步尺寸” synchronizes sizes using the range available to all displays. Turn it off to configure each display within its own available bounds. Turning synchronization back on adopts the **currently selected display's effective size**, while positions remain independent. Manual thickness is capped at **12%** of the available short edge; maximum length follows the available length of the selected edge. Dimensions use macOS logical points.
+
+### Shape the magnification curve
+
+In manual mode, the Interaction page provides two continuous sliders:
+
+- **Peak size (放大峰值):** the maximum size of the icon under the pointer.
+- **Influence range (联动范围):** how many neighboring icons join the wave. Narrowing it reduces magnification around the focused icon.
+
+A curve preview updates with the sliders while the Dock backdrop stays fixed. Both controls are disabled when magnification is off. Fully adaptive mode continues to follow the system Dock and hides the manual curve controls. Your previous manual peak is preserved, and the new range initially matches the earlier behavior.
+
+### Hide when windows overlap
+
+Enable “窗口遮挡时隐藏 Dock” in Interaction to hide a display's Dock when a normal window overlaps its area. Pause the pointer at that edge to reveal it. For a top Dock, the activation edge sits below the menu bar.
+
+The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Native full-screen apps take priority and keep the Dock hidden even at the edge. This option is off by default and does not resize other apps' windows.
 
 ### Sidebar settings
 
@@ -131,6 +146,11 @@ swift test -c release                 # Model, layout, and window-policy tests
 ./script/check_four_edge_views.sh     # Four-edge layout, scroll, and input routing
 ./script/check_display_sizing_store.sh # Per-display sizing, sync, and resize commits
 ./script/check_native_dock_metrics.sh # Native Dock measurement and fallback checks
+./script/check_dock_animation.sh      # Hover redraw, layout, and badge regressions
+./script/check_dock_visibility.sh     # Visibility timing and lifecycle checks
+./script/check_fullscreen_fallback.sh # Async fullscreen fallback and stale results
+./script/check_window_obstruction.sh  # Obstruction reads, caching, and coalescing
+./script/check_application_activation.sh # App and helper-process activation routing
 ./script/check_badges.sh              # Badge reads and asynchronous state checks
 ./script/check_system_dock.sh         # Isolated system Dock recovery checks
 ```
@@ -143,6 +163,7 @@ The build-and-run script also supports `--logs`, `--telemetry`, and `--debug`. T
 - [Validation records and known limitations](docs/validation.md) (Chinese)
 - [Implementation research and initial design](docs/superpowers/specs/2026-11-09-dualdock-design.md) (Chinese)
 - [2.0 adaptive sizing, per-display positions, and resizing](docs/superpowers/specs/2026-11-10-four-edge-adaptive.md) (Chinese)
+- [2.1 visibility, activation, and animation changes](docs/superpowers/specs/2026-11-11-visibility-and-motion.md) (Chinese)
 
 Window identity matching and full-screen detection use optional macOS private interfaces with fallbacks. macOS updates may require adjustments. Preview and window-control behavior for minimized windows, other Spaces, and protected content depends on the target app and macOS.
 

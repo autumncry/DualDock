@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import QuartzCore
 import DualDockCore
 
 @MainActor
@@ -18,6 +19,7 @@ final class DisplayCoordinator {
     private var clickMonitor: Any?
     private var localClickMonitor: Any?
     private var poll: Timer?
+    private var visibility: DockVisibilityController?
     private var previewTask: Task<Void, Never>?
     private weak var previewSource: DockTile?
     private var previewGeneration = 0
@@ -69,9 +71,15 @@ final class DisplayCoordinator {
             }
             return event
         }
-        poll = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        let poll = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+        RunLoop.main.add(poll, forMode: .common)
+        self.poll = poll
+        visibility = DockVisibilityController(windows: store.windows,
+            targets: { [weak self] in self?.visibilityTargets() ?? [] },
+            autoHide: { [weak self] in self?.store.configuration.autoHideWhenObstructed ?? false },
+            apply: { [weak self] hidden in self?.applyVisibility(hidden: hidden) })
         refreshDisplays()
     }
 
@@ -128,7 +136,7 @@ final class DisplayCoordinator {
             strip.updateMousePassthrough()
             docks[id] = ScreenDock(screen: screen, displayID: display.id, panel: panel, strip: strip)
         }
-        applyFullscreenState()
+        visibility?.invalidate()
     }
 
     private func scheduleGeometryRefresh() {
@@ -139,12 +147,22 @@ final class DisplayCoordinator {
             self.geometryRefreshScheduled = false
             for dock in self.docks.values {
                 guard let display = self.store.displays.first(where: { $0.id == dock.displayID }) else { continue }
-                _ = dock.strip.updatePresentation(self.store.presentation(for: dock.displayID))
-                if let geometry = dock.strip.layoutGeometry {
-                    dock.panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: true)
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    context.allowsImplicitAnimation = false
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    _ = dock.strip.updatePresentation(self.store.presentation(for: dock.displayID))
+                    if let geometry = dock.strip.layoutGeometry {
+                        dock.panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: false)
+                    }
+                    dock.strip.layoutSubtreeIfNeeded()
+                    CATransaction.commit()
                 }
+                dock.panel.displayIfNeeded()
                 dock.strip.updateMousePassthrough()
             }
+            self.visibility?.refresh(force: true)
         }
     }
 
@@ -165,6 +183,8 @@ final class DisplayCoordinator {
     func stop() {
         stopped = true
         poll?.invalidate()
+        visibility?.stop()
+        visibility = nil
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
@@ -416,10 +436,7 @@ final class DisplayCoordinator {
         pointerOutsideSince = nil
     }
 
-    private var fullscreenCounter = 0
     private func tick() {
-        fullscreenCounter += 1
-        if fullscreenCounter % 4 == 0 { applyFullscreenState() }
         guard !contextMenuTracking, NSEvent.pressedMouseButtons == 0, groupPanel != nil || previewPanel != nil else { return }
         var safe = popupAnchor
         if let groupPanel { safe = safe.union(groupPanel.frame) }
@@ -429,8 +446,20 @@ final class DisplayCoordinator {
         else if pointerOutsideSince == nil { pointerOutsideSince = Date() }
     }
 
-    private func applyFullscreenState() {
-        let hidden = store.windows.fullscreenDisplayIDs(screens: docks.values.map(\.screen))
+    private func visibilityTargets() -> [DockVisibilityController.Target] {
+        let pointer = NSEvent.mouseLocation
+        return docks.map { id, dock in
+            let local = dock.strip.convert(dock.panel.convertPoint(fromScreen: pointer), from: nil)
+            let popupOpen = popupScreen == id && (groupPanel?.isVisible == true || previewPanel?.isVisible == true)
+            return .init(id: id, screen: dock.screen, visibleFrame: placementBounds(for: dock.screen),
+                edge: dock.strip.layoutGeometry?.edge ?? .bottom,
+                backdrop: dock.panel.convertToScreen(dock.strip.convert(dock.strip.backdropFrame, to: nil)),
+                pointerInside: dock.panel.isVisible && dock.strip.containsInteractivePoint(local),
+                interacting: dock.strip.isInteracting || popupOpen)
+        }
+    }
+
+    private func applyVisibility(hidden: Set<CGDirectDisplayID>) {
         for (id, dock) in docks {
             if hidden.contains(id) {
                 if dock.panel.isVisible { dock.strip.resetMagnification() }

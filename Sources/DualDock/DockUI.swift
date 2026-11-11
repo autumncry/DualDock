@@ -28,7 +28,10 @@ final class DockPanel: NSPanel {
         hasShadow = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        // Join normal desktops without opting into another app's fullscreen
+        // Space. Visibility polling then handles restoration, not the first
+        // frame of a fullscreen transition.
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         acceptsMouseMovedEvents = true
         animationBehavior = .none
     }
@@ -108,6 +111,7 @@ final class DockStripView: NSView {
     private(set) var desiredWidth: CGFloat = 200
     var layoutGeometry: DockGeometry? { currentGeometry }
     var isResizing: Bool { resizeSession?.started == true }
+    var isInteracting: Bool { interactionDepth > 0 || resizeSession != nil }
     var scrollOffset: CGFloat {
         currentGeometry?.canonicalScrollOffset(clipBounds: scrolling.contentView.bounds,
                                                actualDocumentSize: document.frame.size) ?? 0
@@ -151,6 +155,14 @@ final class DockStripView: NSView {
     }
     private var cursorLayout: CursorLayout?
     private var ownsResizeCursor = false
+    private struct ContainerLayout: Equatable {
+        let canvasSize: CGSize
+        let documentSize: CGSize
+        let viewport: CGRect
+        let backdrop: CGRect
+        let thickness: CGFloat
+    }
+    private var containerLayout: ContainerLayout?
 
     init() {
         super.init(frame: .zero)
@@ -234,6 +246,7 @@ final class DockStripView: NSView {
         stopAnimations()
         document.subviews.forEach { $0.removeFromSuperview() }
         tiles = []; divider = nil; emptyLabel = nil
+        containerLayout = nil
         interactionDepth = 0
         waitingForMouseRelease = false
         isGroup = groupID != nil
@@ -557,21 +570,31 @@ final class DockStripView: NSView {
         animationTiming.resume(); displayLink?.isPaused = false
     }
     fileprivate func animationTick(_ link: CADisplayLink) {
+        advanceAnimation(at: link.timestamp, pointer: NSEvent.mouseLocation,
+                         buttonsPressed: NSEvent.pressedMouseButtons != 0)
+    }
+
+    /// The display-link callback supplies time and input explicitly so animation
+    /// frames can also be replayed without sending events to the desktop.
+    func advanceAnimation(at timestamp: TimeInterval, pointer: NSPoint, buttonsPressed: Bool) {
         guard resizeSession == nil, interactionDepth == 0, let geometry = currentGeometry, let targetGeometry else {
-            link.isPaused = true; animationTiming.pause(); return
+            displayLink?.isPaused = true; animationTiming.pause(); return
         }
-        if pointerIsOccluded?(NSEvent.mouseLocation) == true { pauseForPointerOcclusion(); updateMousePassthrough(); return }
-        if NSEvent.pressedMouseButtons != 0 { waitingForMouseRelease = true; animationTiming.pause(); return }
-        if waitingForMouseRelease { waitingForMouseRelease = false; updatePointer(force: true); return }
-        let fraction = animationTiming.fraction(at: link.timestamp, returningToRest: focusIndex == nil)
+        if pointerIsOccluded?(pointer) == true { pauseForPointerOcclusion(); updateMousePassthrough(at: pointer); return }
+        if buttonsPressed { waitingForMouseRelease = true; animationTiming.pause(); return }
+        if waitingForMouseRelease {
+            waitingForMouseRelease = false
+            updatePointer(at: pointer, buttonsPressed: false, force: true)
+            return
+        }
+        let fraction = animationTiming.fraction(at: timestamp, returningToRest: focusIndex == nil)
         let remaining = geometry.maximumDifference(from: targetGeometry)
         let next = remaining < 0.08 ? targetGeometry : geometry.interpolated(to: targetGeometry, fraction: fraction)
-        currentGeometry = next; apply(next)
-        if remaining < 0.08 { link.isPaused = true; animationTiming.pause(); refreshHoveredIndex() }
+        currentGeometry = next; apply(next, pointer: pointer)
+        if remaining < 0.08 { displayLink?.isPaused = true; animationTiming.pause(); refreshHoveredIndex(at: pointer) }
     }
-    private func refreshHoveredIndex() {
+    private func refreshHoveredIndex(at global: NSPoint = NSEvent.mouseLocation) {
         guard resizeSession == nil, interactionDepth == 0, let window else { return }
-        let global = NSEvent.mouseLocation
         if pointerIsOccluded?(global) == true { pauseForPointerOcclusion(); updateMousePassthrough(); return }
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
         changeHoveredIndex(resizeHandle(at: local) == nil ? tileIndex(at: local) : nil)
@@ -580,10 +603,16 @@ final class DockStripView: NSView {
     private func pauseForPointerOcclusion() {
         displayLink?.isPaused = true; animationTiming.pause(); lastMousePoint = nil; changeHoveredIndex(nil)
     }
-    private func apply(_ value: DockGeometry) {
-        frame.size = value.canvasSize
-        backdrop.frame = value.backdropRect
-        backdrop.layer?.cornerRadius = min(18, value.barThickness * 0.28)
+    private func apply(_ value: DockGeometry, pointer: NSPoint? = nil) {
+        let container = ContainerLayout(canvasSize: value.canvasSize, documentSize: value.documentSize,
+            viewport: value.viewportRect, backdrop: value.backdropRect, thickness: value.barThickness)
+        let containerChanged = containerLayout != container
+        if containerChanged {
+            containerLayout = container
+            frame.size = value.canvasSize
+            backdrop.frame = value.backdropRect
+            backdrop.layer?.cornerRadius = min(18, value.barThickness * 0.28)
+        }
         let frames = value.tileFrames, icons = value.iconFrames, dots = value.dotFrames
         for index in tiles.indices {
             tiles[index].applyGeometry(frame: frames[index], iconFrame: icons[index], dotFrame: dots[index],
@@ -591,9 +620,12 @@ final class DockStripView: NSView {
         }
         divider?.frame = value.dividerFrame ?? .zero
         desiredWidth = value.bodyLength
-        needsLayout = true; layoutSubtreeIfNeeded()
-        updateMousePassthrough()
-        scrolling.reflectScrolledClipView(scrolling.contentView)
+        if containerChanged {
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+            scrolling.reflectScrolledClipView(scrolling.contentView)
+        }
+        updateMousePassthrough(at: pointer ?? NSEvent.mouseLocation)
     }
 }
 

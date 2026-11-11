@@ -347,7 +347,8 @@ final class AppStore: ObservableObject {
             style: DockGeometryStyle(iconSize: CGFloat(icon), barThickness: CGFloat(effective.thickness),
                 gap: CGFloat(effective.iconSpacing * icon / 48), leadingPadding: 6, trailingPadding: 6,
                 separatorLength: CGFloat(13 * icon / 48),
-                magnificationScale: configuration.magnificationEnabled ? CGFloat(configuration.magnificationScale) : 1),
+                magnificationScale: configuration.magnificationEnabled ? CGFloat(configuration.magnificationScale) : 1,
+                magnificationRadius: CGFloat(configuration.magnificationRadius)),
             maximumLength: CGFloat(bounds.maxLength), fixedLength: CGFloat(effective.length), resizeMargin: 6,
             resizeBounds: bounds, requestedManualSizing: requested, canResize: !readOnly)
     }
@@ -451,12 +452,8 @@ final class AppStore: ObservableObject {
     func isRunning(_ app: AppReference) -> Bool { runningApps.contains { $0.id == app.id } }
 
     func launch(_ app: AppReference) {
-        let url = resolvedURL(app)
-        guard FileManager.default.fileExists(atPath: url.path) else { message = "找不到 \(app.name)，请重新添加该应用。"; return }
-        let options = NSWorkspace.OpenConfiguration()
-        options.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: options) { [weak self] _, error in
-            if let error { Task { @MainActor in self?.message = error.localizedDescription } }
+        ApplicationActivationService().open(app, at: resolvedURL(app)) { [weak self] message in
+            self?.message = message
         }
     }
 

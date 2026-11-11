@@ -52,8 +52,12 @@ enum WindowCloseResult: Equatable {
 final class WindowService {
     private let native = NativeWindowAPI()
     private var contentRequest: Task<SCShareableContent, Error>?
-    private var fallbackFullscreenDate = Date.distantPast
-    private var fallbackFullscreenIDs: Set<CGDirectDisplayID> = []
+    var onFullscreenStateChange: (() -> Void)?
+    private lazy var fullscreenFallback: FullscreenFallbackService = {
+        let service = FullscreenFallbackService()
+        service.onUpdate = { [weak self] in self?.onFullscreenStateChange?() }
+        return service
+    }()
 
     func previews(for app: AppReference) async -> [WindowPreview] {
         guard CGPreflightScreenCaptureAccess(), !Task.isCancelled else { return [] }
@@ -281,23 +285,29 @@ final class WindowService {
     }
 
     func fullscreenDisplayIDs(screens: [NSScreen]) -> Set<CGDirectDisplayID> {
-        guard !screens.isEmpty else { return [] }
         let states = native.fullscreenStates(screens: screens)
         var result = Set(states.compactMap { $0.value ? $0.key : nil })
         let unknownScreens = screens.filter { screen in
             guard let id = Self.displayID(screen) else { return false }
             return states[id] == nil
         }
-        guard !unknownScreens.isEmpty else { return result }
-        // AX probing is needed only when private Space metadata is unavailable or incomplete.
-        if Date().timeIntervalSince(fallbackFullscreenDate) > 1 {
-            fallbackFullscreenIDs = accessibilityFullscreenDisplays(screens: screens)
-            fallbackFullscreenDate = Date()
-        }
-        let unknownIDs = Set(unknownScreens.compactMap(Self.displayID))
-        result.formUnion(fallbackFullscreenIDs.intersection(unknownIDs))
+        let primaryTop = NSScreen.screens.first(where: { Self.displayID($0) == CGMainDisplayID() })?.frame.maxY ?? 0
+        let displays = unknownScreens.compactMap { screen -> FullscreenDisplayFrame? in
+            guard let id = Self.displayID(screen) else { return nil }
+            return .init(id: id, frame: CGRect(x: screen.frame.minX, y: primaryTop - screen.frame.maxY,
+                                              width: screen.frame.width, height: screen.frame.height))
+        }.sorted { $0.id < $1.id }
+        // The native query is cheap and definitive when it knows the Space.
+        // Only unknown displays enter the bounded background AX fallback.
+        let fallback = fullscreenFallback.update(.init(displays: displays,
+            accessibilityTrusted: AXIsProcessTrusted(), ownProcessID: ProcessInfo.processInfo.processIdentifier))
+        result.formUnion(fallback.compactMap { $0.value ? $0.key : nil })
         return result
     }
+
+    func invalidateFullscreenState() { fullscreenFallback.invalidate() }
+
+    func stopFullscreenMonitoring() { fullscreenFallback.stop() }
 
     private func currentContent() async throws -> SCShareableContent {
         if let contentRequest { return try await contentRequest.value }
@@ -407,40 +417,6 @@ final class WindowService {
         return positioned.count == 1 ? positioned[0] : nil
     }
 
-    private func accessibilityFullscreenDisplays(screens: [NSScreen]) -> Set<CGDirectDisplayID> {
-        guard AXIsProcessTrusted(),
-              let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
-        else { return [] }
-        let primaryTop = NSScreen.screens.first(where: { Self.displayID($0) == CGMainDisplayID() })?.frame.maxY ?? 0
-        let displayFrames = screens.compactMap { screen -> (CGDirectDisplayID, CGRect)? in
-            guard let id = Self.displayID(screen) else { return nil }
-            return (id, CGRect(x: screen.frame.minX, y: primaryTop - screen.frame.maxY, width: screen.frame.width, height: screen.frame.height))
-        }
-        var candidatePIDs: Set<pid_t> = []
-        for row in rows {
-            guard row[kCGWindowLayer as String] as? Int == 0,
-                  let pid = row[kCGWindowOwnerPID as String] as? Int,
-                  pid != ProcessInfo.processInfo.processIdentifier,
-                  let bounds = row[kCGWindowBounds as String] as? [String: Any],
-                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary)
-            else { continue }
-            if displayFrames.contains(where: { Self.covers(frame, screen: $0.1) }) {
-                candidatePIDs.insert(pid_t(pid))
-            }
-        }
-        var result: Set<CGDirectDisplayID> = []
-        for pid in candidatePIDs {
-            let application = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(application, 0.12)
-            for window in axWindows(application) {
-                // A maximized window alone is insufficient: require the accessibility full-screen flag.
-                guard axValue(window, "AXFullScreen" as CFString) as? Bool == true, let frame = axFrame(window) else { continue }
-                for (id, displayFrame) in displayFrames where Self.covers(frame, screen: displayFrame) { result.insert(id) }
-            }
-        }
-        return result
-    }
-
     private func axWindows(_ application: AXUIElement) -> [AXUIElement] {
         axValue(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
     }
@@ -461,12 +437,6 @@ final class WindowService {
               AXValueGetValue(unsafeBitCast(size, to: AXValue.self), .cgSize, &dimensions)
         else { return nil }
         return CGRect(origin: point, size: dimensions)
-    }
-
-    private static func covers(_ frame: CGRect, screen: CGRect) -> Bool {
-        let intersection = frame.intersection(screen)
-        return screen.width > 0 && screen.height > 0 && !intersection.isNull
-            && intersection.width >= screen.width * 0.97 && intersection.height >= screen.height * 0.95
     }
 
     fileprivate static func displayID(_ screen: NSScreen) -> CGDirectDisplayID? {
