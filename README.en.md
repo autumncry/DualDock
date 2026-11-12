@@ -89,9 +89,9 @@ In manual mode, the Interaction page provides two continuous sliders:
 
 A curve preview updates with the sliders while the Dock backdrop stays fixed. Both controls are disabled when magnification is off. Fully adaptive mode continues to follow the system Dock and hides the manual curve controls. Your previous manual peak is preserved, and the new range initially matches the earlier behavior.
 
-### Hide when windows overlap
+### Hide for maximized windows
 
-Enable “窗口遮挡时隐藏 Dock” in Interaction to hide a display's Dock when a normal window overlaps its area. Pause the pointer at that edge to reveal it. For a top Dock, the activation edge sits below the menu bar.
+Enable “最大化窗口时隐藏 Dock” in Interaction to hide a display's Dock when a window fills its available workspace. Pause the pointer at that edge to reveal it. Moving an ordinary window down over the Dock does not trigger hiding. For a top Dock, the activation edge sits below the menu bar.
 
 The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Native full-screen apps take priority and keep the Dock hidden even at the edge. This option is off by default and does not resize other apps' windows.
 
