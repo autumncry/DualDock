@@ -11,7 +11,7 @@ public struct DockVisibilityPolicy: Sendable {
 
     @discardableResult
     public mutating func update(now: TimeInterval, fullscreen: Bool, autoHide: Bool,
-                                obstructed: Bool, pointerAtEdge: Bool,
+                                maximized: Bool, pointerAtEdge: Bool,
                                 pointerInsideDock: Bool, interacting: Bool) -> Bool {
         if fullscreen {
             isVisible = false
@@ -19,7 +19,7 @@ public struct DockVisibilityPolicy: Sendable {
             lastEngagedAt = nil
             return false
         }
-        guard autoHide && obstructed else {
+        guard autoHide && maximized else {
             isVisible = true
             edgeEnteredAt = nil
             lastEngagedAt = nil
@@ -46,6 +46,26 @@ public struct DockVisibilityPolicy: Sendable {
         return isVisible
     }
 
+    /// Classifies a workspace-filling rectangle, not overlap with the Dock.
+    /// Accept small frame rounding and symmetric native tiling margins. A
+    /// full-sized window translated off an edge is still an ordinary window.
+    public static func isMaximizedWindow(_ frame: CGRect, in visibleScreen: CGRect) -> Bool {
+        guard valid(frame), valid(visibleScreen) else { return false }
+        let left = frame.minX - visibleScreen.minX
+        let right = visibleScreen.maxX - frame.maxX
+        let bottom = frame.minY - visibleScreen.minY
+        let top = visibleScreen.maxY - frame.maxY
+        let insets = [left, right, bottom, top]
+        let alignmentTolerance: CGFloat = 2
+        let maximumTilingInset: CGFloat = 16
+        guard insets.allSatisfy(\.isFinite) else { return false }
+        if insets.allSatisfy({ abs($0) <= alignmentTolerance }) { return true }
+        return insets.allSatisfy { $0 >= -alignmentTolerance && $0 <= maximumTilingInset }
+            && abs(left - right) <= alignmentTolerance
+            && abs(top - bottom) <= alignmentTolerance
+    }
+
+    /// Geometric diagnostic utility; auto-hide uses isMaximizedWindow instead.
     public static func isObstructed(_ backdrop: CGRect, by windows: [CGRect]) -> Bool {
         guard valid(backdrop) else { return false }
         return windows.contains { frame in

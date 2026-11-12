@@ -2,6 +2,22 @@ import XCTest
 @testable import DualDockCore
 
 final class DockVisibilityPolicyTests: XCTestCase {
+    func testOrdinaryWindowsCoveringDockRemainVisible() {
+        let workspace = CGRect(x: 0, y: 0, width: 1800, height: 1129)
+        let ordinary = [
+            CGRect(x: 637, y: 52, width: 740, height: 796),
+            CGRect(x: 0, y: 0, width: 1800, height: 500),
+            CGRect(x: 0, y: -10, width: 1800, height: 1129)
+        ]
+        for frame in ordinary {
+            var policy = DockVisibilityPolicy()
+            let maximized = DockVisibilityPolicy.isMaximizedWindow(frame, in: workspace)
+            XCTAssertTrue(policy.update(now: 0, fullscreen: false, autoHide: true,
+                maximized: maximized, pointerAtEdge: false, pointerInsideDock: false, interacting: false),
+                "An ordinary window covering Dock must not hide it: \(frame)")
+        }
+    }
+
     func testLegacyConfigurationKeepsAutoHideOffAndNewChoicePersists() throws {
         var saved = DockConfiguration()
         saved.dockWidth = 1325.5
@@ -16,10 +32,79 @@ final class DockVisibilityPolicyTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(restored)), restored)
     }
 
-    func testObstructionHidesUntilEdgeDwellAndPreservesPopupInteraction() {
+    func testMaximizedAliasPreservesLegacyStorageKeyAndExistingChoice() throws {
+        var restored = try JSONDecoder().decode(DockConfiguration.self,
+            from: Data("{\"version\":8,\"autoHideWhenObstructed\":true}".utf8))
+        XCTAssertTrue(restored.autoHideWhenMaximized)
+        restored.autoHideWhenMaximized = false
+        XCTAssertFalse(restored.autoHideWhenObstructed)
+        restored.autoHideWhenMaximized = true
+        let encoded = try JSONEncoder().encode(restored)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["autoHideWhenObstructed"] as? Bool, true)
+        XCTAssertNil(object["autoHideWhenMaximized"], "The computed name must not split persisted state")
+        XCTAssertEqual(try JSONDecoder().decode(DockConfiguration.self, from: encoded), restored)
+    }
+
+    func testWorkspaceFillAllowsRoundingAndSmallSymmetricTilingMargins() {
+        let workspace = CGRect(x: 0, y: 0, width: 1800, height: 1129)
+        for frame in [workspace,
+                      CGRect(x: 0, y: -1, width: 1800, height: 1130),
+                      CGRect(x: 0, y: 0, width: 1800, height: 1130),
+                      CGRect(x: 2, y: -2, width: 1800, height: 1129),
+                      workspace.insetBy(dx: 8, dy: 8),
+                      workspace.insetBy(dx: 16, dy: 16),
+                      workspace.insetBy(dx: 16, dy: 0)] {
+            XCTAssertTrue(DockVisibilityPolicy.isMaximizedWindow(frame, in: workspace), "Expected workspace fill: \(frame)")
+        }
+    }
+
+    func testCoverageAloneDoesNotMakeAnOrdinaryWindowMaximized() {
+        let workspace = CGRect(x: 0, y: 0, width: 1800, height: 1129)
+        for frame in [CGRect(x: 0, y: 0, width: 900, height: 1129),
+                      CGRect(x: 16, y: 0, width: 1784, height: 1129),
+                      CGRect(x: 0, y: 10, width: 1800, height: 1119),
+                      CGRect(x: -500, y: -500, width: 3000, height: 2000),
+                      workspace.insetBy(dx: 17, dy: 17), .null, .infinite] {
+            XCTAssertFalse(DockVisibilityPolicy.isMaximizedWindow(frame, in: workspace), "Ordinary bounds: \(frame)")
+        }
+        for delta in [CGFloat(10), 32, 100] {
+            for frame in [workspace.offsetBy(dx: 0, dy: -delta), workspace.offsetBy(dx: 0, dy: delta),
+                          workspace.offsetBy(dx: -delta, dy: 0), workspace.offsetBy(dx: delta, dy: 0)] {
+                XCTAssertFalse(DockVisibilityPolicy.isMaximizedWindow(frame, in: workspace), "Shifted full size: \(frame)")
+            }
+        }
+    }
+
+    func testMaximizationIsRelativeToEachDisplayAvailableArea() {
+        let main = CGRect(x: 0, y: 0, width: 1800, height: 1129)
+        let external = CGRect(x: -2560, y: 809, width: 2560, height: 1409)
+        XCTAssertTrue(DockVisibilityPolicy.isMaximizedWindow(external, in: external))
+        XCTAssertTrue(DockVisibilityPolicy.isMaximizedWindow(external.insetBy(dx: 12, dy: 12), in: external))
+        XCTAssertFalse(DockVisibilityPolicy.isMaximizedWindow(external, in: main))
+        XCTAssertFalse(DockVisibilityPolicy.isMaximizedWindow(main, in: external))
+        XCTAssertFalse(DockVisibilityPolicy.isMaximizedWindow(main, in: .null))
+        XCTAssertFalse(DockVisibilityPolicy.isMaximizedWindow(main, in: .infinite))
+        let normalTiledWindows = [CGRect(x: 0, y: 0, width: 900, height: 1129),
+                                  CGRect(x: 900, y: 0, width: 900, height: 1129)]
+        XCTAssertFalse(normalTiledWindows.contains { DockVisibilityPolicy.isMaximizedWindow($0, in: main) })
+    }
+
+    func testRestoringOrMovingAWindowOutOfMaximizationShowsDockImmediately() {
+        let workspace = CGRect(x: 0, y: 0, width: 1800, height: 1129)
+        var state = DockVisibilityPolicy()
+        XCTAssertFalse(state.update(now: 0, fullscreen: false, autoHide: true, maximized: true,
+                                    pointerAtEdge: false, pointerInsideDock: false, interacting: false))
+        let stillCoversDock = workspace.offsetBy(dx: 0, dy: -10)
+        XCTAssertTrue(state.update(now: 0.01, fullscreen: false, autoHide: true,
+            maximized: DockVisibilityPolicy.isMaximizedWindow(stillCoversDock, in: workspace),
+            pointerAtEdge: false, pointerInsideDock: false, interacting: false))
+    }
+
+    func testMaximizedWindowHidesUntilEdgeDwellAndPreservesPopupInteraction() {
         var state = DockVisibilityPolicy()
         func update(_ time: Double, edge: Bool = false, inside: Bool = false, interacting: Bool = false) -> Bool {
-            state.update(now: time, fullscreen: false, autoHide: true, obstructed: true,
+            state.update(now: time, fullscreen: false, autoHide: true, maximized: true,
                          pointerAtEdge: edge, pointerInsideDock: inside, interacting: interacting)
         }
         XCTAssertFalse(update(0))
@@ -36,31 +121,31 @@ final class DockVisibilityPolicyTests: XCTestCase {
 
     func testFullscreenHidesImmediatelyAndNormalDesktopRestoresImmediately() {
         var state = DockVisibilityPolicy()
-        XCTAssertFalse(state.update(now: 0, fullscreen: true, autoHide: true, obstructed: false,
+        XCTAssertFalse(state.update(now: 0, fullscreen: true, autoHide: true, maximized: false,
                                     pointerAtEdge: true, pointerInsideDock: true, interacting: true))
-        XCTAssertTrue(state.update(now: 0.01, fullscreen: false, autoHide: true, obstructed: false,
+        XCTAssertTrue(state.update(now: 0.01, fullscreen: false, autoHide: true, maximized: false,
                                    pointerAtEdge: false, pointerInsideDock: false, interacting: false))
-        XCTAssertFalse(state.update(now: 0.02, fullscreen: true, autoHide: false, obstructed: false,
+        XCTAssertFalse(state.update(now: 0.02, fullscreen: true, autoHide: false, maximized: false,
                                     pointerAtEdge: false, pointerInsideDock: false, interacting: false))
     }
 
     func testDisablingAutoHideAndIndependentDisplays() {
         var first = DockVisibilityPolicy(), second = DockVisibilityPolicy()
-        XCTAssertFalse(first.update(now: 0, fullscreen: true, autoHide: true, obstructed: false,
+        XCTAssertFalse(first.update(now: 0, fullscreen: true, autoHide: true, maximized: false,
                                     pointerAtEdge: false, pointerInsideDock: false, interacting: false))
-        XCTAssertTrue(second.update(now: 0, fullscreen: false, autoHide: false, obstructed: true,
+        XCTAssertTrue(second.update(now: 0, fullscreen: false, autoHide: false, maximized: true,
                                     pointerAtEdge: false, pointerInsideDock: false, interacting: false))
-        XCTAssertTrue(first.update(now: 0.1, fullscreen: false, autoHide: false, obstructed: true,
+        XCTAssertTrue(first.update(now: 0.1, fullscreen: false, autoHide: false, maximized: true,
                                    pointerAtEdge: false, pointerInsideDock: false, interacting: false))
     }
 
     func testPointerAlreadyUsingVisibleDockDoesNotLoseItWhenWindowArrives() {
         var state = DockVisibilityPolicy()
-        XCTAssertTrue(state.update(now: 0, fullscreen: false, autoHide: true, obstructed: true,
+        XCTAssertTrue(state.update(now: 0, fullscreen: false, autoHide: true, maximized: true,
                                    pointerAtEdge: false, pointerInsideDock: true, interacting: false))
-        XCTAssertTrue(state.update(now: 0.2, fullscreen: false, autoHide: true, obstructed: true,
+        XCTAssertTrue(state.update(now: 0.2, fullscreen: false, autoHide: true, maximized: true,
                                    pointerAtEdge: false, pointerInsideDock: false, interacting: false))
-        XCTAssertFalse(state.update(now: 0.31, fullscreen: false, autoHide: true, obstructed: true,
+        XCTAssertFalse(state.update(now: 0.31, fullscreen: false, autoHide: true, maximized: true,
                                     pointerAtEdge: false, pointerInsideDock: false, interacting: false))
     }
 

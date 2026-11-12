@@ -78,7 +78,7 @@ final class DisplayCoordinator {
         self.poll = poll
         visibility = DockVisibilityController(windows: store.windows,
             targets: { [weak self] in self?.visibilityTargets() ?? [] },
-            autoHide: { [weak self] in self?.store.configuration.autoHideWhenObstructed ?? false },
+            autoHide: { [weak self] in self?.store.configuration.autoHideWhenMaximized ?? false },
             apply: { [weak self] hidden in self?.applyVisibility(hidden: hidden) })
         refreshDisplays()
     }

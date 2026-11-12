@@ -81,7 +81,9 @@ final class DockVisibilityController {
             let edge = DockVisibilityPolicy.activationRegion(backdrop: target.backdrop, edge: target.edge,
                                                               visibleScreen: target.visibleFrame)
             let visible = state.update(now: now, fullscreen: fullscreen.contains(target.id), autoHide: enabled,
-                obstructed: enabled && DockVisibilityPolicy.isObstructed(target.backdrop, by: obstruction.frames),
+                maximized: enabled && obstruction.frames.contains {
+                    DockVisibilityPolicy.isMaximizedWindow($0, in: target.visibleFrame)
+                },
                 pointerAtEdge: edge.contains(pointer), pointerInsideDock: target.pointerInside,
                 interacting: target.interacting)
             states[target.id] = state

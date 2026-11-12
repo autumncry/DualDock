@@ -60,7 +60,12 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public var showPreviews: Bool = true
     public var showBadges: Bool = true
     public var hideSystemDock: Bool = false
+    /// Persisted compatibility key. The current behavior is maximized-only.
     public var autoHideWhenObstructed: Bool = false
+    public var autoHideWhenMaximized: Bool {
+        get { autoHideWhenObstructed }
+        set { autoHideWhenObstructed = newValue }
+    }
 
     public init() {}
 

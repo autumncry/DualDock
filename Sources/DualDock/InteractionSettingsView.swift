@@ -7,10 +7,10 @@ struct InteractionSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             SettingsGroup("自动隐藏") {
-                Toggle("窗口遮挡时隐藏 Dock", isOn: Binding(get: { store.configuration.autoHideWhenObstructed }, set: { value in
-                    store.update { $0.autoHideWhenObstructed = value }
+                Toggle("最大化窗口时隐藏 Dock", isOn: Binding(get: { store.configuration.autoHideWhenMaximized }, set: { value in
+                    store.update { $0.autoHideWhenMaximized = value }
                 }))
-                Text("普通窗口进入 Dock 区域时隐藏，鼠标移到该侧边缘稍作停留即可唤出。使用应用夹、预览和菜单时保持显示；全屏应用期间仍隐藏。顶部 Dock 的唤出位置在菜单栏下方。")
+                Text("窗口铺满当前屏幕工作区时隐藏，鼠标移到该侧边缘稍作停留即可唤出。普通窗口仅仅盖住 Dock 不会触发隐藏。使用应用夹、预览、菜单和拖拽时保持显示；全屏应用期间仍隐藏。顶部 Dock 的唤出位置在菜单栏下方。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             SettingsGroup("悬停放大") {
