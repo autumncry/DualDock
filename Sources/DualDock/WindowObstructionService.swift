@@ -8,29 +8,37 @@ final class WindowObstructionService {
     var onUpdate: (() -> Void)?
     private(set) var frames: [CGRect] = []
     private let reader: Reader
+    private let now: () -> TimeInterval
+    private let maximumSnapshotAge: TimeInterval = 1
     private let queue = DispatchQueue(label: "local.ronny.DualDock.obstruction", qos: .utility)
     private var generation: UInt64 = 0
     private var reading = false
     private var pending = false
     private var stopped = false
     private var lastRead = -TimeInterval.infinity
+    private var snapshotTime: TimeInterval?
 
-    init(reader: @escaping Reader = { WindowObstructionService.readWindowBounds() }) { self.reader = reader }
+    init(reader: @escaping Reader = { WindowObstructionService.readWindowBounds() },
+         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.reader = reader
+        self.now = now
+    }
 
     func invalidate(clear: Bool = false) {
         generation &+= 1
-        if clear { frames = [] }
+        if clear { frames = []; snapshotTime = nil }
         lastRead = -.infinity
         pending = reading
     }
 
     func refresh(force: Bool = false) {
         guard !stopped else { return }
-        let now = ProcessInfo.processInfo.systemUptime
+        let time = now()
+        expireSnapshot(at: time)
         if reading { pending = pending || force; return }
-        guard force || now - lastRead >= 0.15 else { return }
+        guard force || time - lastRead >= 0.15 else { return }
         reading = true
-        lastRead = now
+        lastRead = time
         let token = generation, read = reader
         let primaryTop = NSScreen.screens.first(where: { screen in
             (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == CGMainDisplayID()
@@ -41,8 +49,11 @@ final class WindowObstructionService {
                 guard let self else { return }
                 self.reading = false
                 guard !self.stopped else { return }
-                if token == self.generation, let raw {
+                // Age starts when the query begins: a blocked WindowServer read
+                // must not bring an already-expired obstruction back to life.
+                if token == self.generation, let raw, self.now() - time < self.maximumSnapshotAge {
                     let next = raw.map { CGRect(x: $0.minX, y: primaryTop - $0.maxY, width: $0.width, height: $0.height) }
+                    self.snapshotTime = time
                     if next != self.frames { self.frames = next; self.onUpdate?() }
                 }
                 if self.pending {
@@ -58,7 +69,16 @@ final class WindowObstructionService {
         generation &+= 1
         pending = false
         frames = []
+        snapshotTime = nil
         onUpdate = nil
+    }
+
+    private func expireSnapshot(at time: TimeInterval) {
+        guard let snapshotTime, time - snapshotTime >= maximumSnapshotAge else { return }
+        frames = []
+        self.snapshotTime = nil
+        // refresh()'s caller reads frames immediately afterward. A synchronous
+        // onUpdate here would reenter that caller while it is evaluating state.
     }
 
     nonisolated private static func readWindowBounds() -> [CGRect]? {

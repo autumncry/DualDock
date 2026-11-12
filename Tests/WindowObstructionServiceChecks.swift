@@ -32,6 +32,11 @@ private final class ObstructionReaderFixture: @unchecked Sendable {
     }
 }
 
+@MainActor
+private final class ObstructionClock {
+    var time: TimeInterval = 0
+}
+
 /// Injected rectangles only: no real window list, screenshots, user settings, or input.
 @main
 struct WindowObstructionServiceChecks {
@@ -202,6 +207,105 @@ struct WindowObstructionServiceChecks {
             gate.signal()
             await settle()
             check(updates == 0, "Released owner received a late callback")
+        }
+        do {
+            let fixture = ObstructionReaderFixture([a])
+            let clock = ObstructionClock()
+            let service = WindowObstructionService(reader: { fixture.read() }, now: { clock.time })
+            var updates = 0
+            var refreshing = false
+            service.onUpdate = {
+                check(!refreshing, "Snapshot expiry synchronously reentered its caller")
+                updates += 1
+            }
+            service.refresh()
+            await waitUntil { !service.frames.isEmpty }
+            fixture.set(nil)
+            clock.time = 0.4
+            service.refresh(force: true)
+            await waitUntil { fixture.calls == 2 }
+            await settle()
+            check(service.frames == [screenFrame(a)], "A short read failure cleared a fresh snapshot")
+            clock.time = 0.99
+            service.refresh(force: true)
+            await waitUntil { fixture.calls == 3 }
+            await settle()
+            check(service.frames == [screenFrame(a)], "Freshness was shortened by a failed read")
+            clock.time = 1.01
+            refreshing = true
+            service.refresh()
+            refreshing = false
+            check(service.frames.isEmpty, "Failed reads kept an obsolete obstruction past one second")
+            check(updates == 1, "Expiry should be returned to the current caller without a callback")
+            fixture.set([b]); clock.time = 1.2
+            service.refresh(force: true)
+            await waitUntil { service.frames == [screenFrame(b)] }
+            check(updates == 2, "A fresh snapshot did not restore normal notifications")
+            service.stop()
+        }
+        do {
+            let fixture = ObstructionReaderFixture([a])
+            let clock = ObstructionClock()
+            let service = WindowObstructionService(reader: { fixture.read() }, now: { clock.time })
+            var updates = 0
+            service.onUpdate = { updates += 1 }
+            service.refresh()
+            await waitUntil { updates == 1 }
+            clock.time = 0.9
+            service.refresh(force: true)
+            await waitUntil { fixture.calls == 2 }
+            await settle()
+            check(updates == 1, "An identical successful snapshot should stay deduplicated")
+            fixture.set(nil); clock.time = 1.1
+            service.refresh(force: true)
+            await waitUntil { fixture.calls == 3 }
+            await settle()
+            check(service.frames == [screenFrame(a)], "Identical successful geometry did not renew freshness")
+            clock.time = 1.91
+            service.refresh()
+            check(service.frames.isEmpty, "An unknown result renewed an identical snapshot's lifetime")
+            service.stop()
+        }
+        do {
+            let fixture = ObstructionReaderFixture([a])
+            let clock = ObstructionClock()
+            let service = WindowObstructionService(reader: { fixture.read() }, now: { clock.time })
+            var updates = 0
+            service.onUpdate = { updates += 1 }
+            service.refresh()
+            await waitUntil { updates == 1 }
+            let gate = fixture.block(call: 2)
+            fixture.set([b]); clock.time = 0.4
+            service.refresh(force: true)
+            await waitUntil { fixture.calls == 2 }
+            clock.time = 1.01
+            service.refresh()
+            check(service.frames.isEmpty && updates == 1,
+                  "A blocked read prevented an old obstruction from expiring")
+            clock.time = 1.5
+            gate.signal()
+            await settle()
+            check(service.frames.isEmpty && updates == 1, "A late query resurrected stale geometry")
+            fixture.set([c]); clock.time = 1.51
+            service.refresh(force: true)
+            await waitUntil { service.frames == [screenFrame(c)] }
+            check(updates == 2, "The service did not recover after discarding a late query")
+            service.stop()
+        }
+        do {
+            let fixture = ObstructionReaderFixture([a])
+            let clock = ObstructionClock()
+            let service = WindowObstructionService(reader: { fixture.read() }, now: { clock.time })
+            service.refresh()
+            await waitUntil { !service.frames.isEmpty }
+            fixture.set(nil); clock.time = 0.9
+            service.invalidate(); service.refresh(force: true)
+            await waitUntil { fixture.calls == 2 }
+            await settle()
+            clock.time = 1.01
+            service.refresh()
+            check(service.frames.isEmpty, "Invalidation renewed the age of cached geometry")
+            service.stop()
         }
     }
 }
