@@ -23,6 +23,7 @@ final class AppStore: ObservableObject {
     let windows = WindowService()
     private let badgeService = DockBadgeService()
     private let nativeMetricsService = NativeDockMetricsService()
+    private let activationService = ApplicationActivationService()
     let directory: URL
     private let configURL: URL
     private var observers: [NSObjectProtocol] = []
@@ -394,6 +395,7 @@ final class AppStore: ObservableObject {
     }
 
     func stopBackgroundServices() {
+        activationService.cancelPendingRecovery()
         badgeService.stop()
         nativeMetricsService.stop()
         observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
@@ -452,7 +454,7 @@ final class AppStore: ObservableObject {
     func isRunning(_ app: AppReference) -> Bool { runningApps.contains { $0.id == app.id } }
 
     func launch(_ app: AppReference) {
-        ApplicationActivationService().open(app, at: resolvedURL(app)) { [weak self] message in
+        activationService.open(app, at: resolvedURL(app)) { [weak self] message in
             self?.message = message
         }
     }
