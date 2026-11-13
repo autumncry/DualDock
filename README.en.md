@@ -80,6 +80,12 @@ Icon size is saved as a relative proportion, preserved when thickness changes or
 
 “所有屏幕同步尺寸” synchronizes sizes using the range available to all displays. Turn it off to configure each display within its own available bounds. Turning synchronization back on adopts the **currently selected display's effective size**, while positions remain independent. Manual thickness is capped at **12%** of the available short edge; maximum length follows the available length of the selected edge. Dimensions use macOS logical points.
 
+### Content-driven length with manual sizing
+
+With fully adaptive sizing off, enable “随应用数量自动增减长度” to grow or shrink the centered bar as visible apps and groups change. It preserves your manual thickness, icon proportion, spacing, and end padding. A collapsed group occupies one slot.
+
+The length slider and endpoint dragging remain available to redefine end padding. Thickness, icon-size, and spacing changes also recalculate the content length. At the display limit, growth stops and extra content can be scrolled manually without a scrollbar. Turning this option off restores the previous fixed length. Fully adaptive system Dock sizing is unchanged.
+
 ### Shape the magnification curve
 
 In manual mode, the Interaction page provides two continuous sliders:
