@@ -147,6 +147,7 @@ swift test -c release                 # 模型、布局和窗口策略回归
 ./script/check_display_sizing_store.sh # 各屏尺寸、同步与拖动提交检查
 ./script/check_native_dock_metrics.sh # 原生 Dock 尺寸读取与回退检查
 ./script/check_dock_animation.sh      # 悬停重绘、布局与角标回归
+./script/check_terminal_hover.sh      # 两端放大、移出与滚动位置回归
 ./script/check_dock_visibility.sh     # 可见性刷新时序与生命周期
 ./script/check_fullscreen_fallback.sh # 全屏异步回退与过期结果保护
 ./script/check_window_obstruction.sh  # 遮挡读取、缓存与请求合并

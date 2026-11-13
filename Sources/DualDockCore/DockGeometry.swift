@@ -74,7 +74,7 @@ public struct DockGeometry: Equatable, Sendable {
     public static func make(count: Int, edge: DockEdge, style: DockGeometryStyle,
                             maximumLength: CGFloat, fixedLength: CGFloat? = nil,
                             focusIndex: CGFloat? = nil, dividerIndex: Int? = nil,
-                            scrollOffset: CGFloat = 0, lensAnchor: CGFloat? = nil,
+                            scrollOffset: CGFloat = 0, terminalAnchor: CGFloat? = nil,
                             resizeMargin: CGFloat = 0) -> DockGeometry {
         func finite(_ value: CGFloat, fallback: CGFloat) -> CGFloat { value.isFinite ? value : fallback }
         let n = max(0, count)
@@ -143,9 +143,12 @@ public struct DockGeometry: Equatable, Sendable {
         }
         var shift = baseLeading
         if let focus, let baseAnchor = position(focus, frames: baseIcons), let waveAnchor = position(focus, frames: icons) {
+            // The view may preserve an endpoint displaced by the preceding
+            // wave when the pointer jumps onto it. This is a bounded entry
+            // anchor, never a continuously advancing raw pointer coordinate.
             let terminal = focus <= 0 || focus >= CGFloat(n - 1)
-            let desiredAnchor = terminal ? lensAnchor.flatMap { $0.isFinite ? $0 : nil } ?? baseAnchor : baseAnchor
-            shift = desiredAnchor - waveAnchor
+            let anchor = terminal ? terminalAnchor.flatMap { $0.isFinite ? $0 : nil } ?? baseAnchor : baseAnchor
+            shift = anchor - waveAnchor
             let lower = Int(floor(focus)), upper = min(n - 1, Int(floor(focus)) + 1)
             let fraction = focus - CGFloat(lower)
             let left = icons[lower].minX + (icons[upper].minX - icons[lower].minX) * fraction + shift

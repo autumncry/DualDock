@@ -140,7 +140,9 @@ final class DockStripView: NSView {
     private var currentGeometry: DockGeometry?
     private var targetGeometry: DockGeometry?
     private var focusIndex: CGFloat?
-    private var lensAnchor: CGFloat?
+    private var terminalIndex: Int?
+    private var terminalDisplacement: CGFloat = 0
+    private var terminalAnchor: CGFloat?
     private var hoveredIndex: Int?
     private var interactionDepth = 0
     private var waitingForMouseRelease = false
@@ -298,7 +300,8 @@ final class DockStripView: NSView {
 
     func stopAnimations() {
         displayLink?.invalidate(); displayLink = nil; animationTarget = nil
-        animationTiming.pause(); focusIndex = nil; lensAnchor = nil; lastMousePoint = nil
+        animationTiming.pause(); focusIndex = nil; lastMousePoint = nil
+        terminalIndex = nil; terminalDisplacement = 0; terminalAnchor = nil
         changeHoveredIndex(nil)
     }
 
@@ -503,7 +506,7 @@ final class DockStripView: NSView {
         }
         return .make(count: tiles.count, edge: p.edge, style: p.style, maximumLength: p.maximumLength,
                      fixedLength: p.fixedLength, focusIndex: focus, dividerIndex: dividerIndex,
-                     scrollOffset: offset ?? scrollOffset, lensAnchor: lensAnchor, resizeMargin: p.resizeMargin)
+                     scrollOffset: offset ?? scrollOffset, terminalAnchor: terminalAnchor, resizeMargin: p.resizeMargin)
     }
 
     private func updatePointer(force: Bool = false) {
@@ -534,11 +537,33 @@ final class DockStripView: NSView {
            scrolling.frame.contains(local), let baseGeometry {
             let point = document.convert(local, from: self)
             focusIndex = geometry.magnificationFocus(at: point, basedOn: baseGeometry)
-            lensAnchor = focusIndex == nil ? nil : geometry.documentPointToCanonical(point).x
-        } else { focusIndex = nil; lensAnchor = nil }
+            updateTerminalAnchor(pointer: geometry.documentPointToCanonical(point).x, geometry: geometry, base: baseGeometry)
+        } else {
+            focusIndex = nil
+            terminalIndex = nil; terminalDisplacement = 0; terminalAnchor = nil
+        }
         let next = makeGeometry(focus: focusIndex)
         guard targetGeometry != next || geometry.maximumDifference(from: next) > 0.08 else { return }
         targetGeometry = next; startAnimation()
+    }
+
+    private func updateTerminalAnchor(pointer: CGFloat, geometry: DockGeometry, base: DockGeometry) {
+        let count = base.canonicalIconFrames.count
+        guard count > 0, let focusIndex, focusIndex <= 0 || focusIndex >= CGFloat(count - 1) else {
+            terminalIndex = nil; terminalDisplacement = 0; terminalAnchor = nil
+            return
+        }
+        let index = focusIndex <= 0 ? 0 : count - 1
+        let direction: CGFloat = index == 0 ? -1 : 1
+        let center = base.canonicalIconFrames[index].midX
+        if terminalIndex != index {
+            // Keep a displaced end icon under a pointer arriving from the
+            // opposite end, but do not turn later outward movement into a drag.
+            terminalDisplacement = max(0, direction * (geometry.canonicalIconFrames[index].midX - center))
+        }
+        terminalIndex = index
+        terminalDisplacement = min(terminalDisplacement, max(0, direction * (pointer - center)))
+        terminalAnchor = center + direction * terminalDisplacement
     }
 
     private func changeHoveredIndex(_ index: Int?) {

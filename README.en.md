@@ -147,6 +147,7 @@ swift test -c release                 # Model, layout, and window-policy tests
 ./script/check_display_sizing_store.sh # Per-display sizing, sync, and resize commits
 ./script/check_native_dock_metrics.sh # Native Dock measurement and fallback checks
 ./script/check_dock_animation.sh      # Hover redraw, layout, and badge regressions
+./script/check_terminal_hover.sh      # Endpoint magnification, exit, and scroll stability
 ./script/check_dock_visibility.sh     # Visibility timing and lifecycle checks
 ./script/check_fullscreen_fallback.sh # Async fullscreen fallback and stale results
 ./script/check_window_obstruction.sh  # Obstruction reads, caching, and coalescing
