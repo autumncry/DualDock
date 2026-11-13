@@ -12,6 +12,7 @@ final class DisplayCoordinator {
         let strip: DockStripView
     }
     let store: AppStore
+    private let presentsPanels: Bool
     var showSettings: (() -> Void)?
     private(set) var docks: [CGDirectDisplayID: ScreenDock] = [:]
     private var subscriptions = Set<AnyCancellable>()
@@ -32,29 +33,34 @@ final class DisplayCoordinator {
     private var previewEdge: DockEdge = .bottom
     private var previewAnchor = NSRect.zero
     private var geometryRefreshScheduled = false
+    private var renderedEntries: [DockEntry] = []
+    private var renderedPinnedCount = 0
+    private var renderedMode: DockMode?
+    private var renderedShowBadges: Bool?
+    private var renderedHideSystemDock: Bool?
+    private var tileAppearanceNeedsRefresh = false
     private var stopped = false
     private var pointerOutsideSince: Date?
     private var contextMenuTracking = false
     private var menuTrackingObserver: MenuTrackingObserver?
 
-    init(store: AppStore) {
+    /// Hidden coordinators exercise the real update pipeline without presenting UI.
+    init(store: AppStore, presentsPanels: Bool = true) {
         self.store = store
-        store.$configuration.removeDuplicates { previous, next in
-            var layout = previous
-            layout.showBadges = next.showBadges
-            return layout == next
-        }.dropFirst().sink { [weak self] _ in
-            DispatchQueue.main.async { self?.dismissPopups(); self?.refreshDisplays() }
+        self.presentsPanels = presentsPanels
+        store.$configuration.removeDuplicates().dropFirst().sink { [weak self] _ in
+            self?.scheduleGeometryRefresh()
         }.store(in: &subscriptions)
         store.$runningApps.dropFirst().sink { [weak self] _ in
-            DispatchQueue.main.async { self?.refreshDisplays() }
+            self?.tileAppearanceNeedsRefresh = true
+            self?.scheduleGeometryRefresh()
         }.store(in: &subscriptions)
         store.$badgeLabels.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.redrawBadges() }
         }.store(in: &subscriptions)
         store.$nativeDockMetrics.dropFirst().sink { [weak self] _ in
             guard let self, self.store.configuration.adaptiveSizing else { return }
-            DispatchQueue.main.async { self.refreshDisplays() }
+            self.scheduleGeometryRefresh()
         }.store(in: &subscriptions)
         store.$resizeRevision.dropFirst().sink { [weak self] _ in
             self?.scheduleGeometryRefresh()
@@ -91,6 +97,7 @@ final class DisplayCoordinator {
         let info = DockDisplayInfo.current()
         store.updateDisplays(info)
         let screens = allScreens.filter { CGDisplayMirrorsDisplay(Self.id($0)) == kCGNullDirectDisplay }
+        let entries = store.displayedEntries
         let valid = Set(screens.map(Self.id))
         for id in Array(docks.keys) where !valid.contains(id) {
             if let removed = docks.removeValue(forKey: id) {
@@ -125,7 +132,7 @@ final class DisplayCoordinator {
                 else { self.store.setResizePreview(nil, for: display.id) }
             }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
-            _ = strip.populate(entries: store.displayedEntries, store: store, maxWidth: presentation.maximumLength,
+            _ = strip.populate(entries: entries, store: store, maxWidth: presentation.maximumLength,
                                presentation: presentation) { [weak self] tile in
                 self?.configure(tile, on: screen, displayID: display.id, edge: presentation.edge)
             }
@@ -136,6 +143,12 @@ final class DisplayCoordinator {
             strip.updateMousePassthrough()
             docks[id] = ScreenDock(screen: screen, displayID: display.id, panel: panel, strip: strip)
         }
+        renderedEntries = entries
+        renderedPinnedCount = store.pinnedCount
+        renderedMode = store.configuration.mode
+        renderedShowBadges = store.configuration.showBadges
+        renderedHideSystemDock = store.configuration.hideSystemDock
+        tileAppearanceNeedsRefresh = false
         visibility?.invalidate()
     }
 
@@ -145,22 +158,51 @@ final class DisplayCoordinator {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.stopped else { return }
             self.geometryRefreshScheduled = false
-            for dock in self.docks.values {
-                guard let display = self.store.displays.first(where: { $0.id == dock.displayID }) else { continue }
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0
-                    context.allowsImplicitAnimation = false
-                    CATransaction.begin()
-                    CATransaction.setDisableActions(true)
-                    _ = dock.strip.updatePresentation(self.store.presentation(for: dock.displayID))
+            // Configuration publishes before its assignment finishes. Read the
+            // final value once on the next main-loop turn, coalescing a burst of
+            // slider samples and the resize-preview/configuration handoff.
+            let entries = self.store.displayedEntries
+            let presentations = self.docks.mapValues { self.store.presentation(for: $0.displayID) }
+            let structureChanged = self.renderedEntries != entries
+                || self.renderedPinnedCount != self.store.pinnedCount
+                || self.renderedMode != self.store.configuration.mode
+                || self.renderedHideSystemDock != self.store.configuration.hideSystemDock
+                || self.docks.contains { id, dock in
+                    dock.strip.presentation?.edge != presentations[id]?.edge
+                }
+            if structureChanged {
+                // Entry identity/order and edge changes require new callbacks;
+                // real display topology changes still call refreshDisplays().
+                self.refreshDisplays()
+                return
+            }
+            let changedDocks = self.docks.filter { id, dock in dock.strip.presentation != presentations[id] }
+            if !changedDocks.isEmpty { self.dismissPopups() }
+            else if !self.store.configuration.showPreviews { self.dismissPreview() }
+            // Place the panels and their content in one transaction. Drawing is
+            // left to AppKit's next display pass, rather than synchronously
+            // forcing a display for every slider or pointer sample.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                context.allowsImplicitAnimation = false
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                for (id, dock) in changedDocks {
+                    guard let display = self.store.displays.first(where: { $0.id == dock.displayID }),
+                          let presentation = presentations[id] else { continue }
+                    _ = dock.strip.updatePresentation(presentation)
                     if let geometry = dock.strip.layoutGeometry {
                         dock.panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: false)
                     }
                     dock.strip.layoutSubtreeIfNeeded()
-                    CATransaction.commit()
+                    dock.strip.updateMousePassthrough()
                 }
-                dock.panel.displayIfNeeded()
-                dock.strip.updateMousePassthrough()
+                CATransaction.commit()
+            }
+            if self.tileAppearanceNeedsRefresh || self.renderedShowBadges != self.store.configuration.showBadges {
+                self.redrawBadges()
+                self.tileAppearanceNeedsRefresh = false
+                self.renderedShowBadges = self.store.configuration.showBadges
             }
             self.visibility?.refresh(force: true)
         }
@@ -257,7 +299,7 @@ final class DisplayCoordinator {
         panel.setFrame(popupFrame(size: size, anchor: popupAnchor, screen: screen, edge: edge), display: true)
         strip.updateMousePassthrough()
         groupPanel = panel
-        panel.orderFrontRegardless()
+        if presentsPanels { panel.orderFrontRegardless() }
         refreshMousePassthrough()
         pointerOutsideSince = nil
     }
@@ -364,7 +406,7 @@ final class DisplayCoordinator {
         popupScreen = Self.id(screen)
         panel.setFrame(popupFrame(size: size, anchor: anchor, screen: screen, edge: edge), display: true)
         previewPanel = panel
-        panel.orderFrontRegardless()
+        if presentsPanels { panel.orderFrontRegardless() }
         refreshMousePassthrough()
     }
 
@@ -460,6 +502,7 @@ final class DisplayCoordinator {
     }
 
     private func applyVisibility(hidden: Set<CGDirectDisplayID>) {
+        guard presentsPanels else { return }
         for (id, dock) in docks {
             if hidden.contains(id) {
                 if dock.panel.isVisible { dock.strip.resetMagnification() }
