@@ -137,9 +137,7 @@ final class DisplayCoordinator {
                 self?.configure(tile, on: screen, displayID: display.id, edge: presentation.edge)
             }
             panel.contentView = strip
-            if let geometry = strip.layoutGeometry {
-                panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: true)
-            }
+            panel.placeDock(strip, in: display.visibleFrame, display: true)
             strip.updateMousePassthrough()
             docks[id] = ScreenDock(screen: screen, displayID: display.id, panel: panel, strip: strip)
         }
@@ -191,9 +189,7 @@ final class DisplayCoordinator {
                     guard let display = self.store.displays.first(where: { $0.id == dock.displayID }),
                           let presentation = presentations[id] else { continue }
                     _ = dock.strip.updatePresentation(presentation)
-                    if let geometry = dock.strip.layoutGeometry {
-                        dock.panel.setFrame(geometry.panelFrame(in: display.visibleFrame), display: false)
-                    }
+                    dock.panel.placeDock(dock.strip, in: display.visibleFrame, display: false)
                     dock.strip.layoutSubtreeIfNeeded()
                     dock.strip.updateMousePassthrough()
                 }

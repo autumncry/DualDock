@@ -83,10 +83,13 @@ struct DockCoordinatorRefreshChecks {
         }
         check(first.strip.layoutGeometry == beforeBurst, "slider burst applied before coalescing")
         drain()
-        // NSWindow rounds fractional content height to integral points after
-        // placement. That may add one frame notification for the same width.
+        // The content's exact geometry is followed by the enclosing integral
+        // NSWindow frame. Both must belong to the final sample, not earlier
+        // publications in the burst.
         check((1...2).contains(frameChanges), "40-sample burst produced \(frameChanges) strip frame changes")
-        check(Set(frameTrace.map(\.width)).count == 1, "burst rendered an intermediate slider width")
+        let finalCanvasWidth = first.strip.layoutGeometry!.canvasSize.width
+        check(frameTrace.allSatisfy { abs($0.width - finalCanvasWidth) < 0.000001
+              || abs($0.width - first.panel.frame.width) < 0.000001 }, "burst rendered an intermediate slider width")
         check(abs(first.strip.layoutGeometry!.bodyLength - 739) < 0.001, "burst did not apply final sample")
         print("Burst replay: 40 configuration publications, \(frameChanges) strip frame change(s)")
 
@@ -133,9 +136,10 @@ struct DockCoordinatorRefreshChecks {
             let display = store.displays.first { $0.id == first.displayID }!
             let expected = first.strip.layoutGeometry!.panelFrame(in: display.visibleFrame)
             let actual = first.panel.frame
-            check(abs(actual.minX - expected.minX) < 1 && abs(actual.minY - expected.minY) < 1
-                  && abs(actual.width - expected.width) < 1 && abs(actual.height - expected.height) < 1,
-                  "\(edge) panel differs from geometry beyond NSWindow integral-point rounding")
+            check(actual.contains(expected)
+                  && expected.minX - actual.minX < 1 && expected.minY - actual.minY < 1
+                  && actual.maxX - expected.maxX < 1 && actual.maxY - expected.maxY < 1,
+                  "\(edge) panel does not closely enclose the fractional geometry")
         }
 
         let beforeAddition = first.strip.tiles

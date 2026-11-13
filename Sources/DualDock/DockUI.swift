@@ -35,6 +35,22 @@ final class DockPanel: NSPanel {
         acceptsMouseMovedEvents = true
         animationBehavior = .none
     }
+
+    /// NSWindow rounds its frame to whole points. Keep the fractional remainder
+    /// in the content placement so a continuously resized bar stays centered in
+    /// screen coordinates instead of walking back and forth by almost 1 point.
+    func placeDock(_ strip: DockStripView, in bounds: NSRect, display: Bool) {
+        guard let geometry = strip.layoutGeometry else { return }
+        let desired = geometry.panelFrame(in: bounds)
+        // Enclose both endpoints before AppKit rounds. Rounding origin and size
+        // separately can otherwise clip a fractional strip at the far edge.
+        setFrame(desired.integral, display: false)
+        strip.setFrameOrigin(NSPoint(x: desired.minX - frame.minX,
+                                     y: desired.minY - frame.minY))
+        strip.needsLayout = true
+        strip.layoutSubtreeIfNeeded()
+        if display { displayIfNeeded() }
+    }
 }
 
 @MainActor
@@ -112,8 +128,11 @@ final class DockStripView: NSView {
     var layoutGeometry: DockGeometry? { currentGeometry }
     var isResizing: Bool { resizeSession?.started == true }
     var isInteracting: Bool { interactionDepth > 0 || resizeSession != nil }
+    private var scrollOriginRemainder = NSPoint.zero
     var scrollOffset: CGFloat {
-        currentGeometry?.canonicalScrollOffset(clipBounds: scrolling.contentView.bounds,
+        let logicalBounds = scrolling.contentView.bounds.offsetBy(dx: scrollOriginRemainder.x,
+                                                                  dy: scrollOriginRemainder.y)
+        return currentGeometry?.canonicalScrollOffset(clipBounds: logicalBounds,
                                                actualDocumentSize: document.frame.size) ?? 0
     }
 
@@ -224,6 +243,7 @@ final class DockStripView: NSView {
     override func layout() {
         super.layout()
         guard let geometry = currentGeometry else { return }
+        let offset = scrollOffset
         scrolling.frame = backingAlignedRect(geometry.viewportRect, options: [.alignAllEdgesOutward])
         scrolling.layoutSubtreeIfNeeded()
         let clip = scrolling.contentView.bounds.size
@@ -235,7 +255,7 @@ final class DockStripView: NSView {
         } else {
             document.frame.size = NSSize(width: clip.width, height: overflow ? max(proposed.height, clip.height) : clip.height)
         }
-        if !overflow, scrolling.contentView.bounds.origin != .zero { scrolling.contentView.scroll(to: .zero) }
+        restoreScrollOffset(offset, geometry: geometry)
         let bodyInDocument = document.convert(backdropFrame, from: self)
         emptyLabel?.frame = NSRect(x: bodyInDocument.minX + 6, y: bodyInDocument.midY - 9,
                                   width: max(20, bodyInDocument.width - 12), height: 18)
@@ -292,11 +312,23 @@ final class DockStripView: NSView {
         let base = makeGeometry(focus: nil, offset: offset)
         baseGeometry = base; currentGeometry = base; targetGeometry = base
         apply(base)
-        let point = base.scrollOrigin(forCanonicalOffset: offset, actualDocumentSize: document.frame.size,
-                                      actualViewportSize: scrolling.contentView.bounds.size)
-        scrolling.contentView.scroll(to: point)
+        restoreScrollOffset(offset, geometry: base)
         scrolling.reflectScrolledClipView(scrolling.contentView)
         return base.canvasSize
+    }
+
+    private func restoreScrollOffset(_ offset: CGFloat, geometry: DockGeometry) {
+        let point = geometry.scrollOrigin(forCanonicalOffset: offset, actualDocumentSize: document.frame.size,
+                                          actualViewportSize: scrolling.contentView.bounds.size)
+        scrolling.contentView.scroll(to: point)
+        // Keep AppKit's pixel-aligned clipping and native wheel behavior. Its
+        // rounded viewport and scroll origin are rendering details, not a user
+        // scroll: retain their remainders in canonical document coordinates.
+        let actual = scrolling.contentView.bounds.origin
+        scrollOriginRemainder = NSPoint(x: point.x - actual.x, y: point.y - actual.y)
+        let viewport = convert(scrolling.contentView.bounds, from: scrolling.contentView)
+        document.setBoundsOrigin(NSPoint(x: viewport.minX - geometry.viewportRect.minX + scrollOriginRemainder.x,
+                                         y: viewport.minY - geometry.viewportRect.minY + scrollOriginRemainder.y))
     }
 
     func stopAnimations() {

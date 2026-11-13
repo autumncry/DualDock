@@ -97,6 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             ["id": id, "name": dock.screen.localizedName, "visible": dock.panel.isVisible,
              "frame": NSStringFromRect(dock.panel.frame), "screenFrame": NSStringFromRect(dock.screen.frame),
              "backdropFrame": NSStringFromRect(dock.strip.backdropFrame),
+             "backdropScreenFrame": NSStringFromRect(dock.panel.convertToScreen(dock.strip.convert(dock.strip.backdropFrame, to: nil))),
+             "contentOrigin": NSStringFromPoint(dock.strip.frame.origin),
              "displayKey": dock.displayID,
              "edge": dock.strip.layoutGeometry?.edge.rawValue ?? "bottom",
              "bodyLength": dock.strip.layoutGeometry?.bodyLength ?? 0,
