@@ -12,4 +12,5 @@ struct DockPresentation: Equatable, Sendable {
     let resizeBounds: DockResizeBounds
     let requestedManualSizing: DockManualSizing
     let canResize: Bool
+    var lengthResizeBounds: DockResizeBounds? = nil
 }

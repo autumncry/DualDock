@@ -16,6 +16,17 @@ struct AppearanceSettingsView: View {
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text("屏幕位置仍可在“屏幕与位置”中分别选择。")
                     .foregroundStyle(.secondary)
+                if !adaptive {
+                    Toggle("随应用数量自动增减长度", isOn: Binding(
+                        get: { store.configuration.manualAutoLength },
+                        set: { store.setManualAutoLength($0, sourceDisplayID: selectedDisplayID) }))
+                    Text("以当前手动尺寸和两侧留白为起点，增加应用时变长、减少时缩短。高度、图标与放大效果仍可手动调整。达到屏幕上限后，可沿 Dock 方向滚动。")
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if store.configuration.manualAutoLength {
+                        Text("调整长度滑块或拖动两端，会重新设定留白；初次开启时若图标已溢出，会先补足容纳空间。关闭后恢复固定长度。")
+                            .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
             if adaptive {
                 SettingsGroup("当前系统 Dock") {
@@ -69,15 +80,21 @@ private struct ManualDockSizingSettingsView: View {
     @ObservedObject var store: AppStore
     let displayID: String
     private var sizing: DockManualSizing { store.effectiveManualSizing(for: displayID) }
-    private var bounds: DockResizeBounds { store.sizingBounds(for: displayID) }
+    private var bounds: DockResizeBounds { store.editingSizingBounds(for: displayID) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             SettingsGroup("栏尺寸") {
                 DockSettingsSlider(title: "Dock 长度", valueText: dockPoints(sizing.length),
-                                   value: binding(\.length), range: bounds.minLength...bounds.maxLength)
+                                   value: binding(\.length), range: bounds.minLength...bounds.maxLength,
+                                   onEditingChanged: finishEditing)
                 DockSettingsSlider(title: "Dock 厚度", valueText: dockPoints(sizing.thickness),
-                                   value: binding(\.thickness), range: bounds.minThickness...bounds.maxThickness)
+                                   value: binding(\.thickness), range: bounds.minThickness...bounds.maxThickness,
+                                   onEditingChanged: finishEditing)
+                if store.configuration.manualAutoLength {
+                    Text("当前长度随内容计算；长度调节用于设定两侧留白。")
+                        .foregroundStyle(.secondary)
+                }
                 Text("上下位置时，长度对应宽度；左右位置时，长度对应高度。厚度控制贴边方向的宽窄。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text("可拖动 Dock 的内侧边调整厚度、两端调整长度，内侧两个角可等比缩放。")
@@ -85,11 +102,13 @@ private struct ManualDockSizingSettingsView: View {
             }
             SettingsGroup("图标与排列") {
                 DockSettingsSlider(title: "图标大小", valueText: dockPoints(store.iconSize(for: displayID)),
-                                   value: binding(\.iconScale), range: 0.25...1.25)
+                                   value: binding(\.iconScale), range: 0.25...1.25,
+                                   onEditingChanged: finishEditing)
                 Text("手动调节图标在栏内的相对大小；以后改变 Dock 厚度或等比缩放时，会保留这个比例。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 DockSettingsSlider(title: "图标间距", valueText: dockPoints(sizing.iconSpacing),
-                                   value: binding(\.iconSpacing), range: 0...32)
+                                   value: binding(\.iconSpacing), range: 0...32,
+                                   onEditingChanged: finishEditing)
                 Text("长度不足以显示全部应用时，可以沿 Dock 方向滚动。尺寸限制会随显示器与位置调整。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -100,5 +119,9 @@ private struct ManualDockSizingSettingsView: View {
         Binding(get: { sizing[keyPath: keyPath] }, set: { value in
             store.updateManualSizing(for: displayID) { $0[keyPath: keyPath] = value }
         })
+    }
+
+    private func finishEditing(_ editing: Bool) {
+        if !editing { store.flushPendingSave() }
     }
 }

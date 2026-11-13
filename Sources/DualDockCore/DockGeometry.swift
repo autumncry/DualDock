@@ -85,8 +85,9 @@ public struct DockGeometry: Equatable, Sendable {
         let leading = max(0, finite(style.leadingPadding, fallback: 0))
         let trailing = max(0, finite(style.trailingPadding, fallback: 0))
         let separator = dividerIndex.map { $0 > 0 && $0 < n ? max(0, finite(style.separatorLength, fallback: 0)) : 0 } ?? 0
-        let rowLength = CGFloat(n) * side + CGFloat(max(0, n - 1)) * gap + separator
-        let required = n == 0 ? max(120, side * 2) + leading + trailing : rowLength + leading + trailing
+        let contentSpan = DockContentLengthPolicy.contentSpan(count: n, iconSize: Double(side),
+            gap: Double(gap), separatorLength: Double(separator), dividerIndex: dividerIndex)
+        let required = CGFloat(contentSpan) + leading + trailing
         let chosenLength = fixedLength.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? required
         let bodyLength = min(limit, max(1, chosenLength))
         let fits = required <= bodyLength + 0.000001

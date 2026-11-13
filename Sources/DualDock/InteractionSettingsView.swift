@@ -29,13 +29,13 @@ struct InteractionSettingsView: View {
                                        valueText: "\(Int((store.configuration.magnificationScale * 100).rounded()))%",
                                        value: Binding(get: { store.configuration.magnificationScale }, set: { value in
                         store.update { $0.magnificationScale = value }
-                    }), range: 1...2.5)
+                    }), range: 1...2.5, onEditingChanged: { if !$0 { store.flushPendingSave() } })
                     .disabled(!store.configuration.magnificationEnabled)
                     DockSettingsSlider(title: "联动范围",
                                        valueText: String(format: "左右各 %.1f 个图标", store.configuration.magnificationRadius),
                                        value: Binding(get: { store.configuration.magnificationRadius }, set: { value in
                         store.update { $0.magnificationRadius = value }
-                    }), range: 1...4)
+                    }), range: 1...4, onEditingChanged: { if !$0 { store.flushPendingSave() } })
                     .disabled(!store.configuration.magnificationEnabled)
                     Text("峰值决定指针下的图标放多大；收窄联动范围，可减小两侧图标的放大效果。")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -32,7 +32,7 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 8
+    public static let currentVersion = 9
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
@@ -43,8 +43,11 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     /// Saved manual width, retained during automatic mode. Nil values are initialized once using
     /// the live application row, before the app first renders and saves them.
     public var dockWidth: Double?
-    /// Optional content-driven width; the stored dockWidth remains the manual choice.
+    /// Compatibility key for fully native adaptive size and magnification.
     public var autoAdjustWidth: Bool = false
+    /// Content-driven length with manually chosen thickness, icons and spacing.
+    public var manualAutoLength: Bool = false
+    public var manualContentPadding: Double?
     public var manualIconScale: Double = 1
     public var synchronizeSizes: Bool = true
     public var displaySettings: [String: DockDisplaySettings] = [:]
@@ -71,7 +74,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth, autoAdjustWidth
-        case manualIconScale, synchronizeSizes, displaySettings
+        case manualIconScale, synchronizeSizes, displaySettings, manualAutoLength, manualContentPadding
         case magnificationEnabled, magnificationScale, magnificationRadius, showPreviews, showBadges, hideSystemDock, autoHideWhenObstructed
     }
 
@@ -89,6 +92,8 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         dockWidthReferenceSpacing = try values.decodeIfPresent(Double.self, forKey: .dockWidthReferenceSpacing) ?? iconSpacing
         dockWidth = try values.decodeIfPresent(Double.self, forKey: .dockWidth)
         autoAdjustWidth = try values.decodeIfPresent(Bool.self, forKey: .autoAdjustWidth) ?? false
+        manualAutoLength = try values.decodeIfPresent(Bool.self, forKey: .manualAutoLength) ?? false
+        manualContentPadding = try values.decodeIfPresent(Double.self, forKey: .manualContentPadding)
         manualIconScale = try values.decodeIfPresent(Double.self, forKey: .manualIconScale) ?? 1
         synchronizeSizes = try values.decodeIfPresent(Bool.self, forKey: .synchronizeSizes) ?? true
         displaySettings = try values.decodeIfPresent([String: DockDisplaySettings].self, forKey: .displaySettings) ?? [:]
@@ -107,6 +112,9 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         // displays. DockSizingLimits clamps it before any rendering arithmetic.
         iconSize = iconSize.isFinite ? max(24, iconSize) : 48
         manualIconScale = manualIconScale.isFinite ? min(1.25, max(0.25, manualIconScale)) : 1
+        if let padding = manualContentPadding {
+            manualContentPadding = padding.isFinite ? max(DockContentLengthPolicy.minimumPadding, padding) : nil
+        }
         for key in displaySettings.keys {
             displaySettings[key]?.manualSizing?.normalize()
         }

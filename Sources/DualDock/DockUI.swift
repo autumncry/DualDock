@@ -128,7 +128,7 @@ final class DockStripView: NSView {
         var proposed: DockManualSizing
     }
     private var resizeSession: ResizeSession?
-    private var presentation: DockPresentation?
+    private(set) var presentation: DockPresentation?
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var divider: NSBox?
@@ -280,6 +280,7 @@ final class DockStripView: NSView {
     /// Geometry-only update: keep existing tiles and the active resize gesture alive.
     @discardableResult
     func updatePresentation(_ value: DockPresentation) -> NSSize {
+        guard value != presentation else { return frame.size }
         let offset = scrollOffset
         if value.edge != presentation?.edge || !value.canResize { cancelResize() }
         stopAnimations()
@@ -434,8 +435,10 @@ final class DockStripView: NSView {
         let clickTile = interactionTileIndex(at: local).map { tiles[$0] }.flatMap { tile in
             tile.visualIconBounds.contains(tile.convert(local, from: self)) ? tile : nil
         }
+        let lengthOnly = handle == .leading || handle == .trailing
+        let bounds = lengthOnly ? (p.lengthResizeBounds ?? p.resizeBounds) : p.resizeBounds
         resizeSession = ResizeSession(point: point, handle: handle, edge: p.edge,
-            sizing: p.requestedManualSizing, bounds: p.resizeBounds, clickTile: clickTile,
+            sizing: p.requestedManualSizing, bounds: bounds, clickTile: clickTile,
             proposed: p.requestedManualSizing)
     }
 

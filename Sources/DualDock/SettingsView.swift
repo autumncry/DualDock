@@ -105,6 +105,7 @@ struct DockSettingsSlider: View {
     let valueText: String
     @Binding var value: Double
     let range: ClosedRange<Double>
+    var onEditingChanged: (Bool) -> Void = { _ in }
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
@@ -112,7 +113,8 @@ struct DockSettingsSlider: View {
                 Spacer()
                 Text(valueText).monospacedDigit().foregroundStyle(.secondary)
             }
-            Slider(value: $value, in: range.lowerBound...max(range.lowerBound + 0.001, range.upperBound))
+            Slider(value: $value, in: range.lowerBound...max(range.lowerBound + 0.001, range.upperBound),
+                   onEditingChanged: onEditingChanged)
                 .disabled(range.lowerBound >= range.upperBound)
                 .accessibilityLabel(title)
         }
