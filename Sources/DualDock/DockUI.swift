@@ -423,6 +423,10 @@ final class DockStripView: NSView {
     private func resizeHandle(at local: NSPoint) -> DockResizeHandle? {
         guard !isGroup, let p = presentation, p.canResize, onResizeEnded != nil,
               resizeInteractionAllowed?() != false else { return nil }
+        if let window {
+            let global = window.convertPoint(toScreen: convert(local, to: nil))
+            guard pointerIsOccluded?(global) != true else { return nil }
+        }
         return DockResizePolicy.handle(at: local, backdrop: backdropFrame, edge: p.edge,
                                        edgeBand: 6, cornerBand: max(16, min(32, p.style.barThickness * 0.56)))
     }

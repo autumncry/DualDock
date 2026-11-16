@@ -169,6 +169,69 @@ struct DockCoordinatorRefreshChecks {
         _ = first.strip.updatePresentation(first.strip.presentation!)
         check(first.strip.layoutGeometry == magnified, "identical presentation reset pointer magnification")
         first.strip.stopAnimations()
+
+        // A group opened after resizing must not disable exposed resize edges,
+        // including edges on another display. Only the popup's covered area
+        // owns the pointer; beginning another drag can dismiss the popup.
+        let resizeGroup = DockEntry(name: "Resize group", apps: [
+            .init(id: "resize.group.one", name: "One", path: "/System/Applications/Notes.app"),
+            .init(id: "resize.group.two", name: "Two", path: "/System/Applications/Calendar.app")
+        ], isGroup: true)
+        store.update { $0.entries.insert(resizeGroup, at: 0) }
+        drain()
+        for automatic in [false, true] {
+            store.setManualAutoLength(automatic, sourceDisplayID: first.displayID)
+            for edge in DockEdge.allCases {
+                for dock in coordinator.docks.values { store.setEdge(edge, for: dock.displayID) }
+                drain()
+                for dock in coordinator.docks.values {
+                    for attempt in 0..<2 {
+                        coordinator.dismissPopups()
+                        var size = store.requestedManualSizing(for: dock.displayID)
+                        size.thickness = 65 + Double(attempt) * 5
+                        store.setResizePreview(size, for: dock.displayID)
+                        drain()
+                        store.commitManualResize(size, for: dock.displayID)
+                        drain()
+                        check(abs(dock.strip.layoutGeometry!.barThickness - size.thickness) < 0.001,
+                              "resize preview/commit did not apply the requested height")
+                        first.strip.tiles.first { $0.entry.id == resizeGroup.id }!.onPress?()
+                        let strip = dock.strip
+                        let body = strip.backdropFrame
+                        let length = edge.isHorizontal ? body.width : body.height
+                        let depth = edge.isHorizontal ? body.height : body.width
+                        let axis = DockAxisTransform(edge: edge, length: length, thickness: depth)
+                        let position = axis.pointToPhysical(CGPoint(x: length * 0.75, y: depth + 2))
+                        let local = CGPoint(x: body.minX + position.x, y: body.minY + position.y)
+                        let location = strip.convert(local, to: nil)
+                        let pointer = dock.panel.convertPoint(toScreen: location)
+                        strip.updatePointer(at: pointer, buttonsPressed: false, force: true)
+                        let label = "\(edge), automatic=\(automatic), display=\(dock.displayID), attempt=\(attempt)"
+                        check(!dock.panel.ignoresMouseEvents, "popup disabled exposed edge: \(label)")
+                        check(strip.hitTest(location) === strip, "popup removed resize hit target: \(label)")
+                        let down = NSEvent.mouseEvent(with: .leftMouseDown, location: location,
+                            modifierFlags: [], timestamp: 0, windowNumber: dock.panel.windowNumber,
+                            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+                        strip.mouseDown(with: down)
+                        check(strip.isInteracting, "could not rearm resize with popup: \(label)")
+                        strip.cancelResize()
+                        check(!strip.isInteracting, "resize stayed armed after cancellation: \(label)")
+
+                        // Exercise the view's boundary with an occluded pointer
+                        // without showing a window or moving the desktop cursor.
+                        let previousOcclusion = strip.pointerIsOccluded
+                        strip.pointerIsOccluded = { $0 == pointer }
+                        strip.updatePointer(at: pointer, buttonsPressed: false, force: true)
+                        check(dock.panel.ignoresMouseEvents, "covered edge captured popup input: \(label)")
+                        strip.mouseDown(with: down)
+                        check(!strip.isInteracting, "covered edge armed a resize through popup: \(label)")
+                        strip.cancelResize()
+                        strip.pointerIsOccluded = previousOcclusion
+                    }
+                }
+            }
+        }
+        coordinator.dismissPopups()
         check(coordinator.docks.values.allSatisfy { !$0.panel.isVisible }, "fixture presented a panel")
         print("Coordinator refresh: \(checks) checks, \(failures.count) failures")
         failures.prefix(12).forEach { print("FAIL: \($0)") }

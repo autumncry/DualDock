@@ -122,7 +122,9 @@ final class DisplayCoordinator {
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
             strip.resizeInteractionAllowed = { [weak self] in
                 guard let self else { return false }
-                return self.groupPanel == nil && self.previewPanel == nil && !self.contextMenuTracking
+                // Popups own only their covered region. Exposed edges must
+                // remain reachable so the next resize can dismiss the popup.
+                return !self.contextMenuTracking
             }
             strip.onResizeBegan = { [weak self] in self?.dismissPopups() }
             strip.onResizeChanged = { [weak self] value in self?.store.setResizePreview(value, for: display.id) }
