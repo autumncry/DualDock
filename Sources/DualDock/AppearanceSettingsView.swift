@@ -12,7 +12,7 @@ struct AppearanceSettingsView: View {
             SettingsGroup("尺寸模式") {
                 Toggle("完全自适应系统 Dock", isOn: Binding(
                     get: { adaptive }, set: { store.setAdaptiveSizing($0) }))
-                Text("开启后，基础图标大小、栏厚度、间距、两端留白及悬停放大跟随系统 Dock。长度随应用数量适配，保持居中。")
+                Text("开启后，基础图标大小、栏高度、间距、两端留白及悬停放大跟随系统 Dock。长度随应用数量适配，保持居中。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text("屏幕位置仍可在“屏幕与位置”中分别选择。")
                     .foregroundStyle(.secondary)
@@ -31,7 +31,7 @@ struct AppearanceSettingsView: View {
             if adaptive {
                 SettingsGroup("当前系统 Dock") {
                     LabeledContent("图标大小", value: dockPoints(store.nativeDockMetrics.iconSize))
-                    LabeledContent("栏厚度", value: dockPoints(store.nativeDockMetrics.barThickness))
+                    LabeledContent("栏高度", value: dockPoints(store.nativeDockMetrics.barThickness))
                     LabeledContent("图标间距", value: dockPoints(store.nativeDockMetrics.itemSpacing))
                     LabeledContent("两端留白", value: "\(dockPoints(store.nativeDockMetrics.leadingPadding)) / \(dockPoints(store.nativeDockMetrics.trailingPadding))")
                     Text(nativeStatusDescription).foregroundStyle(.secondary)
@@ -88,23 +88,23 @@ private struct ManualDockSizingSettingsView: View {
                 DockSettingsSlider(title: "Dock 长度", valueText: dockPoints(sizing.length),
                                    value: binding(\.length), range: bounds.minLength...bounds.maxLength,
                                    onEditingChanged: finishEditing)
-                DockSettingsSlider(title: "Dock 厚度", valueText: dockPoints(sizing.thickness),
+                DockSettingsSlider(title: "Dock 高度", valueText: dockPoints(sizing.thickness),
                                    value: binding(\.thickness), range: bounds.minThickness...bounds.maxThickness,
                                    onEditingChanged: finishEditing)
+                Text("调整底板高度，图标会按当前占比一起缩放。")
+                    .foregroundStyle(.secondary)
                 if store.configuration.manualAutoLength {
-                    Text("当前长度随内容计算；长度调节用于设定两侧留白。")
-                        .foregroundStyle(.secondary)
+                    Text("自动长度已开启：图标变大时，栏也会变长。长度滑块用于重新设定两侧留白。")
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Text("上下位置时，长度对应宽度；左右位置时，长度对应高度。厚度控制贴边方向的宽窄。")
-                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Text("可拖动 Dock 的内侧边调整厚度、两端调整长度，内侧两个角可等比缩放。")
+                Text("在屏幕底部或顶部，长度控制横向，高度控制纵向；在左侧或右侧，这两个方向随栏旋转。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             SettingsGroup("图标与排列") {
-                DockSettingsSlider(title: "图标大小", valueText: dockPoints(store.iconSize(for: displayID)),
+                DockSettingsSlider(title: "图标大小", valueText: iconSizeDescription,
                                    value: binding(\.iconScale), range: 0.25...1.25,
                                    onEditingChanged: finishEditing)
-                Text("手动调节图标在栏内的相对大小；以后改变 Dock 厚度或等比缩放时，会保留这个比例。")
+                Text("调整图标在栏内的占比，底板高度保持不变。之后调节 Dock 高度时，图标按此比例一起缩放。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 DockSettingsSlider(title: "图标间距", valueText: dockPoints(sizing.iconSpacing),
                                    value: binding(\.iconSpacing), range: 0...32,
@@ -112,7 +112,21 @@ private struct ManualDockSizingSettingsView: View {
                 Text("长度不足以显示全部应用时，可以沿 Dock 方向滚动。尺寸限制会随显示器与位置调整。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            SettingsGroup("拖拽调整") {
+                Text("内侧边的双向箭头：调整高度，图标一起缩放。两端箭头：调整长度。角落的斜向箭头：长度与高度按比例一起缩放。")
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(store.configuration.manualAutoLength
+                     ? "自动长度下，拖内侧边会保留两侧留白、按内容重算长度；拖角落会同时调整留白。留白较小时，两种操作看起来会很接近。尺寸达到屏幕上限后会停止增长。"
+                     : "固定长度下，拖内侧边时长度不变；拖角落时长度和高度一起变化。尺寸达到屏幕上限后会停止增长。")
+                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    private var iconSizeDescription: String {
+        let size = store.iconSize(for: displayID)
+        let percent = Int((size / max(1, sizing.thickness) * 100).rounded())
+        return "\(dockPoints(size)) · 占栏高 \(percent)%"
     }
 
     private func binding(_ keyPath: WritableKeyPath<DockManualSizing, Double>) -> Binding<Double> {

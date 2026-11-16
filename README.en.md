@@ -60,7 +60,7 @@ Change the mode in Settings; every display updates together.
 
 ### Fully adaptive system Dock sizing
 
-Enable “完全自适应系统 Dock” to follow the system Dock's base icon size, bar thickness, icon spacing, end padding, and magnification. The bar grows or shrinks with the app count and stays centered on its display edge. Hovering changes the icons while keeping the backdrop fixed.
+Enable “完全自适应系统 Dock” to follow the system Dock's base icon size, bar height, icon spacing, end padding, and magnification. The bar grows or shrinks with the app count and stays centered on its display edge. Hovering changes the icons while keeping the backdrop fixed.
 
 Adaptive mode hides manual size and magnification controls and disables edge resizing. Turning it off restores the previous manual configuration. Users who enabled automatic width in an earlier version are migrated to fully adaptive sizing.
 
@@ -70,21 +70,25 @@ Dimensions are read from system preferences and Accessibility geometry without c
 
 Choose **bottom, top, left, or right** independently for each display. Top and bottom Docks use horizontal rows; side Docks use vertical rows with upright icons. App groups still expand horizontally, and popups open toward the inside of the screen.
 
-Manual mode provides length, thickness, icon-size, and spacing sliders. You can also resize the Dock directly:
+Manual mode provides length, height, icon-size, and spacing sliders. **Dock height** changes the backdrop and scales icons using their saved proportion. **Icon size** changes how much of the bar the icons occupy while keeping the backdrop height unchanged. Settings show both the icon size and its percentage of the bar height.
 
-- **Inward edge:** adjust thickness.
+You can also resize the Dock directly:
+
+- **Inward edge:** adjust height; icons scale with it.
 - **Either endpoint:** adjust length while keeping the bar centered.
-- **Two inward corners:** scale proportionally.
+- **Two inward corners:** scale length and height together.
 
-Icon size is saved as a relative proportion, preserved when thickness changes or the bar is scaled. Spacing changes only the contents of the fixed bar. Overflow scrolls along the Dock's direction without a visible scrollbar.
+The saved icon proportion is preserved when the bar height changes. For side Docks, the axes rotate: “height” adjusts the bar's horizontal width, and “length” runs vertically. Spacing changes only the contents of the fixed bar. Overflow scrolls along the Dock's direction without a visible scrollbar.
 
-“所有屏幕同步尺寸” synchronizes sizes using the range available to all displays. Turn it off to configure each display within its own available bounds. Turning synchronization back on adopts the **currently selected display's effective size**, while positions remain independent. Manual thickness is capped at **12%** of the available short edge; maximum length follows the available length of the selected edge. Dimensions use macOS logical points.
+“所有屏幕同步尺寸” synchronizes sizes using the range available to all displays. Turn it off to configure each display within its own available bounds. Turning synchronization back on adopts the **currently selected display's effective size**, while positions remain independent. Manual height is capped at **12%** of the available short edge; maximum length follows the available length of the selected edge. Dimensions use macOS logical points. Scaling is constrained at size limits and minimum end padding.
 
 ### Content-driven length with manual sizing
 
-With fully adaptive sizing off, enable “随应用数量自动增减长度” to grow or shrink the centered bar as visible apps and groups change. It preserves your manual thickness, icon proportion, spacing, and end padding. A collapsed group occupies one slot.
+With fully adaptive sizing off, enable “随应用数量自动增减长度” to grow or shrink the centered bar as visible apps and groups change. It preserves your manual height, icon proportion, spacing, and end padding. A collapsed group occupies one slot.
 
-The length slider and endpoint dragging remain available to redefine end padding. Thickness, icon-size, and spacing changes also recalculate the content length. At the display limit, growth stops and extra content can be scrolled manually without a scrollbar. Turning this option off restores the previous fixed length. Fully adaptive system Dock sizing is unchanged.
+The length slider and endpoint dragging remain available to redefine end padding. Height, icon-size, and spacing changes also recalculate the content length. **Dragging the inward edge preserves end padding; dragging a corner scales length and height together and recalculates the padding.** Both gestures change the space occupied by icons, so they can look similar when end padding is small.
+
+At the display limit, growth stops and extra content can be scrolled manually without a scrollbar. Turning this option off restores the previous fixed length. Fully adaptive system Dock sizing is unchanged.
 
 ### Shape the magnification curve
 
