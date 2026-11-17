@@ -634,7 +634,7 @@ final class DisplayCoordinator {
         // may reopen an application or present a late error after that work.
         guard intent == latestWindowIntent else { return }
         switch result {
-        case .handled: break
+        case .handled, .targetUnavailable: break
         case .fallbackToApplication: applicationActions.launch(app)
         case .failure(let message): store.message = message
         }

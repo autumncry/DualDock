@@ -34,6 +34,9 @@ enum DockWindowInventory: Sendable {
 enum WindowInteractionResult: Equatable {
     case handled
     case fallbackToApplication
+    /// The exact target cannot currently be resolved. Do not reopen a different
+    /// window or leave an unrelated, persistent warning in Settings.
+    case targetUnavailable
     case failure(String)
 }
 
@@ -85,11 +88,15 @@ final class WindowInteractionService {
             let request = self.generation
             let inventory = await self.environment.read(app)
             guard request == self.generation, !Task.isCancelled else { return .handled }
-            guard case .available(let items) = inventory else {
+            let items: [DockWindowItem]
+            switch inventory {
+            case .available(let available): items = available
+            case .unavailable: return .targetUnavailable
+            case .permissionDenied:
                 return .failure("暂时无法读取这个窗口，请稍后重试或检查辅助功能权限。")
             }
             guard let fresh = items.first(where: { $0.id == item.id }) else {
-                return .failure("这个窗口已关闭或发生变化，请重新打开窗口列表。")
+                return .targetUnavailable
             }
             return await self.act(fresh, action: fresh.isMinimized ? .restore : .activate,
                                   for: app, request: request, beforePerform: beforePerform)
@@ -109,7 +116,7 @@ final class WindowInteractionService {
             case .permissionDenied: return .fallbackToApplication
             case .unavailable:
                 return self.selected[self.key(app)] == nil ? .fallbackToApplication
-                    : .failure("暂时无法读取已选窗口，请稍后重试。")
+                    : .targetUnavailable
             }
             guard let target = self.preferred(in: items, for: app) else { return .fallbackToApplication }
             let action: DockWindowAction
@@ -173,7 +180,7 @@ final class WindowInteractionService {
         case .performed:
             selected[key(app)] = item.id
             return .handled
-        case .missing: return .failure("这个窗口已关闭或发生变化，请重新选择。")
+        case .missing: return .targetUnavailable
         case .unsupported: return .failure("这个窗口不支持最小化，请使用原应用的窗口控制。")
         case .failed: return .failure("应用暂未接受窗口操作，请稍后重试。")
         case .superseded: return .handled

@@ -74,16 +74,16 @@ struct WindowInteractionChecks {
         let staleB = windows[1]
         windows = [item(1)]
         let beforeStale = calls.count
-        if case .failure = await service.select(staleB, for: app) { check(true, "stale selection") }
-        else { check(false, "explicit stale window silently selected a replacement") }
+        check(await service.select(staleB, for: app) == .targetUnavailable,
+              "explicit stale selection was not quietly rejected")
         check(calls.count == beforeStale, "stale window dispatched action")
         check(handled(await service.toggle(for: app)) && calls.last?.0 == 1, "closed target did not use fresh focused window")
 
         let old = item(1)
         windows = [item(1, launchDate: Date(timeIntervalSince1970: 200))]
         let beforeReuse = calls.count
-        if case .failure = await service.select(old, for: app) { check(true, "PID reuse") }
-        else { check(false, "PID/window ID reuse accepted stale process incarnation") }
+        check(await service.select(old, for: app) == .targetUnavailable,
+              "PID/window ID reuse was not quietly rejected")
         check(calls.count == beforeReuse, "reused PID dispatched action")
 
         for (fullscreen, maximized) in [(true, false), (false, true), (true, true)] {
@@ -99,6 +99,9 @@ struct WindowInteractionChecks {
         nextOutcome = .unsupported
         if case .failure = await service.toggle(for: app) { check(true, "unsupported minimize") }
         else { check(false, "unsupported minimize was silently reported successful") }
+        nextOutcome = .missing
+        check(await service.toggle(for: app) == .targetUnavailable,
+              "missing action target produced a global warning or application fallback")
         nextOutcome = .superseded
         check(handled(await service.toggle(for: app)), "superseded action became user error")
         nextOutcome = .performed
@@ -145,8 +148,8 @@ struct WindowInteractionChecks {
         readIssue = .unavailable
         let beforeIncomplete = calls.count
         check((await service.list(for: app)).items.isEmpty, "partial snapshot exposed incomplete menu")
-        if case .failure = await service.toggle(for: app) { check(true, "incomplete snapshot retry") }
-        else { check(false, "incomplete selected-window snapshot requested native reopen") }
+        check(await service.toggle(for: app) == .targetUnavailable,
+              "incomplete selected-window snapshot was not quietly rejected")
         check(calls.count == beforeIncomplete, "incomplete snapshot mutated another window")
         windows = completeWindows
         readIssue = nil

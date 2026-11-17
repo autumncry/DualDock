@@ -273,6 +273,60 @@ struct WindowMenuChecks {
         check(explicitLaunches == 1, "explicit open action did not reach its native boundary")
         check(calls.count == beforeReplacement, "explicit open did not supersede an unstarted icon callback")
         replacing.stop()
+
+        // A transient exact-window lookup must remain quiet. In particular it
+        // must neither poison Settings with a global message nor replace a
+        // meaningful configuration error. Exercise the real tile/menu callbacks.
+        for (useMenu, fault) in [(false, "missing"), (false, "unreadable"),
+                                 (true, "missing"), (true, "unreadable"), (true, "stale")] {
+            for existingMessage in [nil, "配置保存失败：测试用只读目录"] as [String?] {
+                let target = item(42, title: "Quiet target", front: true)
+                var activeFault: String?
+                var quietReads = 0
+                var quietActions: [UInt32] = []
+                var fallbackLaunches = 0
+                let quietService = WindowInteractionService(environment: .init(read: { _ in
+                    quietReads += 1
+                    if activeFault == "unreadable" { return .unavailable }
+                    return .available(activeFault == "stale" ? [] : [target])
+                }, perform: { chosen, _, _ in
+                    quietActions.append(chosen.id.windowID)
+                    return activeFault == "missing" ? .missing : .performed
+                }))
+                // Remember a real selected identity before simulating a failed
+                // refresh: an incomplete read must not trigger app-wide reopen.
+                check(await quietService.select(target, for: app) == .handled, "quiet fixture could not select its target")
+                quietActions.removeAll()
+                let quiet = DisplayCoordinator(store: store, presentsPanels: false, windowInteractions: quietService,
+                    applicationActions: .init(launch: { _ in fallbackLaunches += 1 }, cancelRecovery: {}))
+                guard let quietTile = quiet.docks.values.first?.strip.tiles.first(where: { $0.entry.apps.first?.id == app.id }),
+                      let quietMenu = await quietTile.prepareMenu?() else { fatalError("No hidden quiet-message fixture") }
+                store.message = existingMessage
+                activeFault = fault
+                let previousReads = quietReads
+                if useMenu {
+                    let choice = quietMenu.items[0]
+                    _ = NSApp.sendAction(choice.action!, to: choice.target, from: choice)
+                } else { quietTile.onPress?() }
+                await settle { quietReads > previousReads }
+                // The injected boundary completes synchronously; let its
+                // coordinator continuation consume the result before asserting.
+                try? await Task.sleep(nanoseconds: 10_000_000)
+                let scenario = "\(useMenu ? "menu" : "icon") \(fault)"
+                check(store.message == existingMessage, "\(scenario) left a residual message or replaced an unrelated message")
+                check(fallbackLaunches == 0, "\(scenario) reopened the application after losing an exact target")
+                check(quietActions == (fault == "missing" ? [42] : []), "\(scenario) dispatched to an unexpected window")
+                activeFault = nil
+                let beforeRetry = quietActions.count
+                quietTile.onPress?()
+                await settle { quietActions.count > beforeRetry }
+                check(quietActions.last == 42 && quietActions.count == beforeRetry + 1,
+                      "\(scenario) could not retry the same target")
+                check(store.message == existingMessage, "\(scenario) successful retry did not preserve the original message state")
+                quiet.stop()
+            }
+        }
+        store.message = nil
         print("Window menu integration: \(checks) checks, \(failures.count) failures; hidden panels, injected window actions only")
         failures.forEach { print("FAIL: \($0)") }
         if !failures.isEmpty { exit(1) }
