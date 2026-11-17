@@ -17,6 +17,12 @@ struct CustomSizingStoreChecks {
         let b = DockDisplayInfo(id: "B", runtimeID: 2, name: "B",
             frame: CGRect(x: 1800, y: 0, width: 2200, height: 1600),
             visibleFrame: CGRect(x: 1800, y: 0, width: 2200, height: 1560))
+        // Keep the sizing and collapsed-group checks independent of desktop
+        // app count, which can legitimately trigger shrink-before-scroll.
+        let runningApps = (0..<8).map { index in
+            AppReference(id: "custom-sizing.running-\(index)", name: "Running \(index)",
+                         path: "/Applications/CustomSizingFixture\(index).app")
+        }
         var checks = 0
         var failures: [String] = []
         func check(_ condition: Bool, _ message: String) {
@@ -38,9 +44,11 @@ struct CustomSizingStoreChecks {
             manualSizing: DockManualSizing(length: 777, thickness: 68))
         let originalBytes = try JSONEncoder().encode(legacy)
         try originalBytes.write(to: file)
-        let store = AppStore(directory: directory)
+        let store = AppStore(directory: directory, runningAppsProvider: { runningApps })
         store.stopBackgroundServices()
         store.updateDisplays([a, b])
+        check(store.runningApps == runningApps && store.displayedEntries.count == legacy.entries.count + runningApps.count,
+              "Running-app fixture was not used by the displayed entries")
         check(store.configuration.customSizing == nil, "Migration eagerly changed legacy sizing")
         check(store.configuration.entries == legacy.entries, "Migration changed groups")
         check(try Data(contentsOf: directory.appendingPathComponent("configuration-before-v10.json")) == originalBytes,
@@ -167,7 +175,7 @@ struct CustomSizingStoreChecks {
         store.setAdaptiveSizing(false)
         check(store.configuration == preserved, "Native adaptive mode changed saved custom preferences")
         store.stopBackgroundServices()
-        let reopened = AppStore(directory: directory)
+        let reopened = AppStore(directory: directory, runningAppsProvider: { runningApps })
         reopened.stopBackgroundServices()
         reopened.updateDisplays([a, b])
         check(reopened.configuration == store.configuration, "Restart changed custom preferences")
