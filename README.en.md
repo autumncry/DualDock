@@ -84,7 +84,7 @@ Three primary controls cover everyday changes:
 - **Density:** continuously adjust automatic spacing and end padding.
 - **Length:** fit the content, fill the available edge, or use a fixed screen percentage.
 
-Advanced settings expose spacing, padding, minimum height, fixed length percentage, alignment, and optional icon shrinking before scrolling. Manual overrides take priority and can be reset individually. Overflow scrolls without a visible scrollbar. The preview uses the production geometry, and numeric fields support precise adjustments.
+Advanced settings expose spacing, padding, minimum height, fixed length percentage, alignment, and optional icon shrinking before scrolling. Manual overrides take priority and can be reset individually. Overflow scrolls without a visible scrollbar. The preview uses production geometry at a fixed 50%, 75%, or 100% zoom, so resizing remains visible instead of being canceled by auto-fit. Scroll to see overflow; numeric fields support precise adjustments.
 
 Upgrades preserve the existing layout as advanced overrides. Restore linked spacing/padding or reset recommended sizing for the current display scope whenever desired.
 
@@ -138,6 +138,21 @@ Screen Recording provides window thumbnails; Accessibility identifies, activates
 
 > [!NOTE]
 > The current release targets Apple Silicon and uses an ad-hoc signature for personal use. It is not notarized by Apple. If macOS blocks the first launch, consult the [installation notes](docs/installation.txt) (Chinese).
+
+<!-- first-launch-guidance:start -->
+### First launch: Apple cannot verify the app or developer
+
+The current release is not Apple Developer ID signed or notarized. macOS may say that Apple cannot verify DualDock or that the developer cannot be verified. **Proceed only if you obtained the app from this project's [official Releases](https://github.com/autumncry/DualDock/releases/latest), trust its source, have checked that it was not tampered with, and choose to open it.** This approval applies to this app:
+
+1. After copying DualDock to Applications, try opening it once, then dismiss the verification alert.
+2. Open **System Settings → Privacy & Security**, scroll to Security, and find the blocked DualDock entry. Click **Open Anyway**; some macOS versions first show an **Open** entry.
+3. Authenticate with your login password or Touch ID when requested, then confirm **Open**. You can subsequently launch the app normally.
+4. If the button is missing, try opening DualDock from Applications again, then return to this page. Apple says the option is available for about one hour after an attempted launch. On a managed Mac, contact your administrator if the option is restricted.
+
+If the alert says the app **will damage your computer**, contains detected malware, or **is damaged**, stop opening it. Download it again from official Releases and compare the SHA-256 checksum; [report the issue](https://github.com/autumncry/DualDock/issues) if it persists. These alerts differ from an unverified developer and should not be approved using the steps above. Do not disable system-wide security protections.
+
+Apple guidance: [Safely open apps on your Mac](https://support.apple.com/en-us/102445) and [the per-app approval and its time limit](https://support.apple.com/en-gb/guide/mac-help/mh40617/mac).
+<!-- first-launch-guidance:end -->
 
 ## Building from source
 

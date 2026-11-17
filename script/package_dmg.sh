@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
+python3 "$ROOT_DIR/script/check_installation_guidance.py"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/Resources/Info.plist")"
 APP_PATH="$("$ROOT_DIR/script/package_app.sh" release)"
 ARCH="$(lipo -archs "$APP_PATH/Contents/MacOS/DualDock")"
@@ -12,7 +13,18 @@ case "$ARCH" in
 esac
 ASSET_NAME="DualDock-$VERSION-$ARCH_SUFFIX.dmg"
 STAGING_DIR="$(mktemp -d "$DIST_DIR/.dualdock-dmg.XXXXXX")"
-trap 'rm -rf "$STAGING_DIR"' EXIT
+MOUNT_POINT="$STAGING_DIR/mount"
+DMG_MOUNTED=0
+cleanup() {
+  if [ "$DMG_MOUNTED" = 1 ]; then
+    if ! hdiutil detach "$MOUNT_POINT" >&2; then
+      echo "Could not unmount $MOUNT_POINT; keeping temporary files for cleanup." >&2
+      return
+    fi
+  fi
+  rm -rf "$STAGING_DIR"
+}
+trap cleanup EXIT
 mkdir -p "$STAGING_DIR/volume"
 ditto "$APP_PATH" "$STAGING_DIR/volume/DualDock.app"
 ln -s /Applications "$STAGING_DIR/volume/Applications"
@@ -22,6 +34,12 @@ codesign --verify --strict "$STAGING_DIR/volume/DualDock.app" >&2
 hdiutil create -volname "DualDock" -srcfolder "$STAGING_DIR/volume" \
   -fs HFS+ -format UDZO "$STAGING_DIR/$ASSET_NAME" >&2
 hdiutil verify "$STAGING_DIR/$ASSET_NAME" >&2
+mkdir -p "$MOUNT_POINT"
+hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT_POINT" "$STAGING_DIR/$ASSET_NAME" >&2
+DMG_MOUNTED=1
+python3 "$ROOT_DIR/script/check_installation_guidance.py" --volume "$MOUNT_POINT"
+hdiutil detach "$MOUNT_POINT" >&2
+DMG_MOUNTED=0
 mv "$STAGING_DIR/$ASSET_NAME" "$DIST_DIR/$ASSET_NAME"
 (
   cd "$DIST_DIR"
