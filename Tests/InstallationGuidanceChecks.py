@@ -12,6 +12,8 @@ import unittest
 REPOSITORY = Path(__file__).resolve().parents[1]
 GUARD = REPOSITORY / "script/check_installation_guidance.py"
 DOCUMENTS = ("README.md", "README.en.md", "docs/installation.txt")
+QUARANTINE_COMMAND = 'xattr -dr com.apple.quarantine "/Applications/DualDock.app"'
+LAUNCH_COMMAND = 'open "/Applications/DualDock.app"'
 
 
 class InstallationGuidanceChecks(unittest.TestCase):
@@ -61,6 +63,56 @@ class InstallationGuidanceChecks(unittest.TestCase):
                 document.write_text(contents.replace("Open Anyway", ""))
                 self.assert_rejected(self.run_guard(), relative)
                 document.write_text(contents)
+
+    def test_each_missing_terminal_command_fails(self):
+        for relative in DOCUMENTS:
+            for command in (QUARANTINE_COMMAND, LAUNCH_COMMAND):
+                with self.subTest(document=relative, command=command):
+                    document = self.root / relative
+                    contents = document.read_text()
+                    self.assertIn(command, contents)
+                    document.write_text(contents.replace(command, ""))
+                    self.assert_rejected(self.run_guard(), relative)
+                    document.write_text(contents)
+
+    def test_each_broadened_terminal_target_fails(self):
+        for relative in DOCUMENTS:
+            with self.subTest(document=relative):
+                document = self.root / relative
+                contents = document.read_text()
+                document.write_text(contents.replace(QUARANTINE_COMMAND, 'xattr -dr com.apple.quarantine "/Applications"'))
+                self.assert_rejected(self.run_guard(), relative)
+                document.write_text(contents)
+
+    def test_elevated_or_extra_terminal_commands_fail(self):
+        document = self.root / "README.en.md"
+        contents = document.read_text()
+        for replacement in (
+            "sudo " + QUARANTINE_COMMAND,
+            QUARANTINE_COMMAND + '\nxattr -cr "/Applications/DualDock.app"',
+            QUARANTINE_COMMAND + "\nsudo spctl --master-disable",
+        ):
+            with self.subTest(replacement=replacement):
+                document.write_text(contents.replace(QUARANTINE_COMMAND, replacement))
+                self.assert_rejected(self.run_guard(), "README.en.md")
+        document.write_text(contents)
+
+    def test_reversed_terminal_command_order_fails(self):
+        document = self.root / "README.en.md"
+        contents = document.read_text()
+        document.write_text(contents.replace(
+            QUARANTINE_COMMAND + "\n" + LAUNCH_COMMAND,
+            LAUNCH_COMMAND + "\n" + QUARANTINE_COMMAND,
+        ))
+        self.assert_rejected(self.run_guard(), "README.en.md")
+
+    def test_terminal_commands_before_gui_steps_fail(self):
+        document = self.root / "README.en.md"
+        contents = document.read_text()
+        commands = QUARANTINE_COMMAND + "\n" + LAUNCH_COMMAND
+        marker = "<!-- first-launch-guidance:start -->"
+        document.write_text(contents.replace(commands, "").replace(marker, marker + "\n" + commands))
+        self.assert_rejected(self.run_guard(), "README.en.md")
 
     def test_empty_marked_readme_section_fails(self):
         document = self.root / "README.en.md"

@@ -149,6 +149,19 @@ The current release is not Apple Developer ID signed or notarized. macOS may say
 3. Authenticate with your login password or Touch ID when requested, then confirm **Open**. You can subsequently launch the app normally.
 4. If the button is missing, try opening DualDock from Applications again, then return to this page. Apple says the option is available for about one hour after an attempted launch. On a managed Mac, contact your administrator if the option is restricted.
 
+#### Optional: open from Terminal
+
+If you choose the command-line route, first confirm that the app came from the official Releases above, trust its source, check that it was not tampered with, and copy it to `/Applications/DualDock.app`. Open Terminal and run these commands in order:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/DualDock.app"
+open "/Applications/DualDock.app"
+```
+
+The first command removes only the `com.apple.quarantine` attribute from this app bundle and its contents. It does not clear other extended attributes or disable Gatekeeper system-wide. The second command launches the app. This does not sign or notarize the app, or grant Accessibility or Screen Recording access; grant those permissions separately when using the app. Keep the complete path unchanged and do not add `sudo` by default. If you encounter a permission error, use the System Settings route above.
+
+This route has been confirmed on a user's Mac; it has not been validated across all Macs or macOS versions.
+
 If the alert says the app **will damage your computer**, contains detected malware, or **is damaged**, stop opening it. Download it again from official Releases and compare the SHA-256 checksum; [report the issue](https://github.com/autumncry/DualDock/issues) if it persists. These alerts differ from an unverified developer and should not be approved using the steps above. Do not disable system-wide security protections.
 
 Apple guidance: [Safely open apps on your Mac](https://support.apple.com/en-us/102445) and [the per-app approval and its time limit](https://support.apple.com/en-gb/guide/mac-help/mh40617/mac).

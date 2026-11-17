@@ -8,6 +8,10 @@ import sys
 
 MARKER_START = "<!-- first-launch-guidance:start -->"
 MARKER_END = "<!-- first-launch-guidance:end -->"
+TERMINAL_COMMANDS = (
+    'xattr -dr com.apple.quarantine "/Applications/DualDock.app"',
+    'open "/Applications/DualDock.app"',
+)
 COMMON = (
     "Apple Developer ID",
     "Open Anyway",
@@ -16,17 +20,21 @@ COMMON = (
     "https://github.com/autumncry/DualDock/issues",
     "https://support.apple.com/en-us/102445",
     "https://support.apple.com/en-gb/guide/mac-help/mh40617/mac",
-)
+) + TERMINAL_COMMANDS
 CHINESE = (
     "公证", "无法验证开发者", "先尝试打开", "系统设置", "隐私与安全性",
     "仍要打开", "确认提示中选择“打开”", "再次尝试打开", "一小时",
     "来源可信", "未被篡改", "将损坏你的电脑", "恶意软件", "已损坏", "停止打开",
+    "可选：使用终端打开", "不会为应用签名或公证", "不会授予辅助功能或屏幕录制权限",
+    "未覆盖所有 Mac 和 macOS 版本",
 )
 ENGLISH = (
     "notarized", "developer cannot be verified", "try opening it once",
     "System Settings", "Privacy & Security", "confirm **Open**",
     "Applications again", "one hour", "trust its source", "not tampered with",
     "will damage your computer", "malware", "is damaged", "stop opening it",
+    "Optional: open from Terminal", "does not sign or notarize", "or grant Accessibility or Screen Recording",
+    "not been validated across all Macs or macOS versions",
 )
 REQUIRED = {
     "README.md": COMMON + CHINESE,
@@ -54,6 +62,16 @@ def check_documents(root):
         missing = [phrase for phrase in phrases if phrase not in content]
         if missing:
             errors.append(f"{relative}: missing first-launch guidance: {', '.join(missing)}")
+        command_lines = [
+            line.strip() for line in content.splitlines()
+            if line.split() and line.split()[0] in ("xattr", "open", "sudo", "spctl")
+        ]
+        if command_lines != list(TERMINAL_COMMANDS):
+            errors.append(f"{relative}: keep only the two exact optional Terminal commands, in order")
+        elif not missing:
+            last_gui_step = "one hour" if relative == "README.en.md" else "一小时"
+            if content.index(TERMINAL_COMMANDS[0]) < content.index(last_gui_step):
+                errors.append(f"{relative}: keep the optional Terminal route after the GUI instructions")
     return errors
 
 

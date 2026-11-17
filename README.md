@@ -149,6 +149,19 @@
 3. 按系统要求验证登录密码或 Touch ID，然后在确认提示中选择“打开”。之后可正常双击启动。
 4. 如果没有找到该按钮，再次尝试打开“应用程序”中的 DualDock，然后返回此页面。Apple 说明此入口通常在尝试启动后约一小时内可用；受管理的 Mac 可能需要联系管理员。
 
+#### 可选：使用终端打开
+
+如果你选择命令行方式，请先确认应用来自上方官方 Releases、来源可信且未被篡改，并已复制到 `/Applications/DualDock.app`。打开“终端”，依次执行：
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/DualDock.app"
+open "/Applications/DualDock.app"
+```
+
+第一条命令仅移除这个应用包及其内部文件的 `com.apple.quarantine` 隔离属性，不清除其他扩展属性，也不关闭系统整体的 Gatekeeper。第二条启动应用。这不会为应用签名或公证，也不会授予辅助功能或屏幕录制权限；这些权限仍在首次使用时单独授权。请保持完整路径不变，不要默认添加 `sudo`；如遇权限错误，可使用上方系统设置方式。
+
+该方法经用户本机验证可用，但未覆盖所有 Mac 和 macOS 版本。
+
 如果提示明确指出应用“将损坏你的电脑”、检测到恶意软件或“已损坏”，请停止打开，从官方 Releases 重新下载并核对 SHA-256；仍有提示时[反馈问题](https://github.com/autumncry/DualDock/issues)。这与“无法验证开发者”不同，不应按上述流程放行。无需关闭系统的整体安全保护。
 
 Apple 说明：[安全地打开 Mac 上的 App](https://support.apple.com/en-us/102445)、[单个应用的打开入口与有效时间](https://support.apple.com/en-gb/guide/mac-help/mh40617/mac)。

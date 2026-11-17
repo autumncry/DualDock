@@ -21,6 +21,19 @@ https://github.com/autumncry/DualDock/releases/latest
 4. 找不到按钮时，再次尝试打开“应用程序”中的 DualDock，再返回上述页面。
    Apple 说明该入口通常在尝试启动后约一小时内可用；受管理的 Mac 可能需要联系管理员。
 
+可选：使用终端打开
+选择命令行方式前，请确认应用来自上方官方 Releases、来源可信且未被篡改，
+并已复制到 /Applications/DualDock.app。打开“终端”，依次执行：
+
+xattr -dr com.apple.quarantine "/Applications/DualDock.app"
+open "/Applications/DualDock.app"
+
+第一条命令仅移除这个应用包及其内部文件的 com.apple.quarantine 隔离属性，
+不清除其他扩展属性，也不关闭系统整体的 Gatekeeper。第二条启动应用。
+这不会为应用签名或公证，也不会授予辅助功能或屏幕录制权限，仍需单独授权。
+请保持完整路径不变，不要默认添加 sudo；如遇权限错误，可使用上方系统设置方式。
+该方法经用户本机验证可用，但未覆盖所有 Mac 和 macOS 版本。
+
 如果提示“将损坏你的电脑”、检测到恶意软件或“已损坏”，请停止打开，从官方 Releases
 重新下载并核对 SHA-256；仍有提示时前往以下地址反馈，不要按上述流程放行：
 https://github.com/autumncry/DualDock/issues
