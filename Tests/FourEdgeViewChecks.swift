@@ -17,12 +17,26 @@ struct FourEdgeViewChecks {
             if !value { failures.append(message) }
         }
         func near(_ a: CGFloat, _ b: CGFloat, tolerance: CGFloat = 0.001) -> Bool { abs(a - b) < tolerance }
+        func checkIndicator(_ tile: DockTile, edge: DockEdge) {
+            let icon = tile.visualIconBounds, dot = tile.runningIndicatorBounds
+            let gap: CGFloat
+            switch edge {
+            case .bottom: gap = icon.minY - dot.maxY
+            case .top: gap = dot.minY - icon.maxY
+            case .left: gap = icon.minX - dot.maxX
+            case .right: gap = dot.minX - icon.maxX
+            }
+            check(gap >= -0.001 && gap <= 3.001, "Running dot detached from icon on \(edge): \(gap)")
+            check(near(edge.isHorizontal ? icon.midX : icon.midY,
+                       edge.isHorizontal ? dot.midX : dot.midY), "Running dot is not centered on icon")
+        }
         let display = DockDisplayInfo(id: "fixture", runtimeID: 987, name: "Fixture",
             frame: CGRect(x: -2000, y: 300, width: 1440, height: 1000),
             visibleFrame: CGRect(x: -2000, y: 300, width: 1440, height: 972), isPrimary: true)
         let variants: [(String, Int, Double, Double, Double, Double)] = [
             ("fit", 7, 700, 66, 1, 14), ("fractional", 9, 650.375, 65.57637448, 0.73, 6.47977),
-            ("overflow", 30, 320, 66, 1, 14), ("large", 30, 240, 100.375, 1.25, 0)]
+            ("overflow", 30, 320, 66, 1, 14), ("large", 30, 240, 100.375, 1.25, 0),
+            ("tall-small-icons", 7, 700, 120, 0.4, 14)]
         for edge in DockEdge.allCases {
             for (name, count, length, thickness, ratio, gap) in variants {
                 let directory = root.appendingPathComponent("\(edge.rawValue)-\(name)")
@@ -58,6 +72,7 @@ struct FourEdgeViewChecks {
                     check(near(icon.minX, expected.minX) && near(icon.minY, expected.minY)
                           && near(icon.width, expected.width) && near(icon.height, expected.height), "Icon coordinate mismatch")
                     check(near(icon.width, icon.height), "Icon was stretched")
+                    checkIndicator(tile, edge: edge)
                 }
                 let placement = geometry.panelFrame(in: display.visibleFrame)
                 panel.setFrame(placement, display: false)
@@ -92,6 +107,7 @@ struct FourEdgeViewChecks {
                 check(strip.tiles.map(ObjectIdentifier.init) == identities, "Live resize rebuilt tiles")
                 check(near(strip.layoutGeometry!.bodyLength, CGFloat(store.effectiveManualSizing(for: display.id).length)),
                       "Resize preview dimensions not applied")
+                strip.tiles.forEach { checkIndicator($0, edge: edge) }
                 store.setResizePreview(nil, for: display.id)
                 strip.stopAnimations()
                 panel.close()

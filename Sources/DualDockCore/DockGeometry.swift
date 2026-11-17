@@ -123,7 +123,9 @@ public struct DockGeometry: Equatable, Sendable {
         let focus = focusIndex.flatMap { $0.isFinite && n > 0 ? min(CGFloat(n - 1), max(0, $0)) : nil }
         let outerInset = max(0, (thickness - side) / 2)
         let dotSide = min(4, max(0, outerInset - 1))
-        let dotCenterV = min(4, outerInset / 2)
+        // Indicators belong to the icon, not the edge of a taller backdrop.
+        // Keep a 3pt gap where space allows, reducing it only for compact bars.
+        let dotOriginV = max(0, outerInset - dotSide - 3)
 
         var baseIcons: [CGRect] = []
         var icons: [CGRect] = []
@@ -145,7 +147,7 @@ public struct DockGeometry: Equatable, Sendable {
             baseIcons.append(CGRect(x: baseU, y: outerInset, width: side, height: side))
             icons.append(CGRect(x: waveU, y: outerInset, width: size, height: size))
             tiles.append(CGRect(x: waveU - gap / 2, y: 0, width: size + gap, height: thickness + size - side))
-            dots.append(CGRect(x: waveU + size / 2 - dotSide / 2, y: dotCenterV - dotSide / 2,
+            dots.append(CGRect(x: waveU + size / 2 - dotSide / 2, y: dotOriginV,
                                width: dotSide, height: dotSide))
             waveU += size + gap
             baseU += side + gap
