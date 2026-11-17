@@ -32,7 +32,7 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 9
+    public static let currentVersion = 10
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
@@ -49,6 +49,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public var manualAutoLength: Bool = false
     public var manualContentPadding: Double?
     public var manualIconScale: Double = 1
+    public var customSizing: DockCustomSizing?
     public var synchronizeSizes: Bool = true
     public var displaySettings: [String: DockDisplaySettings] = [:]
     /// Keep the persisted compatibility key while upgrading its semantics.
@@ -74,7 +75,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth, autoAdjustWidth
-        case manualIconScale, synchronizeSizes, displaySettings, manualAutoLength, manualContentPadding
+        case manualIconScale, synchronizeSizes, displaySettings, manualAutoLength, manualContentPadding, customSizing
         case magnificationEnabled, magnificationScale, magnificationRadius, showPreviews, showBadges, hideSystemDock, autoHideWhenObstructed
     }
 
@@ -95,6 +96,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         manualAutoLength = try values.decodeIfPresent(Bool.self, forKey: .manualAutoLength) ?? false
         manualContentPadding = try values.decodeIfPresent(Double.self, forKey: .manualContentPadding)
         manualIconScale = try values.decodeIfPresent(Double.self, forKey: .manualIconScale) ?? 1
+        customSizing = try values.decodeIfPresent(DockCustomSizing.self, forKey: .customSizing)
         synchronizeSizes = try values.decodeIfPresent(Bool.self, forKey: .synchronizeSizes) ?? true
         displaySettings = try values.decodeIfPresent([String: DockDisplaySettings].self, forKey: .displaySettings) ?? [:]
         magnificationEnabled = try values.decodeIfPresent(Bool.self, forKey: .magnificationEnabled) ?? true
@@ -117,7 +119,9 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         }
         for key in displaySettings.keys {
             displaySettings[key]?.manualSizing?.normalize()
+            displaySettings[key]?.customSizing?.normalize()
         }
+        customSizing?.normalize()
         if let width = dockWidth, !width.isFinite || width <= 0 { dockWidth = nil }
         iconSpacing = iconSpacing.isFinite ? min(32, max(0, iconSpacing)) : 14
         dockWidthReferenceSpacing = dockWidthReferenceSpacing.isFinite ? min(32, max(0, dockWidthReferenceSpacing)) : 14

@@ -50,7 +50,7 @@ final class DockContentLengthPolicyTests: XCTestCase {
         XCTAssertNil(old.manualContentPadding)
         XCTAssertTrue(old.adaptiveSizing)
         XCTAssertEqual(old.dockWidth, 850)
-        XCTAssertEqual(old.version, 9)
+        XCTAssertEqual(old.version, DockConfiguration.currentVersion)
         var new = old
         new.manualAutoLength = true
         new.manualContentPadding = 42

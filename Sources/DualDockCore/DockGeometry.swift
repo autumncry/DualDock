@@ -10,11 +10,12 @@ public struct DockGeometryStyle: Equatable, Sendable {
     public var separatorLength: CGFloat
     public var magnificationScale: CGFloat
     public var magnificationRadius: CGFloat
+    public var contentAlignment: DockContentAlignment
 
     public init(iconSize: CGFloat, barThickness: CGFloat, gap: CGFloat,
                 leadingPadding: CGFloat, trailingPadding: CGFloat,
                 separatorLength: CGFloat = 13, magnificationScale: CGFloat = 1,
-                magnificationRadius: CGFloat = 2.5) {
+                magnificationRadius: CGFloat = 2.5, contentAlignment: DockContentAlignment = .center) {
         self.iconSize = iconSize
         self.barThickness = barThickness
         self.gap = gap
@@ -23,6 +24,7 @@ public struct DockGeometryStyle: Equatable, Sendable {
         self.separatorLength = separatorLength
         self.magnificationScale = magnificationScale
         self.magnificationRadius = magnificationRadius
+        self.contentAlignment = contentAlignment
     }
 }
 
@@ -81,16 +83,20 @@ public struct DockGeometry: Equatable, Sendable {
         let limit = max(1, finite(maximumLength, fallback: 1))
         let thickness = max(1, finite(style.barThickness, fallback: 66))
         let side = min(thickness, max(1, finite(style.iconSize, fallback: 48)))
-        let gap = max(0, finite(style.gap, fallback: 0))
+        var gap = max(0, finite(style.gap, fallback: 0))
         let leading = max(0, finite(style.leadingPadding, fallback: 0))
         let trailing = max(0, finite(style.trailingPadding, fallback: 0))
         let separator = dividerIndex.map { $0 > 0 && $0 < n ? max(0, finite(style.separatorLength, fallback: 0)) : 0 } ?? 0
         let contentSpan = DockContentLengthPolicy.contentSpan(count: n, iconSize: Double(side),
             gap: Double(gap), separatorLength: Double(separator), dividerIndex: dividerIndex)
-        let required = CGFloat(contentSpan) + leading + trailing
+        var required = CGFloat(contentSpan) + leading + trailing
         let chosenLength = fixedLength.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? required
         let bodyLength = min(limit, max(1, chosenLength))
         let fits = required <= bodyLength + 0.000001
+        if fits, style.contentAlignment == .distribute, n > 1 {
+            gap += max(0, bodyLength - required) / CGFloat(n - 1)
+            required = bodyLength
+        }
         let scale = max(1, finite(style.magnificationScale, fallback: 1))
         let curve = DockMagnificationCurve(radius: style.magnificationRadius)
         let peak = n == 0 ? side : min(side * scale, max(side, fits ? limit : bodyLength))
@@ -110,7 +116,9 @@ public struct DockGeometry: Equatable, Sendable {
         let viewport = CGRect(x: fits ? 0 : endMargin, y: 0,
                               width: fits ? canvasLength : bodyLength, height: canvasDepth)
         let documentLength = fits ? viewport.width : max(viewport.width, required)
-        let baseLeading = fits ? endMargin + leading + max(0, bodyLength - required) / 2 : leading
+        let alignmentOffset = style.contentAlignment == .center || (style.contentAlignment == .distribute && n < 2)
+            ? max(0, bodyLength - required) / 2 : 0
+        let baseLeading = fits ? endMargin + leading + alignmentOffset : leading
         let offset = min(max(0, finite(scrollOffset, fallback: 0)), max(0, documentLength - viewport.width))
         let focus = focusIndex.flatMap { $0.isFinite && n > 0 ? min(CGFloat(n - 1), max(0, $0)) : nil }
         let outerInset = max(0, (thickness - side) / 2)

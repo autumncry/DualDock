@@ -78,14 +78,17 @@ public struct DockManualSizing: Codable, Equatable, Sendable {
     /// Per-side whitespace retained by manual content-fitting mode. The saved
     /// fixed length remains independent and is restored when that mode is off.
     public var contentPadding: Double?
+    /// New custom sizing uses absolute icon points; nil retains legacy ratios.
+    public var absoluteIconSize: Double?
 
     public init(length: Double, thickness: Double, iconScale: Double = 1, iconSpacing: Double = 14,
-                contentPadding: Double? = nil) {
+                contentPadding: Double? = nil, absoluteIconSize: Double? = nil) {
         self.length = length
         self.thickness = thickness
         self.iconScale = iconScale
         self.iconSpacing = iconSpacing
         self.contentPadding = contentPadding
+        self.absoluteIconSize = absoluteIconSize
         normalize()
     }
 
@@ -94,16 +97,18 @@ public struct DockManualSizing: Codable, Equatable, Sendable {
         thickness = thickness.isFinite ? max(1, thickness) : 66
         iconScale = iconScale.isFinite ? min(1.25, max(0.25, iconScale)) : 1
         iconSpacing = iconSpacing.isFinite ? min(32, max(0, iconSpacing)) : 14
+        absoluteIconSize = absoluteIconSize.flatMap { $0.isFinite ? max(1, $0) : nil }
         if let padding = contentPadding {
             contentPadding = padding.isFinite ? max(DockContentLengthPolicy.minimumPadding, padding) : nil
         }
     }
 
     public var resolvedIconSize: Double {
-        min(max(1, thickness - 8), max(1, thickness / DockSizingLimits.heightPerIconPoint * iconScale))
+        if let absoluteIconSize { return min(thickness, absoluteIconSize) }
+        return min(max(1, thickness - 8), max(1, thickness / DockSizingLimits.heightPerIconPoint * iconScale))
     }
 
-    private enum CodingKeys: String, CodingKey { case length, thickness, iconScale, iconSpacing, contentPadding }
+    private enum CodingKeys: String, CodingKey { case length, thickness, iconScale, iconSpacing, contentPadding, absoluteIconSize }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         length = try values.decodeIfPresent(Double.self, forKey: .length) ?? 1000
@@ -111,6 +116,7 @@ public struct DockManualSizing: Codable, Equatable, Sendable {
         iconScale = try values.decodeIfPresent(Double.self, forKey: .iconScale) ?? 1
         iconSpacing = try values.decodeIfPresent(Double.self, forKey: .iconSpacing) ?? 14
         contentPadding = try values.decodeIfPresent(Double.self, forKey: .contentPadding)
+        absoluteIconSize = try values.decodeIfPresent(Double.self, forKey: .absoluteIconSize)
         normalize()
     }
 }
@@ -118,8 +124,10 @@ public struct DockManualSizing: Codable, Equatable, Sendable {
 public struct DockDisplaySettings: Codable, Equatable, Sendable {
     public var edge: DockEdge
     public var manualSizing: DockManualSizing?
-    public init(edge: DockEdge = .bottom, manualSizing: DockManualSizing? = nil) {
+    public var customSizing: DockCustomSizing?
+    public init(edge: DockEdge = .bottom, manualSizing: DockManualSizing? = nil, customSizing: DockCustomSizing? = nil) {
         self.edge = edge
         self.manualSizing = manualSizing
+        self.customSizing = customSizing
     }
 }

@@ -26,6 +26,8 @@ final class AppStore: ObservableObject {
     private let activationService = ApplicationActivationService()
     let directory: URL
     private let configURL: URL
+    private let runningAppsProvider: (() -> [AppReference])?
+    private let permissionsProvider: (() -> (accessibility: Bool, capture: Bool))?
     private var observers: [NSObjectProtocol] = []
     private var icons: [String: NSImage] = [:]
     private var readOnly = false
@@ -38,8 +40,12 @@ final class AppStore: ObservableObject {
     }
     private var resizePreview: ResizePreview?
 
-    init(directory: URL) {
+    init(directory: URL,
+         runningAppsProvider: (() -> [AppReference])? = nil,
+         permissionsProvider: (() -> (accessibility: Bool, capture: Bool))? = nil) {
         self.directory = directory
+        self.runningAppsProvider = runningAppsProvider
+        self.permissionsProvider = permissionsProvider
         configURL = directory.appendingPathComponent("configuration.json")
         systemDock = SystemDockService(directory: directory)
         var initial = DockConfiguration()
@@ -62,6 +68,7 @@ final class AppStore: ObservableObject {
                 }
             } else {
                 initial.insert(SystemDockService.importPinnedApps())
+                initial.customSizing = DockCustomSizing()
             }
         } catch {
             readOnly = true
@@ -69,6 +76,10 @@ final class AppStore: ObservableObject {
         }
         initial.normalizeAppearance()
         configuration = initial
+        if let permissions = permissionsProvider?() {
+            accessibilityGranted = permissions.accessibility
+            captureGranted = permissions.capture
+        }
         message = issue
         do {
             try systemDock.recoverIfNeeded()
@@ -100,8 +111,8 @@ final class AppStore: ObservableObject {
     }
 
     var displayedEntries: [DockEntry] {
-        let known = configuration.allAppIDs
-        let active = configuration.mode == .runningOnly ? runningApps : runningApps.filter { !known.contains($0.id) }
+        var known = configuration.mode == .runningOnly ? Set<String>() : configuration.allAppIDs
+        let active = runningApps.filter { known.insert($0.id).inserted }
         let activeEntries = active.map { app in
             DockEntry(id: stableUUID(app.id), name: app.name, apps: [app])
         }
@@ -111,9 +122,9 @@ final class AppStore: ObservableObject {
     var pinnedCount: Int { configuration.mode == .standard ? configuration.entries.count : 0 }
 
     private var displayedEntryCount: Int {
-        guard configuration.mode == .standard else { return runningApps.count }
-        let known = configuration.allAppIDs
-        return configuration.entries.count + runningApps.reduce(0) { $0 + (known.contains($1.id) ? 0 : 1) }
+        let activeIDs = Set(runningApps.map(\.id))
+        return configuration.mode == .runningOnly ? activeIDs.count
+            : configuration.entries.count + activeIDs.subtracting(configuration.allAppIDs).count
     }
 
     private var activeDisplays: [DockDisplayInfo] { displays.filter { !$0.isMirrored } }
@@ -189,6 +200,7 @@ final class AppStore: ObservableObject {
 
     func requestedManualSizing(for displayID: String?) -> DockManualSizing {
         let id = resolvedDisplayID(displayID)
+        if let sizing = resolvedCustomSizing(for: id) { return sizing.manualSizing }
         if let preview = resizePreview,
            configuration.synchronizeSizes || preview.displayID == id { return preview.sizing }
         return contentFittedSizing(storedManualSizing(for: id), for: id)
@@ -222,7 +234,8 @@ final class AppStore: ObservableObject {
     /// screen returns. Capture its original padding once at that point rather
     /// than silently falling back to another screen's whitespace.
     private func initializeContentPaddingIfNeeded() -> Bool {
-        guard configuration.manualAutoLength, !readOnly, !activeDisplays.isEmpty else { return false }
+        guard configuration.manualAutoLength, configuration.customSizing == nil,
+              !readOnly, !activeDisplays.isEmpty else { return false }
         var next = configuration
         if configuration.synchronizeSizes {
             guard configuration.manualContentPadding == nil else { return false }
@@ -234,6 +247,7 @@ final class AppStore: ObservableObject {
             copySizing(shared, to: knownDisplayIDs(in: next), configuration: &next)
         } else {
             for display in activeDisplays {
+                guard storedCustomSizing(for: display.id) == nil else { continue }
                 let stored = storedManualSizing(for: display.id)
                 guard stored.contentPadding == nil else { continue }
                 var sizing = stored
@@ -251,6 +265,7 @@ final class AppStore: ObservableObject {
     }
 
     func effectiveManualSizing(for displayID: String?) -> DockManualSizing {
+        if let sizing = resolvedCustomSizing(for: displayID) { return sizing.manualSizing }
         let requested = requestedManualSizing(for: displayID)
         let bounds = sizingBounds(for: displayID)
         var effective = bounds.clamp(requested)
@@ -278,11 +293,26 @@ final class AppStore: ObservableObject {
                                 minThickness: min(33, maxThickness), maxThickness: maxThickness)
     }
 
+    func customSizingBounds(for displayID: String?) -> DockResizeBounds {
+        let bounds = sizingBounds(for: displayID)
+        let height = resolvedCustomSizing(for: displayID)?.thickness ?? effectiveManualSizing(for: displayID).thickness
+        return DockResizeBounds(minLength: 1, maxLength: bounds.maxLength,
+            minThickness: min(16, height), maxThickness: bounds.maxThickness)
+    }
+
     /// Length controls cannot request less than the current row plus minimal
     /// padding. Proportional corner resizing keeps the ordinary bounds because
     /// the icon row itself changes length as its thickness is scaled.
     func editingSizingBounds(for displayID: String?) -> DockResizeBounds {
         let bounds = sizingBounds(for: displayID)
+        if let custom = storedCustomSizing(for: displayID), custom.lengthMode == .fit,
+           let effective = resolvedCustomSizing(for: displayID) {
+            let required = DockContentLengthPolicy.contentSpan(count: displayedEntryCount,
+                iconSize: effective.iconSize, gap: effective.gap, separatorLength: effective.separatorLength,
+                dividerIndex: sizingDividerIndex) + 2 * min(2, effective.padding)
+            return DockResizeBounds(minLength: min(bounds.maxLength, required), maxLength: bounds.maxLength,
+                minThickness: bounds.minThickness, maxThickness: bounds.maxThickness)
+        }
         guard configuration.manualAutoLength, !configuration.adaptiveSizing else { return bounds }
         let required = contentSpan(for: requestedManualSizing(for: displayID), displayID: displayID)
             + 2 * DockContentLengthPolicy.minimumPadding
@@ -313,6 +343,10 @@ final class AppStore: ObservableObject {
     }
 
     func setManualAutoLength(_ value: Bool, sourceDisplayID: String?) {
+        if storedCustomSizing(for: sourceDisplayID) != nil {
+            updateCustomSizing(for: sourceDisplayID) { $0.lengthMode = value ? .fit : .fixed }
+            return
+        }
         guard !configuration.adaptiveSizing, configuration.manualAutoLength != value,
               isEditableDisplayReference(sourceDisplayID) else { return }
         cancelResizePreview()
@@ -359,6 +393,20 @@ final class AppStore: ObservableObject {
         guard !configuration.adaptiveSizing, configuration.synchronizeSizes != value,
               isEditableDisplayReference(sourceDisplayID) else { return }
         cancelResizePreview()
+        if configuration.customSizing != nil || configuration.displaySettings.values.contains(where: { $0.customSizing != nil }) {
+            let current = customSizing(for: sourceDisplayID)
+            update { next in
+                next.synchronizeSizes = value
+                if value { next.customSizing = current }
+                let ids = value ? self.knownDisplayIDs(in: next) : Set(self.activeDisplays.map(\.id))
+                for id in ids {
+                    var settings = next.displaySettings[id] ?? DockDisplaySettings()
+                    settings.customSizing = current
+                    next.displaySettings[id] = settings
+                }
+            }
+            return
+        }
         var current = effectiveManualSizing(for: sourceDisplayID)
         if configuration.manualAutoLength {
             // Switching synchronization must not replace the fixed-width backup
@@ -385,6 +433,13 @@ final class AppStore: ObservableObject {
         var sizing = original
         change(&sizing)
         sizing.normalize()
+        if let custom = storedCustomSizing(for: displayID) {
+            let revised = custom.resized(from: original, to: sizing,
+                maximumLength: sizingBounds(for: displayID).maxLength,
+                count: displayedEntryCount, dividerIndex: sizingDividerIndex)
+            updateCustomSizing(for: displayID) { $0 = revised }
+            return
+        }
         sizing = contentSizingProposal(sizing, original: original, displayID: displayID)
         persistManualSizing(sizing, for: resolvedDisplayID(displayID))
     }
@@ -419,9 +474,12 @@ final class AppStore: ObservableObject {
         if let preview = resizePreview, preview.displayID == id {
             original = preview.originalSizing
         } else {
-            original = contentFittedSizing(storedManualSizing(for: id), for: id)
+            original = resolvedCustomSizing(for: id)?.manualSizing
+                ?? contentFittedSizing(storedManualSizing(for: id), for: id)
         }
-        normalized = contentSizingProposal(normalized, original: original, displayID: id)
+        if storedCustomSizing(for: id) == nil {
+            normalized = contentSizingProposal(normalized, original: original, displayID: id)
+        }
         let preview = ResizePreview(displayID: id, originalSizing: original, sizing: normalized)
         guard preview != resizePreview else { return }
         resizePreview = preview
@@ -435,6 +493,14 @@ final class AppStore: ObservableObject {
         // render observers cannot briefly snap back to the old committed size.
         var normalized = sizing
         normalized.normalize()
+        if let custom = storedCustomSizing(for: preview.displayID) {
+            let revised = custom.resized(from: preview.originalSizing, to: normalized,
+                maximumLength: sizingBounds(for: preview.displayID).maxLength,
+                count: displayedEntryCount, dividerIndex: sizingDividerIndex)
+            updateCustomSizing(for: preview.displayID) { $0 = revised }
+            flushPendingSave()
+            return
+        }
         normalized = contentSizingProposal(normalized, original: preview.originalSizing, displayID: preview.displayID)
         persistManualSizing(normalized, for: preview.displayID)
         flushPendingSave()
@@ -485,6 +551,69 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private var sizingDividerIndex: Int? {
+        pinnedCount > 0 && pinnedCount < displayedEntryCount ? pinnedCount : nil
+    }
+
+    private func storedCustomSizing(for displayID: String?) -> DockCustomSizing? {
+        if !configuration.synchronizeSizes, let id = resolvedDisplayID(displayID) {
+            return configuration.displaySettings[id]?.customSizing ?? configuration.customSizing
+        }
+        return configuration.customSizing
+    }
+
+    /// Reading the new controls does not rewrite or reinterpret a legacy layout.
+    func customSizing(for displayID: String?) -> DockCustomSizing {
+        storedCustomSizing(for: displayID) ?? .preserving(effectiveManualSizing(for: displayID),
+            fitContent: configuration.manualAutoLength, maximumLength: sizingBounds(for: displayID).maxLength)
+    }
+
+    func updateCustomSizing(for displayID: String?, _ change: (inout DockCustomSizing) -> Void) {
+        guard !configuration.adaptiveSizing, isEditableDisplayReference(displayID) else { return }
+        let original = customSizing(for: displayID)
+        var preferences = original
+        change(&preferences)
+        if preferences.lengthMode != original.lengthMode || preferences.fixedLengthPercent != original.fixedLengthPercent {
+            preferences.legacyFixedLength = nil
+        }
+        preferences.normalize()
+        let id = resolvedDisplayID(displayID)
+        update { next in
+            if next.synchronizeSizes || id == nil {
+                next.customSizing = preferences
+                for key in self.knownDisplayIDs(in: next) {
+                    var settings = next.displaySettings[key] ?? DockDisplaySettings()
+                    settings.customSizing = preferences
+                    next.displaySettings[key] = settings
+                }
+            } else if let id {
+                var settings = next.displaySettings[id] ?? DockDisplaySettings()
+                settings.customSizing = preferences
+                next.displaySettings[id] = settings
+            }
+        }
+    }
+
+    func resetCustomSizingOverride(_ field: DockSizingOverride, for displayID: String?) {
+        updateCustomSizing(for: displayID) { $0.reset(field) }
+    }
+
+    func resetCustomSizing(for displayID: String?) {
+        updateCustomSizing(for: displayID) { $0 = DockCustomSizing() }
+    }
+
+    private func resolvedCustomSizing(for displayID: String?) -> DockResolvedSizing? {
+        guard var preferences = storedCustomSizing(for: displayID) else { return nil }
+        let id = resolvedDisplayID(displayID)
+        let bounds = sizingBounds(for: id)
+        if let preview = resizePreview, configuration.synchronizeSizes || preview.displayID == id {
+            preferences = preferences.resized(from: preview.originalSizing, to: preview.sizing,
+                maximumLength: bounds.maxLength, count: displayedEntryCount, dividerIndex: sizingDividerIndex)
+        }
+        return DockCustomSizingResolver.resolve(preferences, count: displayedEntryCount,
+            dividerIndex: sizingDividerIndex, maximumLength: bounds.maxLength, maximumHeight: bounds.maxThickness)
+    }
+
     func presentation(for displayID: String?, group: Bool = false) -> DockPresentation {
         let id = resolvedDisplayID(displayID)
         let display = activeDisplays.first { $0.id == id }
@@ -493,10 +622,12 @@ final class AppStore: ObservableObject {
         let requested = requestedManualSizing(for: id)
         let effective = effectiveManualSizing(for: id)
         let icon = iconSize(for: id)
+        let custom = resolvedCustomSizing(for: id)
         if group {
             return DockPresentation(displayID: id, edge: .bottom,
                 style: DockGeometryStyle(iconSize: CGFloat(icon), barThickness: CGFloat(icon + 12),
-                    gap: configuration.adaptiveSizing ? CGFloat(nativeDockMetrics.itemSpacing) : CGFloat(effective.iconSpacing * icon / 48),
+                    gap: configuration.adaptiveSizing ? CGFloat(nativeDockMetrics.itemSpacing)
+                        : CGFloat(custom?.gap ?? effective.iconSpacing * icon / 48),
                     leadingPadding: 6, trailingPadding: 6, separatorLength: 0, magnificationScale: 1),
                 maximumLength: max(1, (display?.visibleFrame.width ?? CGFloat(sizingLimits.maxWidth)) - 24),
                 fixedLength: nil, resizeMargin: 0, resizeBounds: bounds,
@@ -512,6 +643,18 @@ final class AppStore: ObservableObject {
                     separatorLength: CGFloat(nativeDockMetrics.separatorLength), magnificationScale: CGFloat(nativeDockMetrics.magnificationScale)),
                 maximumLength: max(1, maximum), fixedLength: nil, resizeMargin: 0,
                 resizeBounds: bounds, requestedManualSizing: requested, canResize: false)
+        }
+        if let custom, let preferences = storedCustomSizing(for: id) {
+            return DockPresentation(displayID: id, edge: edge,
+                style: DockGeometryStyle(iconSize: custom.iconSize, barThickness: custom.thickness,
+                    gap: custom.gap, leadingPadding: custom.padding, trailingPadding: custom.padding,
+                    separatorLength: custom.separatorLength,
+                    magnificationScale: configuration.magnificationEnabled ? configuration.magnificationScale : 1,
+                    magnificationRadius: configuration.magnificationRadius, contentAlignment: preferences.alignment),
+                maximumLength: bounds.maxLength, fixedLength: custom.length, resizeMargin: 6,
+                resizeBounds: customSizingBounds(for: id),
+                requestedManualSizing: requested, canResize: !readOnly,
+                lengthResizeBounds: preferences.lengthMode == .fit ? editingSizingBounds(for: id) : nil)
         }
         let padding = configuration.manualAutoLength
             ? effective.contentPadding ?? DockContentLengthPolicy.minimumPadding : 6
@@ -658,8 +801,13 @@ final class AppStore: ObservableObject {
     }
 
     func refreshPermissions() {
-        accessibilityGranted = AXIsProcessTrusted()
-        captureGranted = CGPreflightScreenCaptureAccess()
+        if let permissions = permissionsProvider?() {
+            accessibilityGranted = permissions.accessibility
+            captureGranted = permissions.capture
+        } else {
+            accessibilityGranted = AXIsProcessTrusted()
+            captureGranted = CGPreflightScreenCaptureAccess()
+        }
         badgeService.refresh()
     }
 
@@ -671,7 +819,7 @@ final class AppStore: ObservableObject {
     }
 
     private func refreshRunningApps() {
-        let found = NSWorkspace.shared.runningApplications.filter {
+        let found = runningAppsProvider?() ?? NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !$0.isTerminated && $0.processIdentifier != getpid() && $0.bundleIdentifier != "com.apple.dock"
         }.compactMap { app -> AppReference? in
             guard let url = app.bundleURL else { return nil }
@@ -720,11 +868,13 @@ final class AppStore: ObservableObject {
         appearanceOnly.dockWidth = new.dockWidth
         appearanceOnly.manualIconScale = new.manualIconScale
         appearanceOnly.manualContentPadding = new.manualContentPadding
+        appearanceOnly.customSizing = new.customSizing
         appearanceOnly.magnificationScale = new.magnificationScale
         appearanceOnly.magnificationRadius = new.magnificationRadius
         for (id, profile) in new.displaySettings {
             var original = appearanceOnly.displaySettings[id] ?? DockDisplaySettings()
             original.manualSizing = profile.manualSizing
+            original.customSizing = profile.customSizing
             appearanceOnly.displaySettings[id] = original
         }
         return appearanceOnly == new
