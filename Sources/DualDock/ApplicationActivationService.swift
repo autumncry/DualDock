@@ -314,7 +314,7 @@ final class ApplicationActivationService {
     }
 }
 
-private enum ActivationWindowIdentity {
+enum ActivationWindowIdentity {
     typealias Function = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
     static let function: Function? = {
         guard let handle = dlopen(nil, RTLD_LAZY) else { return nil }
