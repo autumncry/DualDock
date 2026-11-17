@@ -48,7 +48,7 @@ import ScreenCaptureKit
             let theme = dark ? "dark" : "light"
             for section in SettingsSection.allCases {
                 try capture(AnyView(SettingsView(store:store,initialSection:section,displayID:"A")),
-                            name:"\(section.rawValue)-\(theme)", size:NSSize(width:1080,height:740),dark:dark,output:output)
+                            name:"\(section.rawValue)-\(theme)", size:NSSize(width:1060,height:760),dark:dark,output:output)
             }
             try capture(AnyView(SettingsView(store:store,initialSection:.appearance,displayID:"A")),
                         name:"appearance-compact-\(theme)",size:NSSize(width:820,height:580),dark:dark,output:output)
@@ -56,9 +56,19 @@ import ScreenCaptureKit
                         .font(.system(size:13)).toggleStyle(.switch).controlSize(.regular).padding(26)),
                         name:"appearance-advanced-\(theme)",size:NSSize(width:850,height:1260),dark:dark,output:output)
         }
+        for dark in [false, true] {
+            try capture(AnyView(SettingsView(store:store,initialSection:.about,displayID:"A")),
+                        name:"about-compact-\(dark ? "dark" : "light")",size:NSSize(width:820,height:580),dark:dark,output:output)
+        }
+        for edge in [DockEdge.left, .right, .top] {
+            store.setEdge(edge, for:"A")
+            try capture(AnyView(SettingsView(store:store,initialSection:.appearance,displayID:"A")),
+                        name:"appearance-\(edge.rawValue)-light",size:NSSize(width:1060,height:760),dark:false,output:output)
+        }
+        store.setEdge(.bottom, for:"A")
         store.setAdaptiveSizing(true)
         try capture(AnyView(SettingsView(store:store,initialSection:.appearance,displayID:"A")),
-                    name:"appearance-native-dark",size:NSSize(width:1080,height:740),dark:true,output:output)
+                    name:"appearance-native-dark",size:NSSize(width:1060,height:760),dark:true,output:output)
         store.setAdaptiveSizing(false)
         fixturePermissions = (accessibility:false,capture:false)
         store.refreshPermissions()
@@ -78,7 +88,7 @@ import ScreenCaptureKit
         }
         for dark in [false,true] {
             try capture(AnyView(SettingsView(store:store,initialSection:.appearance,displayID:"A")),
-                        name:"appearance-many-apps-\(dark ? "dark" : "light")",size:NSSize(width:1080,height:740),dark:dark,output:output)
+                        name:"appearance-many-apps-\(dark ? "dark" : "light")",size:NSSize(width:1060,height:760),dark:dark,output:output)
         }
         store.stopBackgroundServices()
         let metadata: [String:Any] = [
@@ -89,11 +99,11 @@ import ScreenCaptureKit
                 ? "Native views captured in inactive fixture windows with an owned solid backdrop; no live user configuration or interactions are represented."
                 : "Native backdrop material is unavailable offscreen: sidebar selected-row fill is unreliable. Content rendering only; do not use to accept sidebar appearance.",
             "windows":"No activation requested. Window-server mode closes each owned fixture and its backdrop immediately after capture.",
-            "captureCount":23
+            "captureCount":28
         ]
         try JSONSerialization.data(withJSONObject:metadata,options:[.prettyPrinted,.sortedKeys])
             .write(to:output.appendingPathComponent("capture-metadata.json"))
-        print("Rendered 23 native settings captures using isolated fixtures; mode: \(useWindowServer ? "window server" : "hidden view cache")")
+        print("Rendered 28 native settings captures using isolated fixtures; mode: \(useWindowServer ? "window server" : "hidden view cache")")
     }
 
     @MainActor static func capture(_ view:AnyView,name:String,size:NSSize,dark:Bool,output:URL) throws {

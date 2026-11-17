@@ -22,7 +22,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .interaction: return "让窗口切换、放大与隐藏符合你的习惯。"
         case .permissions: return "开启需要的能力，所有窗口图像留在本机。"
         case .help: return "几步上手，整理属于你的工作空间。"
-        case .about: return "应用有序收纳，Dock 多屏同在。"
+        case .about: return "版本信息、开源许可与项目支持。"
         }
     }
     var symbol: String {

@@ -14,7 +14,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     init(store: AppStore) {
         self.store = store
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 740),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1060, height: 760),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "DualDock 设置"
@@ -24,7 +24,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentViewController = NSHostingController(rootView: SettingsView(store: store))
         // Hosting can adopt the view's minimum fitting size during attachment.
         // Keep the intended initial desktop layout; later resizing stays free.
-        window.setContentSize(NSSize(width: 1080, height: 740))
+        window.setContentSize(NSSize(width: 1060, height: 760))
         super.init(window: window)
         window.delegate = self
     }

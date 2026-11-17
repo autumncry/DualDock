@@ -18,7 +18,7 @@ Keep apps organized in expandable groups and make the same Dock available on eve
 
 - Shared apps/groups/order; per-display edge position (bottom, top, left, right).
 - Manual/native-adaptive sizing and optional cross-display size synchronization. Preserve existing configuration when upgrading.
-- Window previews and close controls; current work adds selected-window menus and repeatable minimize/restore, excluding fullscreen/maximized targets.
+- Window previews and close controls; selected-window menus and repeatable minimize/restore, excluding fullscreen/maximized targets.
 - Fullscreen Dock starts hidden and should reveal at its configured edge. Native system Dock behavior requires separate real-world verification.
 - Settings remain native, support keyboard navigation and Light/Dark appearance, and keep permission and recovery actions discoverable.
 - User confirmed the HTML reference's simplified size model: size, density and length are primary controls; precise overrides live under advanced settings, with existing configuration preserved.
@@ -26,6 +26,9 @@ Keep apps organized in expandable groups and make the same Dock available on eve
 ## Brand Commitments
 
 Name: DualDock. Slogan: 应用有序收纳，Dock 多屏同在。 Keep the existing colored overlapping-display app icon and matching monochrome menu-bar icon. Public MIT project at https://github.com/autumncry/DualDock.
+
+- User approved the November 17 redesign: compact left-aligned navigation, one fixed-zoom preview above aligned rows, full About content retained.
+- First-launch Apple verification guidance must remain in both READMEs and every DMG until Developer ID distribution signing and notarization are established; see CONTRIBUTING.md.
 
 ## Evidence on Hand
 
