@@ -13,14 +13,14 @@ struct GeneralSettingsView: View {
                     Text("固定应用与分组 + 运行应用").tag(DockMode.standard)
                     Text("仅正在运行的应用").tag(DockMode.runningOnly)
                 }.labelsHidden().pickerStyle(.radioGroup)
-                Text("显示内容在所有屏幕同步。仅运行模式会平铺普通运行应用；切回后恢复原有分组与排列。")
+                Text("显示内容在所有屏幕同步；切回普通模式会恢复分组与排列。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             SettingsGroup("系统 Dock") {
                 Toggle("隐藏系统 Dock", isOn: Binding(get: { store.configuration.hideSystemDock }, set: {
                     store.setSystemDockHidden($0)
                 }))
-                Text("正常退出时恢复由 DualDock 修改的系统 Dock 设置。进入全屏应用时，只隐藏所在屏幕的 DualDock。")
+                Text("正常退出时恢复系统 Dock。全屏时 DualDock 自动隐藏，鼠标停留在对应屏幕边缘即可唤出。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("恢复系统 Dock") { store.restoreSystemDock() }
             }

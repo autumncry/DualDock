@@ -1,0 +1,294 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-17T02:25:05.149666Z",
+  "title": "Design System: DualDock",
+  "extensions": {
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "Chinese category heading outside the scroll area."
+      },
+      "section-title": {
+        "displayName": "Section title",
+        "purpose": "Semibold heading within settings groups."
+      },
+      "control-label": {
+        "displayName": "Control label",
+        "purpose": "Editable sizing control labels."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Settings text and sidebar category labels."
+      },
+      "supporting": {
+        "displayName": "Supporting",
+        "purpose": "Page purpose, system notes and secondary descriptions."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Units, scope, recovery notes and metric labels."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "Preview values with native monospacedDigit treatment."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [],
+    "native": {
+      "platform": "macOS",
+      "implementation": "SwiftUI/AppKit; macOS 14+",
+      "platformEnumSupport": "macOS is outside the plugin web/iOS/Android enum; it is deliberately not recast as another platform.",
+      "coordinates": "macOS logical points; CSS pt is not a renderer specification for this app.",
+      "fontFamilySource": "SwiftUI Font.system; frontmatter system-ui is a portable semantic label.",
+      "semanticColors": {
+        "accent": {
+          "selector": "Color.accentColor",
+          "role": "primary",
+          "purpose": "Active geometry, preview metrics, selected edges and applicable preset emphasis."
+        },
+        "primary-text": {
+          "selector": ".primary",
+          "role": "neutral",
+          "purpose": "Titles, labels, values and geometry outlines."
+        },
+        "supporting-text": {
+          "selector": ".secondary",
+          "role": "neutral",
+          "purpose": "Descriptions, units, scope and status explanations."
+        },
+        "quiet-symbol": {
+          "selector": ".tertiary",
+          "role": "neutral",
+          "purpose": "Decorative display symbol."
+        },
+        "control-surface": {
+          "selector": "NSColor.controlBackgroundColor",
+          "role": "neutral",
+          "purpose": "Settings groups and preview bar."
+        },
+        "preview-canvas": {
+          "selector": "NSColor.underPageBackgroundColor",
+          "role": "neutral",
+          "purpose": "Preview and position diagram canvas."
+        },
+        "separator": {
+          "selector": "NSColor.separatorColor",
+          "role": "neutral",
+          "purpose": "Fine group and canvas boundaries."
+        },
+        "inline-message": {
+          "selector": ".quaternary",
+          "role": "neutral",
+          "purpose": "Dismissible inline information surface."
+        },
+        "permission-granted": {
+          "selector": "Color.green",
+          "role": "status",
+          "purpose": "Permission granted, paired with a checkmark and textual state."
+        }
+      },
+      "material": {
+        "selector": ".regularMaterial",
+        "purpose": "Settings sidebar"
+      },
+      "strokes": [
+        {
+          "name": "settings-group",
+          "color": "NSColor.separatorColor",
+          "opacity": 0.35,
+          "widthPoints": 0.5
+        },
+        {
+          "name": "preview-canvas",
+          "color": "NSColor.separatorColor",
+          "opacity": 0.45,
+          "widthPoints": 0.5
+        },
+        {
+          "name": "preview-bar-resting",
+          "color": "Color.primary",
+          "opacity": 0.13,
+          "widthPoints": 0.5
+        },
+        {
+          "name": "preview-bar-focused",
+          "color": "Color.accentColor",
+          "widthPoints": 1.5
+        }
+      ],
+      "layout": {
+        "defaultWindowContentPoints": {
+          "width": 1080,
+          "height": 740
+        },
+        "minimumWindowFramePoints": {
+          "width": 820,
+          "height": 580
+        },
+        "minimumRootViewPoints": {
+          "width": 820,
+          "height": 540
+        },
+        "previewMinimumWidthPoints": 220,
+        "customSizingBehavior": "Fluid preview beside fixed-width primary controls; no stacked breakpoint is implemented."
+      },
+      "componentRendering": {
+        "mode": "native-only",
+        "htmlCssSnippets": "Intentionally empty: native SwiftUI/AppKit controls and materials are not HTML/CSS components. The sidecar does not claim web panel fidelity.",
+        "colorSerialization": "Native semantic selectors are authoritative. No approximate CSS palette or synthesized tonal ramps are introduced.",
+        "detectorApplicability": "No HTML/CSS detector result is applicable to these native source files."
+      },
+      "componentSources": {
+        "Native button": {
+          "file": "Sources/DualDock/GeneralSettingsView.swift",
+          "excerpt": "Button(\"恢复系统 Dock\") { store.restoreSystemDock() }"
+        },
+        "Numeric field": {
+          "file": "Sources/DualDock/SettingsDockPreview.swift",
+          "excerpt": ".textFieldStyle(.roundedBorder).frame(width: 60).focused($editingValue)"
+        },
+        "Settings navigation": {
+          "file": "Sources/DualDock/SettingsView.swift",
+          "excerpt": ".listStyle(.sidebar)"
+        },
+        "Settings group": {
+          "file": "Sources/DualDock/SettingsView.swift",
+          "excerpt": ".padding(18)\n.background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))"
+        },
+        "Primary sizing controls": {
+          "file": "Sources/DualDock/AppearanceSettingsView.swift",
+          "excerpt": "primaryControls.frame(width: 280).controlSize(.small)"
+        },
+        "Dock preview": {
+          "file": "Sources/DualDock/SettingsDockPreview.swift",
+          "excerpt": ".frame(height: compact ? 158 : 260)"
+        },
+        "Advanced disclosure": {
+          "file": "Sources/DualDock/AppearanceSettingsView.swift",
+          "excerpt": "DisclosureGroup(isExpanded: $advanced)"
+        }
+      },
+      "evidence": {
+        "sourceFiles": [
+          "Sources/DualDock/SettingsView.swift",
+          "Sources/DualDock/SettingsSection.swift",
+          "Sources/DualDock/SettingsDockPreview.swift",
+          "Sources/DualDock/AppearanceSettingsView.swift",
+          "Sources/DualDock/DisplayPositionSettingsView.swift",
+          "Sources/DualDock/SettingsWindowController.swift",
+          "Sources/DualDock/GeneralSettingsView.swift",
+          "Sources/DualDock/InteractionSettingsView.swift",
+          "Sources/DualDock/PermissionsSettingsView.swift",
+          "Sources/DualDock/DockHelpSettingsView.swift",
+          "Sources/DualDock/AboutView.swift"
+        ],
+        "renderDirectory": ".impeccable/review/settings/",
+        "reviewedInThisDocumentationPass": [
+          "appearance-compact-light.png"
+        ],
+        "captureMethod": "Fixture-based hidden NSHostingView renders; not live desktop acceptance.",
+        "assetChanges": "Existing app icon and slogan retained; no generated raster assets."
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Native button",
+      "kind": "button",
+      "description": "Native Button with regular or small controlSize; AppKit owns appearance, hover, keyboard focus and disabled state.",
+      "html": "",
+      "css": ""
+    },
+    {
+      "name": "Numeric field",
+      "kind": "input",
+      "description": "Right-aligned native rounded-border value field with adjacent unit and monospaced digits.",
+      "html": "",
+      "css": "",
+      "refersTo": "numeric-field"
+    },
+    {
+      "name": "Settings navigation",
+      "kind": "nav",
+      "description": "Native sidebar list with seven Chinese categories, SF Symbols and platform selection.",
+      "html": "",
+      "css": "",
+      "refersTo": "sidebar"
+    },
+    {
+      "name": "Settings group",
+      "kind": "card",
+      "description": "Semantic control surface, fine separator stroke, section title and related controls.",
+      "html": "",
+      "css": "",
+      "refersTo": "settings-group"
+    },
+    {
+      "name": "Primary sizing controls",
+      "kind": "custom",
+      "description": "Small native presets and editable size/density/length controls beside the preview.",
+      "html": "",
+      "css": "",
+      "refersTo": "primary-controls"
+    },
+    {
+      "name": "Dock preview",
+      "kind": "custom",
+      "description": "Proportional production geometry, actual app icons, metrics and an accessible summary.",
+      "html": "",
+      "css": "",
+      "refersTo": "dock-preview"
+    },
+    {
+      "name": "Advanced disclosure",
+      "kind": "custom",
+      "description": "Native DisclosureGroup with override count and individual return-to-automatic actions.",
+      "html": "",
+      "css": "",
+      "refersTo": "settings-group"
+    }
+  ],
+  "narrative": {
+    "northStar": "Quiet Native Inspector",
+    "overview": "DualDock uses a restrained native macOS settings language: clear groups, compact headings, familiar controls and visual feedback next to the setting being changed. Elegance comes from alignment and a readable hierarchy rather than decorative surfaces. Chinese is the primary interface language.\n\nThis document records the implemented SwiftUI/AppKit settings system. The phrase above names the direction already present in the surface brief; it is not a claim that the user selected a new brand concept. The existing application icon, monochrome menu-bar icon and slogan “应用有序收纳，Dock 多屏同在。” remain the identity. There are no newly generated raster assets or embedded HTML settings.",
+    "keyCharacteristics": [
+      "Native macOS controls, system typography and semantic colors.",
+      "Stable navigation with a scrollable, clearly grouped detail area.",
+      "A proportional Dock preview beside the three common sizing controls.",
+      "Progressive disclosure for precision, with explicit scope and recovery actions."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Color Rule",
+        "body": "Keep the native semantic selector as the source of truth; do not freeze Light or Dark screenshot samples into an application palette.",
+        "section": "colors"
+      },
+      {
+        "name": "The Numeric Clarity Rule",
+        "body": "Keep value, unit and control label together; use monospaced digits without replacing the surrounding system text face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Visible Choice Rule",
+        "body": "Keep the three common sizing choices beside a visible preview at the supported compact width; additional precision belongs in the expandable group below.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "Do preserve native semantic colors, control states, focus treatment and keyboard behavior.",
+      "Do retain the existing app icon, menu-bar identity and Chinese slogan.",
+      "Do keep size, density and length beside the preview at the supported compact width.",
+      "Do make synchronization scope visible in both explanatory text and recovery actions.",
+      "Do preserve manual overrides until the user chooses a corresponding reset.",
+      "Do verify Light and Dark appearances, compact windows, empty displays and expanded advanced states."
+    ],
+    "donts": [
+      "Don't replace the native settings surface with an HTML webview or a web-style imitation of macOS controls.",
+      "Don't invent brand colors, tonal ramps, shadow tokens or motion curves absent from the code.",
+      "Don't treat preview geometry or hidden-hosting renders as proof of real desktop behavior.",
+      "Don't infer a new brand identity or new assets from the settings redesign."
+    ]
+  }
+}

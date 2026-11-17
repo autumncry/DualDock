@@ -5,57 +5,72 @@ struct DisplayPositionSettingsView: View {
     @ObservedObject var store: AppStore
     @Binding var selectedDisplayID: String?
     let onConfigureSize: (String) -> Void
-    private let edges: [DockEdge] = [.bottom, .left, .right, .top]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("每块屏幕的位置独立保存。左右侧纵向排列，上下侧横向排列，应用夹与窗口预览朝屏幕内侧展开。")
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
             if store.displays.isEmpty {
-                Label("暂未检测到显示器。", systemImage: "display").foregroundStyle(.secondary)
-            }
-            ForEach(store.displays, id: \.id) { display in
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("\(Int(display.frame.width.rounded())) × \(Int(display.frame.height.rounded())) pt")
-                            .foregroundStyle(.secondary).monospacedDigit()
-                        Picker("Dock 位置", selection: Binding(get: { store.edge(for: display.id) }, set: { edge in
-                            selectedDisplayID = display.id
-                            store.setEdge(edge, for: display.id)
-                        })) {
-                            ForEach(edges, id: \.self) { edge in
-                                Label(edgeTitle(edge), systemImage: edgeSymbol(edge)).tag(edge)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .disabled(display.isMirrored)
-                        .accessibilityLabel("\(display.name) Dock 位置")
-                        if display.isMirrored {
-                            Text("镜像屏幕跟随系统复制的画面，请在镜像源屏幕设置位置。")
-                                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Button("尺寸设置") {
-                                selectedDisplayID = display.id
-                                onConfigureSize(display.id)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(6)
-                } label: {
-                    Label(display.name + (display.isPrimary ? " · 主显示器" : "") + (display.isMirrored ? " · 镜像" : ""),
-                          systemImage: "display")
+                SettingsGroup("等待显示器") {
+                    Label("连接显示器后，会在这里显示可用位置。", systemImage: "display")
+                        .foregroundStyle(.secondary)
                 }
             }
-            Text("接入或断开显示器时会自动更新列表；再次连接后沿用该显示器保存的位置。")
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            ForEach(store.displays) { display in
+                SettingsGroup(display.name + (display.isPrimary ? " · 主显示器" : "")) {
+                    HStack(alignment: .center, spacing: 24) {
+                        positionDiagram(display).frame(width: 174, height: 112)
+                        VStack(alignment: .leading, spacing: 13) {
+                            Text("\(Int(display.frame.width.rounded())) × \(Int(display.frame.height.rounded())) pt")
+                                .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                            Picker("Dock 位置", selection: positionBinding(display)) {
+                                ForEach([DockEdge.bottom, .left, .right, .top], id: \.self) { edge in Text(edgeTitle(edge)).tag(edge) }
+                            }.pickerStyle(.segmented).labelsHidden().disabled(display.isMirrored)
+                                .accessibilityLabel("\(display.name) Dock 位置")
+                            if display.isMirrored {
+                                Text("镜像屏幕跟随源屏幕的画面与位置。")
+                                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                            } else {
+                                Button(store.configuration.synchronizeSizes ? "调整所有屏幕尺寸" : "调整此屏幕尺寸") {
+                                    selectedDisplayID = display.id
+                                    onConfigureSize(display.id)
+                                }.controlSize(.small)
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            Text("位置始终按屏幕分别保存。尺寸是否共享，可在“外观与尺寸”中选择。")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
 
-    private func edgeTitle(_ edge: DockEdge) -> String {
-        switch edge { case .bottom: return "底部"; case .left: return "左侧"; case .right: return "右侧"; case .top: return "上方" }
+    private func positionBinding(_ display: DockDisplayInfo) -> Binding<DockEdge> {
+        Binding(get: { store.edge(for: display.id) }, set: { edge in
+            selectedDisplayID = display.id
+            store.setEdge(edge, for: display.id)
+        })
     }
-    private func edgeSymbol(_ edge: DockEdge) -> String {
-        switch edge { case .bottom: return "arrow.down"; case .left: return "arrow.left"; case .right: return "arrow.right"; case .top: return "arrow.up" }
+    private func positionDiagram(_ display: DockDisplayInfo) -> some View {
+        let edge = store.edge(for: display.id)
+        return ZStack {
+            RoundedRectangle(cornerRadius: 9).fill(Color(nsColor: .underPageBackgroundColor))
+            RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.22), lineWidth: 1)
+            Image(systemName: display.isMirrored ? "rectangle.on.rectangle" : "display")
+                .font(.system(size: 24, weight: .ultraLight)).foregroundStyle(.tertiary)
+            ForEach([DockEdge.bottom, .left, .right, .top], id: \.self) { candidate in
+                Button {
+                    selectedDisplayID = display.id
+                    store.setEdge(candidate, for: display.id)
+                } label: {
+                    Capsule().fill(candidate == edge ? Color.accentColor : Color.primary.opacity(0.12))
+                        .frame(width: candidate.isHorizontal ? 64 : 5, height: candidate.isHorizontal ? 5 : 44)
+                        .padding(7).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).disabled(display.isMirrored)
+                .offset(x: candidate == .left ? -72 : (candidate == .right ? 72 : 0),
+                        y: candidate == .top ? -42 : (candidate == .bottom ? 42 : 0))
+                .accessibilityLabel("\(display.name)，放在\(edgeTitle(candidate))")
+                .accessibilityValue(candidate == edge ? "已选择" : "未选择")
+            }
+        }
     }
 }

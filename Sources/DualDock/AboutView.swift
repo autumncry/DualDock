@@ -10,12 +10,12 @@ struct AboutView: View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 18) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable().scaledToFit().frame(width: 76, height: 76)
+                    .resizable().scaledToFit().frame(width: 84, height: 84)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 7) {
                     Text("DualDock").font(.system(size: 26, weight: .semibold))
                     Text(versionDescription).foregroundStyle(.secondary)
-                    Text("应用有序收纳，Dock 多屏同在。")
+                    Text("原生 macOS 多屏 Dock")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }

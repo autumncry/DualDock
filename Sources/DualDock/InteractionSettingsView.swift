@@ -10,8 +10,13 @@ struct InteractionSettingsView: View {
                 Toggle("最大化窗口时隐藏 Dock", isOn: Binding(get: { store.configuration.autoHideWhenMaximized }, set: { value in
                     store.update { $0.autoHideWhenMaximized = value }
                 }))
-                Text("窗口铺满当前屏幕工作区时隐藏，鼠标移到该侧边缘稍作停留即可唤出。普通窗口仅仅盖住 Dock 不会触发隐藏。使用应用夹、预览、菜单和拖拽时保持显示；全屏应用期间仍隐藏。顶部 Dock 的唤出位置在菜单栏下方。")
+                Text("窗口铺满工作区时隐藏，边缘停留即可唤出。普通窗口遮挡不会触发。全屏应用也支持边缘唤出；使用分组、预览或菜单时保持显示。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            SettingsGroup("点击应用图标") {
+                Text("后台窗口先前置，再次点击最小化；继续点击可还原同一个窗口。")
+                Text("右键图标可选择具体窗口。全屏和最大化窗口只激活，不会被最小化。动画跟随系统与原应用。")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             SettingsGroup("悬停放大") {
                 if store.configuration.adaptiveSizing {
