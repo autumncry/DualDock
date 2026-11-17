@@ -37,7 +37,7 @@ When your workspace extends beyond a laptop, your everyday apps should stay with
 
 ### A Dock on each display
 
-Use DualDock on your MacBook display and external monitors at the same time. It responds to display changes; mirrored displays follow the image duplicated by macOS. When an app enters full screen, DualDock hides only on that display.
+Use DualDock on your MacBook display and external monitors at the same time. It responds to display changes; mirrored displays follow the image duplicated by macOS. When an app enters full screen, DualDock hides on that display. Dwell at its edge to reveal it; moving away hides it again.
 
 ### App groups and drag-and-drop
 
@@ -51,6 +51,16 @@ Hover over a running app to see window thumbnails. Click a thumbnail to switch t
 
 Windows without a usable screenshot are omitted. Screenshots are processed in local memory, without being saved to disk or uploaded.
 
+### Choose a window and toggle it repeatedly
+
+Right-click an app icon to list its actionable windows, including minimized ones. A checkmark identifies the selected target. Selecting a window brings it forward and keeps it as the target for subsequent icon clicks during this session.
+
+- Background window: bring it forward first.
+- Ordinary foreground window: minimize; click again to restore.
+- Fullscreen or maximized window: activate without minimizing.
+
+Window actions use the original app's native controls. Animation follows macOS and the app. Failed reads do not silently select and minimize another window. Accessibility permission is required.
+
 ### Two display modes
 
 - **Pinned apps and groups + running apps:** keep your usual shortcuts alongside running apps that are not pinned.
@@ -60,35 +70,31 @@ Change the mode in Settings; every display updates together.
 
 ### Fully adaptive system Dock sizing
 
-Enable “完全自适应系统 Dock” to follow the system Dock's base icon size, bar height, icon spacing, end padding, and magnification. The bar grows or shrinks with the app count and stays centered on its display edge. Hovering changes the icons while keeping the backdrop fixed.
+Choose “跟随系统 Dock” in Appearance & Size to follow the system Dock's base icon size, bar height, icon spacing, end padding, and magnification. The bar grows or shrinks with the app count and stays centered on its display edge. Hovering changes the icons while keeping the backdrop fixed.
 
 Adaptive mode hides manual size and magnification controls and disables edge resizing. Turning it off restores the previous manual configuration. Users who enabled automatic width in an earlier version are migrated to fully adaptive sizing.
 
 Dimensions are read from system preferences and Accessibility geometry without changing them. Temporary read failures retain the latest valid measurement; compatible values are used when there is no prior measurement. Accessibility bounds can differ from actual system rendering, so pixel-identical results are not guaranteed.
 
-### Per-display position and manual sizing
+### Simple sizing with a live preview
 
-Choose **bottom, top, left, or right** independently for each display. Top and bottom Docks use horizontal rows; side Docks use vertical rows with upright icons. App groups still expand horizontally, and popups open toward the inside of the screen.
+Three primary controls cover everyday changes:
 
-Manual mode provides length, height, icon-size, and spacing sliders. **Dock height** changes the backdrop and scales icons using their saved proportion. **Icon size** changes how much of the bar the icons occupy while keeping the backdrop height unchanged. Settings show both the icon size and its percentage of the bar height.
+- **Size:** set the icon size; the default bar height is calculated automatically.
+- **Density:** continuously adjust automatic spacing and end padding.
+- **Length:** fit the content, fill the available edge, or use a fixed screen percentage.
 
-You can also resize the Dock directly:
+Advanced settings expose spacing, padding, minimum height, fixed length percentage, alignment, and optional icon shrinking before scrolling. Manual overrides take priority and can be reset individually. Overflow scrolls without a visible scrollbar. The preview uses the production geometry, and numeric fields support precise adjustments.
 
-- **Inward edge:** adjust height; icons scale with it.
-- **Either endpoint:** adjust length while keeping the bar centered.
-- **Two inward corners:** scale length and height together.
+Upgrades preserve the existing layout as advanced overrides. Restore linked spacing/padding or reset recommended sizing for the current display scope whenever desired.
 
-The saved icon proportion is preserved when the bar height changes. For side Docks, the axes rotate: “height” adjusts the bar's horizontal width, and “length” runs vertically. Spacing changes only the contents of the fixed bar. Overflow scrolls along the Dock's direction without a visible scrollbar.
+### Per-display position and edge resizing
 
-“所有屏幕同步尺寸” synchronizes sizes using the range available to all displays. Turn it off to configure each display within its own available bounds. Turning synchronization back on adopts the **currently selected display's effective size**, while positions remain independent. Manual height is capped at **12%** of the available short edge; maximum length follows the available length of the selected edge. Dimensions use macOS logical points. Scaling is constrained at size limits and minimum end padding.
+Choose **bottom, top, left, or right** independently for each display using a clickable display diagram. Icons stay upright, groups expand horizontally, and popups open inward.
 
-### Content-driven length with manual sizing
+Drag the inward edge to change height and scale icons, either endpoint to change length, or an inward corner to scale both axes. In content-fit mode, endpoint dragging redefines end padding.
 
-With fully adaptive sizing off, enable “随应用数量自动增减长度” to grow or shrink the centered bar as visible apps and groups change. It preserves your manual height, icon proportion, spacing, and end padding. A collapsed group occupies one slot.
-
-The length slider and endpoint dragging remain available to redefine end padding. Height, icon-size, and spacing changes also recalculate the content length. **Dragging the inward edge preserves end padding; dragging a corner scales length and height together and recalculates the padding.** Both gestures change the space occupied by icons, so they can look similar when end padding is small.
-
-At the display limit, growth stops and extra content can be scrolled manually without a scrollbar. Turning this option off restores the previous fixed length. Fully adaptive system Dock sizing is unchanged.
+“同步各屏尺寸” applies shared sizing within the range available to every display; turn it off for independent sizing. Re-enabling adopts the currently selected display's settings. Height remains capped at **12%** of the applicable short edge, and length at the available edge. Values use macOS logical points.
 
 ### Shape the magnification curve
 
@@ -103,11 +109,15 @@ A curve preview updates with the sliders while the Dock backdrop stays fixed. Bo
 
 Enable “最大化窗口时隐藏 Dock” in Interaction to hide a display's Dock when a window fills its available workspace. Pause the pointer at that edge to reveal it. Moving an ordinary window down over the Dock does not trigger hiding. For a top Dock, the activation edge sits below the menu bar.
 
-The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Native full-screen apps take priority and keep the Dock hidden even at the edge. This option is off by default and does not resize other apps' windows.
+The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Fullscreen apps also support edge reveal; fullscreen auto-hiding is independent of this toggle. The maximized-window option is off by default and does not resize other apps' windows.
 
 ### Sidebar settings
 
 Settings use a category sidebar with configuration on the right: **General, Appearance & Size, Displays & Position, Interaction, Permissions, Help, and About**. The window can be resized and minimized. About includes the version, MIT license, and project links. The app interface remains in Simplified Chinese.
+
+<img src="docs/images/dualdock-settings.png" width="1000" alt="Native DualDock settings with a live preview and Size, Density, and Length controls">
+
+<sub>Native settings capture using an isolated example configuration.</sub>
 
 ### More details
 
