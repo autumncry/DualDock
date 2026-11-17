@@ -53,6 +53,9 @@ final class WindowService {
     private let native = NativeWindowAPI()
     private var contentRequest: Task<SCShareableContent, Error>?
     var onFullscreenStateChange: (() -> Void)?
+    /// Updated with the same native snapshot used by fullscreenDisplayIDs.
+    /// Missing values mean private Space metadata is unavailable for that screen.
+    private(set) var activeSpaceIDs: [CGDirectDisplayID: UInt64] = [:]
     private lazy var fullscreenFallback: FullscreenFallbackService = {
         let service = FullscreenFallbackService()
         service.onUpdate = { [weak self] in self?.onFullscreenStateChange?() }
@@ -285,7 +288,9 @@ final class WindowService {
     }
 
     func fullscreenDisplayIDs(screens: [NSScreen]) -> Set<CGDirectDisplayID> {
-        let states = native.fullscreenStates(screens: screens)
+        let snapshot = native.displaySpaces(screens: screens)
+        activeSpaceIDs = snapshot.identifiers
+        let states = snapshot.fullscreen
         var result = Set(states.compactMap { $0.value ? $0.key : nil })
         let unknownScreens = screens.filter { screen in
             guard let id = Self.displayID(screen) else { return false }
@@ -307,7 +312,10 @@ final class WindowService {
 
     func invalidateFullscreenState() { fullscreenFallback.invalidate() }
 
-    func stopFullscreenMonitoring() { fullscreenFallback.stop() }
+    func stopFullscreenMonitoring() {
+        fullscreenFallback.stop()
+        activeSpaceIDs.removeAll()
+    }
 
     private func currentContent() async throws -> SCShareableContent {
         if let contentRequest { return try await contentRequest.value }
@@ -491,28 +499,43 @@ private final class NativeWindowAPI {
         return getWindowID(element, &id) == .success && id != 0 ? id : nil
     }
 
-    func fullscreenStates(screens: [NSScreen]) -> [CGDirectDisplayID: Bool] {
+    struct DisplaySpaces {
+        var fullscreen: [CGDirectDisplayID: Bool] = [:]
+        var identifiers: [CGDirectDisplayID: UInt64] = [:]
+    }
+
+    func displaySpaces(screens: [NSScreen]) -> DisplaySpaces {
         guard let connectionID, let copyDisplaySpaces,
               let result = copyDisplaySpaces(connectionID())?.takeRetainedValue() as? [[String: Any]]
-        else { return [:] }
-        var states: [CGDirectDisplayID: Bool] = [:]
+        else { return DisplaySpaces() }
+        var states = DisplaySpaces()
         for screen in screens {
             guard let id = WindowService.displayID(screen), let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { continue }
             let uuidString = CFUUIDCreateString(nil, uuid) as String
             let record = result.first { ($0["Display Identifier"] as? String)?.caseInsensitiveCompare(uuidString) == .orderedSame }
-            if let current = record?["Current Space"] as? [String: Any], let type = current["type"] as? Int {
-                states[id] = type == 4
+            if let current = record?["Current Space"] as? [String: Any] {
+                if let type = current["type"] as? Int { states.fullscreen[id] = type == 4 }
+                states.identifiers[id] = Self.spaceID(current)
             }
         }
         // Older shared-Space configurations may report a single "Main" record instead of UUIDs.
         // A desktop Space is unambiguously non-fullscreen everywhere; fullscreen ownership falls back to AX geometry.
         if !NSScreen.screensHaveSeparateSpaces,
            let record = result.first(where: { $0["Display Identifier"] as? String == "Main" }),
-           let current = record["Current Space"] as? [String: Any], let type = current["type"] as? Int, type != 4 {
+           let current = record["Current Space"] as? [String: Any] {
             for screen in screens {
-                if let id = WindowService.displayID(screen) { states[id] = false }
+                if let id = WindowService.displayID(screen) {
+                    if let type = current["type"] as? Int, type != 4 { states.fullscreen[id] = false }
+                    states.identifiers[id] = Self.spaceID(current)
+                }
             }
         }
         return states
+    }
+
+    private static func spaceID(_ space: [String: Any]) -> UInt64? {
+        guard let value = (space["ManagedSpaceID"] ?? space["id64"]) as? NSNumber,
+              value.uint64Value > 0 else { return nil }
+        return value.uint64Value
     }
 }

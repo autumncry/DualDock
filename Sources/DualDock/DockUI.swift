@@ -16,6 +16,7 @@ struct DockDrag: Codable {
 
 @MainActor
 final class DockPanel: NSPanel {
+    private static let normalBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
@@ -28,12 +29,18 @@ final class DockPanel: NSPanel {
         hasShadow = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        // Join normal desktops without opting into another app's fullscreen
-        // Space. Visibility polling then handles restoration, not the first
-        // frame of a fullscreen transition.
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        // Fullscreen overlay membership is enabled only after edge reveal,
+        // keeping the normal desktop panel out of fullscreen entry animations.
+        collectionBehavior = Self.normalBehavior
         acceptsMouseMovedEvents = true
         animationBehavior = .none
+    }
+
+    func setFullscreenOverlay(_ enabled: Bool) {
+        let behavior = enabled
+            ? Self.normalBehavior.union([.canJoinAllApplications, .fullScreenAuxiliary])
+            : Self.normalBehavior
+        if collectionBehavior != behavior { collectionBehavior = behavior }
     }
 
     /// NSWindow rounds its frame to whole points. Keep the fractional remainder

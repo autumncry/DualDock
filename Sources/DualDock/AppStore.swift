@@ -638,6 +638,10 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func cancelPendingActivationRecovery() {
+        activationService.cancelPendingRecovery()
+    }
+
     func quit(_ app: AppReference) {
         NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == app.id || $0.bundleURL?.path == app.path }.forEach { $0.terminate() }
     }

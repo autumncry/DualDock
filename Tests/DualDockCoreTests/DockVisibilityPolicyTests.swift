@@ -139,6 +139,43 @@ final class DockVisibilityPolicyTests: XCTestCase {
                                    pointerAtEdge: false, pointerInsideDock: false, interacting: false))
     }
 
+    func testFullscreenRevealsAfterDwellWithoutMaximizeOptionAndHidesAfterLeaving() {
+        var state = DockVisibilityPolicy()
+        func update(_ time: Double, edge: Bool = false, inside: Bool = false, interacting: Bool = false) -> Bool {
+            state.update(now: time, fullscreen: true, autoHide: false, maximized: false,
+                         pointerAtEdge: edge, pointerInsideDock: inside, interacting: interacting)
+        }
+        XCTAssertFalse(update(0, inside: true, interacting: true), "Old desktop interaction cannot reveal fullscreen")
+        XCTAssertFalse(update(1, edge: true))
+        XCTAssertFalse(update(1.1, edge: true))
+        XCTAssertTrue(update(1.13, edge: true))
+        XCTAssertTrue(update(1.2), "Keep the crossing gap open")
+        XCTAssertTrue(update(1.25, inside: true))
+        XCTAssertTrue(update(4, interacting: true), "An open group/preview owns the reveal")
+        XCTAssertTrue(update(4.2))
+        XCTAssertFalse(update(4.31))
+        XCTAssertFalse(update(5, inside: true), "A hidden body is not an activation target")
+        XCTAssertFalse(update(5.1, edge: true))
+        XCTAssertTrue(update(5.23, edge: true), "Repeated edge reveal must work")
+    }
+
+    func testEnteringFullscreenResetsExistingMaximizedRevealAndOnlyAffectsThatDisplay() {
+        var first = DockVisibilityPolicy(), second = DockVisibilityPolicy()
+        XCTAssertTrue(first.update(now: 0, fullscreen: false, autoHide: true, maximized: true,
+                                   pointerAtEdge: false, pointerInsideDock: true, interacting: false))
+        XCTAssertFalse(first.update(now: 0.1, fullscreen: true, autoHide: true, maximized: false,
+                                    pointerAtEdge: true, pointerInsideDock: true, interacting: true))
+        XCTAssertTrue(second.update(now: 0.1, fullscreen: false, autoHide: true, maximized: false,
+                                    pointerAtEdge: false, pointerInsideDock: false, interacting: false))
+        XCTAssertTrue(first.update(now: 0.23, fullscreen: true, autoHide: true, maximized: false,
+                                   pointerAtEdge: true, pointerInsideDock: false, interacting: false))
+        XCTAssertTrue(first.update(now: 0.24, fullscreen: false, autoHide: true, maximized: false,
+                                   pointerAtEdge: false, pointerInsideDock: false, interacting: false))
+        XCTAssertFalse(first.update(now: 0.3, fullscreen: true, autoHide: false, maximized: false,
+                                    pointerAtEdge: false, pointerInsideDock: true, interacting: true),
+                       "Re-entering fullscreen requires a new edge gesture")
+    }
+
     func testPointerAlreadyUsingVisibleDockDoesNotLoseItWhenWindowArrives() {
         var state = DockVisibilityPolicy()
         XCTAssertTrue(state.update(now: 0, fullscreen: false, autoHide: true, maximized: true,

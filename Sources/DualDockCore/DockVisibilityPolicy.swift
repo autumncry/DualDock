@@ -1,11 +1,12 @@
 import Foundation
 import CoreGraphics
 
-/// Per-display visibility state. Fullscreen always wins over edge reveal.
+/// Per-display auto-hide state for fullscreen and optionally maximized windows.
 public struct DockVisibilityPolicy: Sendable {
     public private(set) var isVisible = true
     private var edgeEnteredAt: TimeInterval?
     private var lastEngagedAt: TimeInterval?
+    private var wasFullscreen = false
 
     public init() {}
 
@@ -13,19 +14,21 @@ public struct DockVisibilityPolicy: Sendable {
     public mutating func update(now: TimeInterval, fullscreen: Bool, autoHide: Bool,
                                 maximized: Bool, pointerAtEdge: Bool,
                                 pointerInsideDock: Bool, interacting: Bool) -> Bool {
-        if fullscreen {
-            isVisible = false
+        if fullscreen != wasFullscreen {
+            wasFullscreen = fullscreen
             edgeEnteredAt = nil
             lastEngagedAt = nil
-            return false
+            // A revealed ordinary Dock or popup must not carry visibility into
+            // a newly entered fullscreen Space. It needs a fresh edge dwell.
+            if fullscreen { isVisible = false }
         }
-        guard autoHide && maximized else {
+        guard fullscreen || (autoHide && maximized) else {
             isVisible = true
             edgeEnteredAt = nil
             lastEngagedAt = nil
             return true
         }
-        if interacting || (isVisible && (pointerInsideDock || pointerAtEdge)) {
+        if (interacting && (!fullscreen || isVisible)) || (isVisible && (pointerInsideDock || pointerAtEdge)) {
             isVisible = true
             lastEngagedAt = now
             edgeEnteredAt = nil

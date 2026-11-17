@@ -5,6 +5,11 @@ import DualDockCore
 
 @MainActor
 final class DisplayCoordinator {
+    struct ApplicationActions {
+        var launch: (AppReference) -> Void
+        var cancelRecovery: () -> Void
+    }
+
     struct ScreenDock {
         let screen: NSScreen
         let displayID: String
@@ -12,6 +17,8 @@ final class DisplayCoordinator {
         let strip: DockStripView
     }
     let store: AppStore
+    private let windowInteractions: WindowInteractionService
+    private let applicationActions: ApplicationActions
     private let presentsPanels: Bool
     var showSettings: (() -> Void)?
     private(set) var docks: [CGDirectDisplayID: ScreenDock] = [:]
@@ -21,6 +28,7 @@ final class DisplayCoordinator {
     private var localClickMonitor: Any?
     private var poll: Timer?
     private var visibility: DockVisibilityController?
+    private var visibilitySnapshot = DockVisibilityController.Snapshot(hidden: [], fullscreen: [])
     private var previewTask: Task<Void, Never>?
     private weak var previewSource: DockTile?
     private var previewGeneration = 0
@@ -40,13 +48,19 @@ final class DisplayCoordinator {
     private var renderedHideSystemDock: Bool?
     private var tileAppearanceNeedsRefresh = false
     private var stopped = false
+    private var latestWindowIntent: UInt64 = 0
+    private var replacingWindowIntent: UInt64 = 0
     private var pointerOutsideSince: Date?
     private var contextMenuTracking = false
     private var menuTrackingObserver: MenuTrackingObserver?
 
     /// Hidden coordinators exercise the real update pipeline without presenting UI.
-    init(store: AppStore, presentsPanels: Bool = true) {
+    init(store: AppStore, presentsPanels: Bool = true, windowInteractions: WindowInteractionService? = nil,
+         applicationActions: ApplicationActions? = nil) {
         self.store = store
+        self.windowInteractions = windowInteractions ?? WindowInteractionService()
+        self.applicationActions = applicationActions ?? ApplicationActions(
+            launch: { store.launch($0) }, cancelRecovery: { store.cancelPendingActivationRecovery() })
         self.presentsPanels = presentsPanels
         store.$configuration.removeDuplicates().dropFirst().sink { [weak self] _ in
             self?.scheduleGeometryRefresh()
@@ -85,7 +99,7 @@ final class DisplayCoordinator {
         visibility = DockVisibilityController(windows: store.windows,
             targets: { [weak self] in self?.visibilityTargets() ?? [] },
             autoHide: { [weak self] in self?.store.configuration.autoHideWhenMaximized ?? false },
-            apply: { [weak self] hidden in self?.applyVisibility(hidden: hidden) })
+            apply: { [weak self] snapshot in self?.applyVisibility(snapshot) })
         refreshDisplays()
     }
 
@@ -139,7 +153,7 @@ final class DisplayCoordinator {
                 self?.configure(tile, on: screen, displayID: display.id, edge: presentation.edge)
             }
             panel.contentView = strip
-            panel.placeDock(strip, in: display.visibleFrame, display: true)
+            panel.placeDock(strip, in: placementBounds(for: screen), display: true)
             strip.updateMousePassthrough()
             docks[id] = ScreenDock(screen: screen, displayID: display.id, panel: panel, strip: strip)
         }
@@ -188,10 +202,10 @@ final class DisplayCoordinator {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
                 for (id, dock) in changedDocks {
-                    guard let display = self.store.displays.first(where: { $0.id == dock.displayID }),
+                    guard self.store.displays.contains(where: { $0.id == dock.displayID }),
                           let presentation = presentations[id] else { continue }
                     _ = dock.strip.updatePresentation(presentation)
-                    dock.panel.placeDock(dock.strip, in: display.visibleFrame, display: false)
+                    dock.panel.placeDock(dock.strip, in: self.placementBounds(for: dock.screen), display: false)
                     dock.strip.layoutSubtreeIfNeeded()
                     dock.strip.updateMousePassthrough()
                 }
@@ -222,6 +236,7 @@ final class DisplayCoordinator {
 
     func stop() {
         stopped = true
+        windowInteractions.cancel()
         poll?.invalidate()
         visibility?.stop()
         visibility = nil
@@ -236,10 +251,22 @@ final class DisplayCoordinator {
 
     private func configure(_ tile: DockTile, on screen: NSScreen, displayID: String, edge: DockEdge) {
         tile.menuEdge = edge
+        tile.onContextMenuRequest = { [weak self] in self?.cancelPendingMenus() }
+        tile.menuPlacementBounds = { [weak self] screen in self?.placementBounds(for: screen) ?? screen.visibleFrame }
         tile.onPress = { [weak self, weak tile] in
             guard let self, let tile else { return }
             if tile.entry.isGroup { self.openGroup(tile, screen: screen, displayID: displayID, edge: edge) }
-            else if let app = tile.entry.apps.first { self.dismissPopups(); self.store.launch(app) }
+            else if let app = tile.entry.apps.first {
+                self.dismissPopups()
+                let intent = self.beginWindowIntent()
+                Task { [weak self] in
+                    guard let self, !self.stopped, intent >= self.replacingWindowIntent else { return }
+                    let result = await self.windowInteractions.toggle(for: app,
+                        beforePerform: self.applicationActions.cancelRecovery)
+                    guard !self.stopped else { return }
+                    self.handleWindowResult(result, app: app, intent: intent)
+                }
+            }
         }
         tile.onHover = { [weak self, weak tile] inside in
             guard let self, let tile else { return }
@@ -257,6 +284,15 @@ final class DisplayCoordinator {
             guard let self, let tile else { return NSMenu() }
             self.dismissPreview()
             return self.menu(for: tile)
+        }
+        if !tile.entry.isGroup, let app = tile.entry.apps.first {
+            tile.prepareMenu = { [weak self, weak tile] in
+                guard let self, let tile, !self.stopped else { return nil }
+                self.dismissPreview()
+                let snapshot = await self.windowInteractions.list(for: app)
+                guard !Task.isCancelled, !self.stopped else { return nil }
+                return self.menu(for: tile, windows: snapshot)
+            }
         }
         tile.onDrop = { [weak self, weak tile] info, merge, after in
             guard let tile else { return false }
@@ -289,6 +325,7 @@ final class DisplayCoordinator {
         }
         let panel = DockPanel()
         panel.title = "应用组 · \(tile.entry.name)"
+        panel.setFullscreenOverlay(visibilitySnapshot.fullscreen.contains(Self.id(screen)))
         panel.level = .popUpMenu
         panel.contentView = strip
         popupAnchor = tileRect(tile)
@@ -358,6 +395,7 @@ final class DisplayCoordinator {
         }
         let panel = DockPanel()
         panel.title = "窗口预览 · \(app.name)"
+        panel.setFullscreenOverlay(visibilitySnapshot.fullscreen.contains(Self.id(screen)))
         panel.level = .popUpMenu
         let background = NSVisualEffectView()
         background.material = .popover
@@ -383,7 +421,8 @@ final class DisplayCoordinator {
             card.onActivate = { [weak self] in
                 guard let self else { return }
                 self.dismissPopups()
-                _ = self.store.windows.activate(item)
+                self.beginWindowIntent(replacingQueuedActions: true)
+                if self.store.windows.activate(item) { self.windowInteractions.remember(item, for: app) }
                 self.store.refreshPermissions()
             }
             card.onClose = { [weak self] in self?.closePreview(item, app: app) }
@@ -429,7 +468,10 @@ final class DisplayCoordinator {
     }
 
     private func placementBounds(for screen: NSScreen) -> NSRect {
-        store.displays.first(where: { $0.runtimeID == Self.id(screen) })?.visibleFrame ?? screen.visibleFrame
+        if visibilitySnapshot.fullscreen.contains(Self.id(screen)) {
+            return DockVisibilityController.fullscreenBounds(for: screen)
+        }
+        return store.displays.first(where: { $0.runtimeID == Self.id(screen) })?.visibleFrame ?? screen.visibleFrame
     }
 
     private func pointerIsOverPopup(_ point: NSPoint, includeGroup: Bool) -> Bool {
@@ -466,7 +508,13 @@ final class DisplayCoordinator {
         if groupPanel == nil { popupScreen = nil; pointerOutsideSince = nil }
     }
 
+    private func cancelPendingMenus() {
+        docks.values.forEach { $0.strip.tiles.forEach { $0.cancelPendingMenu() } }
+        (groupPanel?.contentView as? DockStripView)?.tiles.forEach { $0.cancelPendingMenu() }
+    }
+
     func dismissPopups() {
+        cancelPendingMenus()
         cancelPreviewRequest()
         (groupPanel?.contentView as? DockStripView)?.stopAnimations()
         groupPanel?.close(); groupPanel = nil
@@ -499,15 +547,25 @@ final class DisplayCoordinator {
         }
     }
 
-    private func applyVisibility(hidden: Set<CGDirectDisplayID>) {
-        guard presentsPanels else { return }
+    private func applyVisibility(_ snapshot: DockVisibilityController.Snapshot) {
+        let previous = visibilitySnapshot
+        visibilitySnapshot = snapshot
+        if let popupScreen, previous.fullscreen.contains(popupScreen) != snapshot.fullscreen.contains(popupScreen) {
+            dismissPopups()
+        }
         for (id, dock) in docks {
-            if hidden.contains(id) {
+            let fullscreen = snapshot.fullscreen.contains(id)
+            if snapshot.hidden.contains(id) {
                 if dock.panel.isVisible { dock.strip.resetMagnification() }
                 dock.panel.orderOut(nil)
+                dock.panel.setFullscreenOverlay(false)
                 if popupScreen == id || pendingPreviewScreen == id { dismissPopups() }
-            } else if !dock.panel.isVisible {
-                dock.panel.orderFrontRegardless()
+            } else {
+                dock.panel.setFullscreenOverlay(fullscreen)
+                if previous.fullscreen.contains(id) != fullscreen || previous.hidden.contains(id) {
+                    dock.panel.placeDock(dock.strip, in: placementBounds(for: dock.screen), display: false)
+                }
+                if presentsPanels && !dock.panel.isVisible { dock.panel.orderFrontRegardless() }
                 dock.strip.updateMousePassthrough()
             }
         }
@@ -560,7 +618,29 @@ final class DisplayCoordinator {
         return index + 1 < store.configuration.entries.count ? store.configuration.entries[index + 1].id : nil
     }
 
-    private func menu(for tile: DockTile) -> NSMenu {
+    @discardableResult
+    private func beginWindowIntent(replacingQueuedActions: Bool = false) -> UInt64 {
+        latestWindowIntent &+= 1
+        if replacingQueuedActions {
+            replacingWindowIntent = latestWindowIntent
+            windowInteractions.cancel()
+        }
+        applicationActions.cancelRecovery()
+        return latestWindowIntent
+    }
+
+    private func handleWindowResult(_ result: WindowInteractionResult, app: AppReference, intent: UInt64) {
+        // Real queued toggles still run in order. Only the newest user intent
+        // may reopen an application or present a late error after that work.
+        guard intent == latestWindowIntent else { return }
+        switch result {
+        case .handled: break
+        case .fallbackToApplication: applicationActions.launch(app)
+        case .failure(let message): store.message = message
+        }
+    }
+
+    private func menu(for tile: DockTile, windows: DockWindowListSnapshot? = nil) -> NSMenu {
         let menu = NSMenu()
         let observer = MenuTrackingObserver(
             opened: { [weak self] in self?.contextMenuTracking = true },
@@ -571,17 +651,53 @@ final class DisplayCoordinator {
         if tile.entry.isGroup {
             menu.addAction("重命名应用组…") { [weak self] in self?.rename(tile.entry) }
             menu.addAction("展开为独立应用") { [weak self] in self?.store.update { $0.ungroup(id: tile.entry.id) } }
-            menu.addAction("打开组内全部应用") { [weak self] in tile.entry.apps.forEach { self?.store.launch($0) } }
+            menu.addAction("打开组内全部应用") { [weak self] in
+                guard let self else { return }
+                self.beginWindowIntent(replacingQueuedActions: true)
+                tile.entry.apps.forEach { self.applicationActions.launch($0) }
+            }
             menu.addItem(.separator())
             menu.addAction("移除应用组") { [weak self] in self?.store.update { $0.removeEntry(id: tile.entry.id) } }
         } else if let app = tile.entry.apps.first {
-            menu.addAction("打开 \(app.name)") { [weak self] in self?.store.launch(app) }
+            if let windows, !windows.items.isEmpty {
+                for item in windows.items {
+                    let title = item.title + (item.isMinimized ? "（已最小化）" : "")
+                    menu.addAction(title) { [weak self] in
+                        guard let self else { return }
+                        self.dismissPopups()
+                        let intent = self.beginWindowIntent(replacingQueuedActions: true)
+                        Task { [weak self] in
+                            guard let self, !self.stopped, intent >= self.replacingWindowIntent else { return }
+                            let result = await self.windowInteractions.select(item, for: app,
+                                beforePerform: self.applicationActions.cancelRecovery)
+                            guard !self.stopped else { return }
+                            self.handleWindowResult(result, app: app, intent: intent)
+                        }
+                    }
+                    menu.items.last?.state = item.id == windows.selectedID ? .on : .off
+                }
+                menu.addItem(.separator())
+            }
+            menu.addAction("打开 \(app.name)") { [weak self] in
+                guard let self else { return }
+                self.beginWindowIntent(replacingQueuedActions: true)
+                self.applicationActions.launch(app)
+            }
             if store.configuration.allAppIDs.contains(app.id) {
                 if tile.groupID != nil { menu.addAction("移出应用组") { [weak self] in self?.store.update { $0.moveAppOut(appID: app.id) } } }
                 menu.addAction("从 Dock 移除") { [weak self] in self?.store.update { $0.removeApp(id: app.id) } }
             } else { menu.addAction("固定到 Dock") { [weak self] in self?.store.update { $0.insert([app]) } } }
-            menu.addAction("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)]) }
-            if store.isRunning(app) { menu.addItem(.separator()); menu.addAction("退出 \(app.name)") { [weak self] in self?.store.quit(app) } }
+            menu.addAction("在 Finder 中显示") { [weak self] in
+                self?.beginWindowIntent(replacingQueuedActions: true)
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)])
+            }
+            if store.isRunning(app) {
+                menu.addItem(.separator())
+                menu.addAction("退出 \(app.name)") { [weak self] in
+                    self?.beginWindowIntent(replacingQueuedActions: true)
+                    self?.store.quit(app)
+                }
+            }
         }
         return menu
     }

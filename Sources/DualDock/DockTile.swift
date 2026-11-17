@@ -10,6 +10,11 @@ final class DockTile: NSView, NSDraggingSource {
     var onHover: ((Bool) -> Void)?
     var onDrop: ((NSDraggingInfo, Bool, Bool) -> Bool)?
     var menuProvider: (() -> NSMenu?)?
+    var prepareMenu: (() async -> NSMenu?)?
+    var onContextMenuRequest: (() -> Void)?
+    var menuPlacementBounds: ((NSScreen) -> NSRect)?
+    private var menuTask: Task<Void, Never>?
+    private var menuGeneration: UInt64 = 0
     /// Group rows stay horizontal, while their menus follow the parent Dock edge.
     var menuEdge: DockEdge?
     var onInteractionChanged: ((Bool) -> Void)?
@@ -50,6 +55,18 @@ final class DockTile: NSView, NSDraggingSource {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { cancelPendingMenu() }
+    }
+
+    func cancelPendingMenu() {
+        guard menuTask != nil else { return }
+        menuGeneration &+= 1
+        menuTask?.cancel()
+        menuTask = nil
+        endInteraction()
+    }
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
@@ -271,14 +288,36 @@ final class DockTile: NSView, NSDraggingSource {
 
     private func showContextMenu() {
         guard let window else { return }
+        onContextMenuRequest?()
+        cancelPendingMenu()
         beginInteraction()
-        defer { endInteraction() }
+        onHover?(false)
+        if let prepareMenu {
+            menuGeneration &+= 1
+            let generation = menuGeneration
+            menuTask = Task { [weak self, weak window] in
+                let menu = await prepareMenu()
+                guard let self, self.menuGeneration == generation else { return }
+                defer {
+                    if self.menuGeneration == generation { self.menuTask = nil; self.endInteraction() }
+                }
+                guard !Task.isCancelled, let window, self.window === window,
+                      window.isVisible, let menu else { return }
+                self.presentContextMenu(menu, window: window)
+            }
+        } else {
+            defer { endInteraction() }
+            guard let menu = menuProvider?() else { return }
+            presentContextMenu(menu, window: window)
+        }
+    }
+
+    private func presentContextMenu(_ menu: NSMenu, window: NSWindow) {
         let icon = window.convertToScreen(convert(visualIconBounds, to: nil))
         let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: icon.midX, y: icon.midY)) } ?? window.screen
-        guard let screen, let menu = menuProvider?() else { return }
-        onHover?(false)
+        guard let screen else { return }
         menu.update()
-        let origin = DockMenuPlacement.origin(icon: icon, menuSize: menu.size, visibleScreen: screen.visibleFrame,
+        let origin = DockMenuPlacement.origin(icon: icon, menuSize: menu.size, visibleScreen: menuPlacementBounds?(screen) ?? screen.visibleFrame,
                                               edge: menuEdge ?? layoutEdge)
         menu.popUp(positioning: nil, at: origin, in: nil)
     }
