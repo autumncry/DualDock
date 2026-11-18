@@ -20,7 +20,14 @@ struct DockCoordinatorRefreshChecks {
                 path: "/System/Applications/Notes.app")])
         }
         try JSONEncoder().encode(config).write(to: directory.appendingPathComponent("configuration.json"))
-        let store = AppStore(directory: directory)
+        var badgeReads = 0
+        let badgeService = DockBadgeService(reader: { _ in
+            .init(labels: ["resize.group.one": "99+"], status: .available)
+        }, inputProvider: {
+            badgeReads += 1
+            return .init(applications: [], dockProcessID: nil, accessibilityTrusted: true)
+        })
+        let store = AppStore(directory: directory, runningAppsProvider: { [] }, badgeService: badgeService)
         store.stopBackgroundServices()
         let coordinator = DisplayCoordinator(store: store, presentsPanels: false)
         defer { coordinator.stop(); store.stopBackgroundServices() }
@@ -232,9 +239,71 @@ struct DockCoordinatorRefreshChecks {
             }
         }
         coordinator.dismissPopups()
+        store.update { $0.showBadges = true }
+        drain()
+        let physicalRows = coordinator.docks.count
+        coordinator.ensureTwoBadgeTestRows()
+        let earlierWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
+        first.strip.tiles.first { $0.entry.id == resizeGroup.id }!.onPress?()
+        let newWindows = NSApp.windows.filter { !earlierWindows.contains(ObjectIdentifier($0)) }
+        guard let groupStrip = newWindows.compactMap({ $0.contentView as? DockStripView }).first(where: {
+            $0.tiles.first?.groupID == resizeGroup.id
+        }) else { fatalError("No expanded badge group in fixture") }
+
+        let rows = coordinator.docks.values.map(\.strip) + [groupStrip]
+        let tilesBefore = rows.map { $0.tiles.map(ObjectIdentifier.init) }
+        let geometryBefore = rows.map(\.layoutGeometry)
+        let scrollBefore = rows.map(\.scrollOffset)
+        let badgeTiles = rows.compactMap { $0.tiles.first(where: { store.badgeLabel(for: $0.entry) != nil }) }
+        check(badgeTiles.count == rows.count, "Every screen and expanded group must contain one unread fixture")
+        check(store.badgeLabel(for: resizeGroup) == "!" && store.badgeLabel(for: groupStrip.tiles[0].entry) == "99+",
+              "Unread fixture did not expose both the numeric badge and group alert")
+        check(coordinator.docks.count >= 2 && badgeTiles.allSatisfy { $0.badgeScale == 1 },
+              "Badge fixture did not start with two rows at default size")
+        let configURL = directory.appendingPathComponent("configuration.json")
+        let oldFile = try Data(contentsOf: configURL)
+        let readsBefore = badgeReads
+        for index in 0..<80 {
+            store.update { $0.badgeScale = 0.75 + 1.25 * Double(index) / 79 }
+        }
+        check(try Data(contentsOf: configURL) == oldFile, "Slider drag wrote config synchronously")
+        drain()
+        check(badgeTiles.allSatisfy { $0.badgeScale == 2 },
+              "Badge scale did not update on every screen and the expanded group")
+        check(rows.flatMap(\.tiles).filter { store.badgeLabel(for: $0.entry) == nil }.allSatisfy { $0.badgeScale == 1 },
+              "Scale drag changed rendering state on tiles without unread badges")
+        check(rows.map { $0.tiles.map(ObjectIdentifier.init) } == tilesBefore, "Badge resize rebuilt a row")
+        check(rows.map(\.layoutGeometry) == geometryBefore && rows.map(\.scrollOffset) == scrollBefore,
+              "Badge resize changed geometry or scroll position")
+        check(groupStrip.window != nil && groupStrip.window?.contentView === groupStrip,
+              "Badge resize removed the expanded group")
+        check(badgeReads == readsBefore, "Badge resize unnecessarily re-read system labels")
+        store.flushPendingSave()
+        let saved = try JSONDecoder().decode(DockConfiguration.self, from: Data(contentsOf: configURL))
+        check(saved.badgeScale == 2 && saved.showBadges, "Releasing slider did not persist the final scale")
+        print("Badge replay: \(coordinator.docks.count) Dock rows (\(physicalRows) physical displays) + expanded group, 80 scale updates")
+        store.update { $0.showBadges = false }
+        store.update { $0.showBadges = true }
+        check(store.configuration.badgeScale == 2, "Hiding badges reset the chosen scale")
+        coordinator.dismissPopups()
         check(coordinator.docks.values.allSatisfy { !$0.panel.isVisible }, "fixture presented a panel")
         print("Coordinator refresh: \(checks) checks, \(failures.count) failures")
         failures.prefix(12).forEach { print("FAIL: \($0)") }
         if !failures.isEmpty { exit(1) }
+    }
+}
+
+// Shares a source unit with DisplayCoordinator in this isolated executable.
+private extension DisplayCoordinator {
+    func ensureTwoBadgeTestRows() {
+        guard docks.count == 1, let first = docks.values.first else { return }
+        let panel = DockPanel()
+        let strip = DockStripView()
+        let presentation = store.presentation(for: first.displayID)
+        _ = strip.populate(entries: store.displayedEntries, store: store,
+                           maxWidth: presentation.maximumLength, presentation: presentation) { _ in }
+        panel.contentView = strip
+        let fixtureID = DisplayCoordinator.id(first.screen) ^ 0x8000_0000
+        docks[fixtureID] = ScreenDock(screen: first.screen, displayID: first.displayID, panel: panel, strip: strip)
     }
 }

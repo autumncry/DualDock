@@ -41,6 +41,8 @@ final class DisplayCoordinator {
     private var previewEdge: DockEdge = .bottom
     private var previewAnchor = NSRect.zero
     private var geometryRefreshScheduled = false
+    private var badgeRedrawScheduled = false
+    private var pendingBadgeLabelChange = false
     private var renderedEntries: [DockEntry] = []
     private var renderedPinnedCount = 0
     private var renderedMode: DockMode?
@@ -62,15 +64,19 @@ final class DisplayCoordinator {
         self.applicationActions = applicationActions ?? ApplicationActions(
             launch: { store.launch($0) }, cancelRecovery: { store.cancelPendingActivationRecovery() })
         self.presentsPanels = presentsPanels
-        store.$configuration.removeDuplicates().dropFirst().sink { [weak self] _ in
-            self?.scheduleGeometryRefresh()
+        store.$configuration.removeDuplicates().dropFirst().sink { [weak self] next in
+            guard let self else { return }
+            // @Published emits the incoming value while the store still holds the old one.
+            let previous = self.store.configuration
+            if next.badgeScale != previous.badgeScale, next.showBadges { self.scheduleBadgeRedraw(labelsChanged: false) }
+            if !next.matchesExceptBadgeScale(previous) { self.scheduleGeometryRefresh() }
         }.store(in: &subscriptions)
         store.$runningApps.dropFirst().sink { [weak self] _ in
             self?.tileAppearanceNeedsRefresh = true
             self?.scheduleGeometryRefresh()
         }.store(in: &subscriptions)
         store.$badgeLabels.dropFirst().sink { [weak self] _ in
-            DispatchQueue.main.async { self?.redrawBadges() }
+            self?.scheduleBadgeRedraw(labelsChanged: true)
         }.store(in: &subscriptions)
         store.$nativeDockMetrics.dropFirst().sink { [weak self] _ in
             guard let self, self.store.configuration.adaptiveSizing else { return }
@@ -232,9 +238,26 @@ final class DisplayCoordinator {
         docks.values.forEach { $0.strip.resetMagnification() }
     }
 
-    private func redrawBadges() {
-        docks.values.forEach { dock in dock.strip.tiles.forEach { $0.refreshBadge() } }
-        (groupPanel?.contentView as? DockStripView)?.tiles.forEach { $0.refreshBadge() }
+    private func scheduleBadgeRedraw(labelsChanged: Bool) {
+        guard !stopped else { return }
+        pendingBadgeLabelChange = pendingBadgeLabelChange || labelsChanged
+        guard !badgeRedrawScheduled else { return }
+        badgeRedrawScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            self.badgeRedrawScheduled = false
+            self.redrawBadges(scaleOnly: !self.pendingBadgeLabelChange)
+            self.pendingBadgeLabelChange = false
+        }
+    }
+
+    private func redrawBadges(scaleOnly: Bool = false) {
+        func refresh(_ tile: DockTile) {
+            if scaleOnly { tile.refreshBadgeScale() }
+            else { tile.refreshBadge() }
+        }
+        docks.values.forEach { dock in dock.strip.tiles.forEach(refresh) }
+        (groupPanel?.contentView as? DockStripView)?.tiles.forEach(refresh)
     }
 
     static func id(_ screen: NSScreen) -> CGDirectDisplayID {

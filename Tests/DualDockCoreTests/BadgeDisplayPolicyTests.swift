@@ -5,6 +5,24 @@ final class BadgeDisplayPolicyTests: XCTestCase {
     private let wechat = AppReference(id: "com.tencent.xinWeChat", name: "WeChat", path: "/Applications/WeChat.app")
     private let lark = AppReference(id: "com.electron.lark", name: "Lark", path: "/Applications/Lark.app")
 
+    func testScaleDecodesLegacyDefaultsAndPersistsContinuousValuesWhileHidden() throws {
+        var config = try JSONDecoder().decode(DockConfiguration.self, from: Data(#"{"version":11,"showBadges":false}"#.utf8))
+        XCTAssertEqual(config.badgeScale, 1)
+        XCTAssertFalse(config.showBadges)
+        config.badgeScale = 1.58375
+        let restored = try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(config))
+        XCTAssertEqual(restored, config)
+    }
+
+    func testScaleNormalizesNonfiniteAndOutOfRangeValues() {
+        for (stored, expected): (Double, Double) in [(-1, 0.75), (4, 2), (.nan, 1), (.infinity, 1)] {
+            var config = DockConfiguration()
+            config.badgeScale = stored
+            config.normalizeAppearance()
+            XCTAssertEqual(config.badgeScale, expected)
+        }
+    }
+
     func testNativeCountsAndSpecialLabelsArePreserved() {
         XCTAssertEqual(BadgeDisplayPolicy.normalizedLabel(" 4\n"), "4")
         XCTAssertEqual(BadgeDisplayPolicy.normalizedLabel("99+"), "99+")

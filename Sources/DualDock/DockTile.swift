@@ -25,6 +25,8 @@ final class DockTile: NSView, NSDraggingSource {
     private var explicitContentBounds: NSRect?
     private var explicitHitBounds: NSRect?
     private var usesOpticalGeometry = false
+    private var badgeRenderer = DockBadgeRenderer()
+    private(set) var badgeScale: Double = 1
     private var hovered = false
     private var dragStart: NSPoint?
     private var dragging = false
@@ -120,6 +122,7 @@ final class DockTile: NSView, NSDraggingSource {
         let changed = sizeChanged || !same(explicitIconBounds, icon) || !same(explicitDotBounds, dot)
             || !same(explicitContentBounds, content) || unitScale != scale || layoutEdge != edge
             || usesOpticalGeometry != optical
+            || (!same(explicitHitBounds, hit) && store.badgeLabel(for: entry) != nil)
         if self.frame.origin != frame.origin { setFrameOrigin(frame.origin) }
         if sizeChanged { setFrameSize(frame.size) }
         explicitIconBounds = icon
@@ -146,7 +149,15 @@ final class DockTile: NSView, NSDraggingSource {
         onHover?(value)
     }
 
+    func refreshBadgeScale() {
+        let newScale = store.configuration.badgeScale
+        guard newScale != badgeScale, store.badgeLabel(for: entry) != nil else { return }
+        badgeScale = newScale
+        needsDisplay = true
+    }
+
     func refreshBadge() {
+        badgeScale = store.configuration.badgeScale
         needsDisplay = true
         let base = entry.isGroup ? L("应用组 \(entry.name)，\(entry.apps.count) 个应用", "App group \(entry.name), \(entry.apps.count) apps") : entry.name
         if let badge = store.badgeLabel(for: entry) {
@@ -184,48 +195,10 @@ final class DockTile: NSView, NSDraggingSource {
             }
             NSBezierPath(roundedRect: marker, xRadius: width / 2, yRadius: width / 2).fill()
         }
-        if let label = store.badgeLabel(for: entry) { drawBadge(label, in: visibleContentBounds) }
-    }
-
-    private func drawBadge(_ label: String, in icon: NSRect) {
-        if min(icon.width, icon.height) < 18 {
-            // The normal count pill has a 12 pt minimum. On a deliberately
-            // tiny icon, show a bounded unread dot and keep the full label in AX.
-            let available = icon.intersection(bounds)
-            guard !available.isNull, available.width.isFinite, available.height.isFinite,
-                  available.width > 0, available.height > 0 else { return }
-            let side = min(available.width, available.height)
-            let diameter = min(side, min(6, max(2, side * 0.35)))
-            let dot = NSRect(x: available.maxX - diameter, y: available.maxY - diameter,
-                             width: diameter, height: diameter)
-            NSColor.systemRed.setFill()
-            NSBezierPath(ovalIn: dot).fill()
-            return
+        if let label = store.badgeLabel(for: entry) {
+            badgeRenderer.draw(label, in: visibleContentBounds, tileBounds: bounds,
+                               hitBounds: interactionBounds, scale: CGFloat(badgeScale))
         }
-        let scale = icon.width / 48
-        let maximumWidth = max(12, min(bounds.width - 2, icon.width * 0.88))
-        var fontSize = max(7, icon.width * 0.22)
-        var font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
-        let text = label as NSString
-        var textSize = text.size(withAttributes: [.font: font])
-        while textSize.width + 6 * scale > maximumWidth && fontSize > 5 {
-            fontSize -= 0.5
-            font = .systemFont(ofSize: fontSize, weight: .semibold)
-            textSize = text.size(withAttributes: [.font: font])
-        }
-        let height = max(12, textSize.height + 2 * scale)
-        let width = min(maximumWidth, max(height, textSize.width + 7 * scale))
-        let right = min(bounds.maxX - 1, icon.maxX)
-        let top = min(bounds.maxY - 1, icon.maxY + 2 * scale)
-        let badge = NSRect(x: right - width, y: top - height, width: width, height: height)
-        NSColor.systemRed.setFill()
-        NSBezierPath(roundedRect: badge, xRadius: height / 2, yRadius: height / 2).fill()
-        let style = NSMutableParagraphStyle()
-        style.alignment = .center
-        style.lineBreakMode = .byTruncatingTail
-        let textRect = NSRect(x: badge.minX + 1, y: badge.midY - textSize.height / 2,
-                              width: badge.width - 2, height: textSize.height)
-        text.draw(in: textRect, withAttributes: [.font: font, .foregroundColor: NSColor.white, .paragraphStyle: style])
     }
 
     private func drawFolder(in rect: NSRect) {
@@ -392,5 +365,88 @@ final class DockTile: NSView, NSDraggingSource {
         dwell?.cancel(); dwell = nil; mergeReady = false; dragInside = false; centralDrop = false
         if destinationInteraction { destinationInteraction = false; onInteractionChanged?(false) }
         needsDisplay = true
+    }
+}
+
+/// A tile retains its most recently measured badge so changes to the user's
+/// scale can reuse the same typography while the slider tracks the pointer.
+@MainActor
+struct DockBadgeRenderer {
+    private struct TextLayout {
+        let label: String
+        let iconWidth: CGFloat
+        let widthLimit: CGFloat
+        let size: NSSize
+        let attributedText: NSAttributedString
+        let textRect: NSRect
+    }
+
+    private var lastLayout: TextLayout?
+
+    mutating func draw(_ label: String, in icon: NSRect, tileBounds: NSRect,
+                       hitBounds: NSRect, scale: CGFloat) {
+        // Optical spacing can overlap transparent image canvases. Restrict
+        // the badge to this tile's ownership even on a vertical, gapless Dock.
+        let area = tileBounds.intersection(hitBounds)
+        let visible = icon.intersection(area)
+        guard !visible.isEmpty, !visible.isNull, let context = NSGraphicsContext.current?.cgContext else { return }
+        let range = DockConfiguration.badgeScaleRange
+        let factor = scale.isFinite ? min(CGFloat(range.upperBound), max(CGFloat(range.lowerBound), scale)) : 1
+        NSColor.systemRed.setFill()
+        if min(icon.width, icon.height) < 18 {
+            let side = min(visible.width, visible.height)
+            let diameter = min(side, min(6, max(2, side * 0.35)) * factor)
+            let dot = NSRect(x: visible.maxX - diameter, y: visible.maxY - diameter,
+                             width: diameter, height: diameter)
+            NSBezierPath(ovalIn: dot).fill()
+            return
+        }
+
+        let right = min(visible.maxX, tileBounds.maxX - 1)
+        let top = min(area.maxY, tileBounds.maxY - 1, icon.maxY + 2 * icon.width / 48)
+        let availableWidth = right - visible.minX
+        let availableHeight = top - visible.minY
+        guard availableWidth > 0, availableHeight > 0 else { return }
+
+        let layout = textLayout(label, iconWidth: icon.width,
+                                widthLimit: max(12, min(tileBounds.width - 2, icon.width * 0.88)))
+        let fitted = min(factor, availableWidth / layout.size.width, availableHeight / layout.size.height)
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.translateBy(x: right - layout.size.width * fitted, y: top - layout.size.height * fitted)
+        context.scaleBy(x: fitted, y: fitted)
+        let rect = NSRect(origin: .zero, size: layout.size)
+        NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
+        layout.attributedText.draw(in: layout.textRect)
+    }
+
+    private mutating func textLayout(_ label: String, iconWidth: CGFloat, widthLimit: CGFloat) -> TextLayout {
+        if let layout = lastLayout, layout.label == label,
+           layout.iconWidth == iconWidth, layout.widthLimit == widthLimit { return layout }
+
+        let unit = iconWidth / 48
+        let text = label as NSString
+        var pointSize = max(7, iconWidth * 0.22)
+        var font = NSFont.systemFont(ofSize: pointSize, weight: .semibold)
+        var textSize = text.size(withAttributes: [.font: font])
+        while textSize.width + 6 * unit > widthLimit && pointSize > 5 {
+            pointSize -= 0.5
+            font = NSFont.systemFont(ofSize: pointSize, weight: .semibold)
+            textSize = text.size(withAttributes: [.font: font])
+        }
+        let height = max(12, textSize.height + 2 * unit)
+        let width = label.count == 1 ? height : min(widthLimit, max(height, textSize.width + 7 * unit))
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        style.lineBreakMode = .byTruncatingTail
+        let attributed = NSAttributedString(string: label, attributes: [
+            .font: font, .foregroundColor: NSColor.white, .paragraphStyle: style
+        ])
+        let layout = TextLayout(label: label, iconWidth: iconWidth, widthLimit: widthLimit,
+            size: NSSize(width: width, height: height), attributedText: attributed,
+            textRect: NSRect(x: 1, y: (height - textSize.height) / 2,
+                             width: width - 2, height: textSize.height))
+        lastLayout = layout
+        return layout
     }
 }

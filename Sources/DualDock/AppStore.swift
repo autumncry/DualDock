@@ -25,7 +25,7 @@ final class AppStore: ObservableObject {
     @Published var captureGranted = CGPreflightScreenCaptureAccess()
     let systemDock: SystemDockService
     let windows = WindowService()
-    private let badgeService = DockBadgeService()
+    private let badgeService: DockBadgeService
     private let nativeMetricsService = NativeDockMetricsService()
     private let activationService = ApplicationActivationService()
     let directory: URL
@@ -47,7 +47,9 @@ final class AppStore: ObservableObject {
 
     init(directory: URL,
          runningAppsProvider: (() -> [AppReference])? = nil,
-         permissionsProvider: (() -> (accessibility: Bool, capture: Bool))? = nil) {
+         permissionsProvider: (() -> (accessibility: Bool, capture: Bool))? = nil,
+         badgeService: DockBadgeService? = nil) {
+        self.badgeService = badgeService ?? DockBadgeService()
         self.directory = directory
         self.runningAppsProvider = runningAppsProvider
         self.permissionsProvider = permissionsProvider
@@ -97,12 +99,12 @@ final class AppStore: ObservableObject {
             if self.nativeDockMetrics != metrics { self.nativeDockMetrics = metrics }
             if self.nativeDockStatus != status { self.nativeDockStatus = status }
         }
-        badgeService.onUpdate = { [weak self] labels, status in
+        self.badgeService.onUpdate = { [weak self] labels, status in
             guard let self else { return }
             if self.badgeLabels != labels { self.badgeLabels = labels }
             if self.badgeStatus != status { self.badgeStatus = status }
         }
-        badgeService.setEnabled(configuration.showBadges)
+        self.badgeService.setEnabled(configuration.showBadges)
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
                      NSWorkspace.didActivateApplicationNotification, NSWorkspace.didHideApplicationNotification,
                      NSWorkspace.didUnhideApplicationNotification] {
@@ -753,6 +755,11 @@ final class AppStore: ObservableObject {
         change(&next)
         next.normalizeAppearance()
         guard next != configuration else { return }
+        if next.matchesExceptBadgeScale(configuration) {
+            configuration = next
+            scheduleSave()
+            return
+        }
         if next.synchronizeSizes,
            next.iconSize != configuration.iconSize || next.dockWidth != configuration.dockWidth
             || next.manualIconScale != configuration.manualIconScale || next.iconSpacing != configuration.iconSpacing
@@ -945,6 +952,7 @@ final class AppStore: ObservableObject {
         appearanceOnly.customSizing = new.customSizing
         appearanceOnly.magnificationScale = new.magnificationScale
         appearanceOnly.magnificationRadius = new.magnificationRadius
+        appearanceOnly.badgeScale = new.badgeScale
         for (id, profile) in new.displaySettings {
             var original = appearanceOnly.displaySettings[id] ?? DockDisplaySettings()
             original.manualSizing = profile.manualSizing
@@ -958,5 +966,14 @@ final class AppStore: ObservableObject {
         // Running tiles keep identity across refreshes without touching the saved layout.
         let bytes = Array(SHA256.hash(data: Data(value.utf8)).prefix(16))
         return UUID(uuid: (bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5],bytes[6],bytes[7],bytes[8],bytes[9],bytes[10],bytes[11],bytes[12],bytes[13],bytes[14],bytes[15]))
+    }
+}
+
+extension DockConfiguration {
+    /// Badge sizing invalidates tile artwork independently of Dock layout.
+    func matchesExceptBadgeScale(_ other: Self) -> Bool {
+        var copy = self
+        copy.badgeScale = other.badgeScale
+        return copy == other
     }
 }

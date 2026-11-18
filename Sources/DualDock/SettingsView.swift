@@ -197,6 +197,7 @@ struct DockSettingsSlider: View {
                    onEditingChanged: onEditingChanged)
                 .disabled(range.lowerBound >= range.upperBound)
                 .accessibilityLabel(title)
+                .accessibilityValue(valueText)
         }
     }
 }

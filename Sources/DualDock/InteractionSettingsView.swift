@@ -63,6 +63,13 @@ struct InteractionSettingsView: View {
                 Toggle(localize("显示消息数量角标", "Show notification badges"), isOn: Binding(get: { store.configuration.showBadges }, set: { value in
                     store.update { $0.showBadges = value }
                 }))
+                DockSettingsSlider(title: localize("角标大小", "Badge size"),
+                                   valueText: store.configuration.badgeScale.formatted(.percent.precision(.fractionLength(0))),
+                                   value: Binding(get: { store.configuration.badgeScale }, set: { scale in
+                    store.update { $0.badgeScale = scale }
+                }), range: DockConfiguration.badgeScaleRange,
+                    onEditingChanged: { if !$0 { store.flushPendingSave() } })
+                    .disabled(!store.configuration.showBadges)
                 Text(badgeDescription).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }

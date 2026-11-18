@@ -33,6 +33,7 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
     public static let currentVersion = 11
+    public static let badgeScaleRange: ClosedRange<Double> = 0.75...2.0
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard
@@ -63,6 +64,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public var magnificationRadius: Double = 2.5
     public var showPreviews: Bool = true
     public var showBadges: Bool = true
+    public var badgeScale: Double = 1
     public var hideSystemDock: Bool = false
     /// Persisted compatibility key. The current behavior is maximized-only.
     public var autoHideWhenObstructed: Bool = false
@@ -76,7 +78,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case version, entries, mode, iconSize, iconSpacing, dockWidthReferenceSpacing, dockWidth, autoAdjustWidth
         case manualIconScale, synchronizeSizes, displaySettings, manualAutoLength, manualContentPadding, customSizing
-        case magnificationEnabled, magnificationScale, magnificationRadius, showPreviews, showBadges, hideSystemDock, autoHideWhenObstructed
+        case magnificationEnabled, magnificationScale, magnificationRadius, showPreviews, showBadges, badgeScale, hideSystemDock, autoHideWhenObstructed
     }
 
     public init(from decoder: Decoder) throws {
@@ -104,6 +106,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         magnificationRadius = try values.decodeIfPresent(Double.self, forKey: .magnificationRadius) ?? 2.5
         showPreviews = try values.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? true
         showBadges = try values.decodeIfPresent(Bool.self, forKey: .showBadges) ?? true
+        badgeScale = try values.decodeIfPresent(Double.self, forKey: .badgeScale) ?? 1
         hideSystemDock = try values.decodeIfPresent(Bool.self, forKey: .hideSystemDock) ?? false
         autoHideWhenObstructed = try values.decodeIfPresent(Bool.self, forKey: .autoHideWhenObstructed) ?? false
         normalizeAppearance()
@@ -112,6 +115,8 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
     public mutating func normalizeAppearance() {
         // Store the requested height independently from currently connected
         // displays. DockSizingLimits clamps it before any rendering arithmetic.
+        let range = Self.badgeScaleRange
+        badgeScale = badgeScale.isFinite ? min(range.upperBound, max(range.lowerBound, badgeScale)) : 1
         iconSize = iconSize.isFinite ? max(24, iconSize) : 48
         manualIconScale = manualIconScale.isFinite ? min(1.25, max(0.25, manualIconScale)) : 1
         if let padding = manualContentPadding {
