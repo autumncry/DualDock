@@ -125,7 +125,7 @@ Enable **Launch at Login** in General to start DualDock after signing into macOS
 
 ### More details
 
-- **Notification badges:** individual apps show the labels supplied by the system; a group shows a red **!** when a member has an unread indicator. A global switch disables badges. Only badge state is read, not notification text. Some apps may not provide a usable label.
+- **Notification badges:** individual apps show the labels supplied by the system; a group shows a red **!** when a member has an unread indicator. In Interaction → Notifications, use **Badge size** to scale counts and exclamation marks from 75% to 200% (default 100%). The setting applies to every display and open group. A global switch disables badges. Only badge state is read, not notification text. Some apps may not provide a usable label.
 - **System Dock management:** optionally hide the system Dock. The preferences changed by DualDock are restored on normal exit, or recovered at the next launch after an interruption; later manual changes are preserved. A manual restore command is also available in the menu bar.
 - **Quick access to Settings:** right-click a blank area of the Dock, or use the overlapping-rectangles icon in the menu bar.
 - **Local configuration:** groups, order, and preferences live in `~/Library/Application Support/DualDock/`, with migration backups created when needed.
