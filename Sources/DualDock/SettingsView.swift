@@ -3,13 +3,16 @@ import DualDockCore
 
 struct SettingsView: View {
     @ObservedObject var store: AppStore
+    private let launchAtLoginService: LaunchAtLoginService?
     @State private var selection: SettingsSection? = .general
     @State private var selectedDisplayID: String?
     @FocusState private var focusedSection: SettingsSection?
     private var selected: SettingsSection { selection ?? .general }
 
-    init(store: AppStore, initialSection: SettingsSection = .general, displayID: String? = nil) {
+    init(store: AppStore, initialSection: SettingsSection = .general, displayID: String? = nil,
+         launchAtLoginService: LaunchAtLoginService? = nil) {
         self.store = store
+        self.launchAtLoginService = launchAtLoginService
         _selection = State(initialValue: initialSection)
         _selectedDisplayID = State(initialValue: displayID)
     }
@@ -112,7 +115,7 @@ struct SettingsView: View {
 
     @ViewBuilder private var content: some View {
         switch selected {
-        case .general: GeneralSettingsView(store: store)
+        case .general: GeneralSettingsView(store: store, launchAtLogin: launchAtLoginService)
         case .appearance: AppearanceSettingsView(store: store, selectedDisplayID: $selectedDisplayID, showsScope: false)
         case .displays:
             DisplayPositionSettingsView(store: store, selectedDisplayID: $selectedDisplayID) { id in

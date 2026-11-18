@@ -3,6 +3,12 @@ import DualDockCore
 
 struct GeneralSettingsView: View {
     @ObservedObject var store: AppStore
+    @StateObject private var launchAtLogin: LaunchAtLoginService
+
+    init(store: AppStore, launchAtLogin: LaunchAtLoginService? = nil) {
+        self.store = store
+        _launchAtLogin = StateObject(wrappedValue: launchAtLogin ?? LaunchAtLoginService())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -15,6 +21,24 @@ struct GeneralSettingsView: View {
                 }.labelsHidden().pickerStyle(.radioGroup)
                 Text("显示内容在所有屏幕同步；切回普通模式会恢复分组与排列。")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            SettingsGroup("启动") {
+                Toggle("登录时启动", isOn: Binding(get: { launchAtLogin.isEnabled }, set: {
+                    launchAtLogin.setEnabled($0)
+                }))
+                .disabled(!launchAtLogin.canChangeRegistration || launchAtLogin.status == .requiresApproval)
+                Text(loginDescription)
+                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if launchAtLogin.status == .requiresApproval {
+                    HStack {
+                        Button("打开系统登录项") { launchAtLogin.openSystemSettings() }
+                        Button("取消启动申请") { launchAtLogin.setEnabled(false) }
+                    }
+                }
+                if let error = launchAtLogin.errorMessage {
+                    Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
             }
             SettingsGroup("系统 Dock") {
                 Toggle("隐藏系统 Dock", isOn: Binding(get: { store.configuration.hideSystemDock }, set: {
@@ -33,6 +57,20 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("打开配置目录") { store.revealConfiguration() }
             }
+        }
+        .onAppear { launchAtLogin.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            launchAtLogin.refresh()
+        }
+    }
+
+    private var loginDescription: String {
+        switch launchAtLogin.status {
+        case .notRegistered: return "登录 macOS 后自动启动 DualDock。当前未开启。"
+        case .enabled: return "已开启，下次登录 macOS 后会自动启动 DualDock。"
+        case .requiresApproval: return "等待系统允许，尚未启用自动启动。请在系统登录项中允许 DualDock。"
+        case .notFound: return "系统未找到可注册的应用，请从“应用程序”中的 DualDock 重新打开。"
+        case .unknown: return "暂时无法读取登录启动状态，请稍后重试。"
         }
     }
 }
