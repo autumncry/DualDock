@@ -16,7 +16,11 @@ final class AppStore: ObservableObject {
     @Published private(set) var runningApps: [AppReference] = []
     @Published private(set) var badgeLabels: [String: String] = [:]
     @Published private(set) var badgeStatus: DockBadgeStatus = .disabled
-    @Published var message: String?
+    @Published var notice: LocalizedNotice?
+    var message: String? {
+        get { notice?.text }
+        set { notice = newValue.map { LocalizedNotice(verbatim: $0) } }
+    }
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var captureGranted = CGPreflightScreenCaptureAccess()
     let systemDock: SystemDockService
@@ -50,7 +54,7 @@ final class AppStore: ObservableObject {
         configURL = directory.appendingPathComponent("configuration.json")
         systemDock = SystemDockService(directory: directory)
         var initial = DockConfiguration()
-        var issue: String?
+        var issue: LocalizedNotice?
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: configURL.path) {
@@ -65,7 +69,7 @@ final class AppStore: ObservableObject {
                 }
                 if initial.version > DockConfiguration.currentVersion {
                     readOnly = true
-                    issue = "配置来自较新的 DualDock，当前版本以只读方式打开。"
+                    issue = LocalizedNotice("配置来自较新的 DualDock，当前版本以只读方式打开。", "This configuration was saved by a newer version of DualDock and is open in read-only mode.")
                 }
             } else {
                 initial.insert(SystemDockService.importPinnedApps())
@@ -73,7 +77,7 @@ final class AppStore: ObservableObject {
             }
         } catch {
             readOnly = true
-            issue = "无法读取配置，原文件已保留。请打开配置目录检查。\n\(error.localizedDescription)"
+            issue = LocalizedNotice("无法读取配置，原文件已保留。请打开配置目录检查。", "Could not read the configuration. Open the configuration folder to inspect the original file.").appending(.init(verbatim: error.localizedDescription), separator: "\n")
         }
         initial.normalizeAppearance()
         configuration = initial
@@ -81,11 +85,11 @@ final class AppStore: ObservableObject {
             accessibilityGranted = permissions.accessibility
             captureGranted = permissions.capture
         }
-        message = issue
+        notice = issue
         do {
             try systemDock.recoverIfNeeded()
             if initial.hideSystemDock && !readOnly { try systemDock.setHidden(true) }
-        } catch { message = "系统 Dock 恢复失败：\(error.localizedDescription)" }
+        } catch { notice = LocalizedNotice("系统 Dock 恢复失败", "Could not restore the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
         refreshRunningApps()
         updateDisplays(DockDisplayInfo.current())
         nativeMetricsService.onUpdate = { [weak self] metrics, status in
@@ -744,7 +748,7 @@ final class AppStore: ObservableObject {
     }
 
     func update(_ change: (inout DockConfiguration) -> Void) {
-        guard !readOnly else { message = "配置目前为只读，请先检查配置文件。"; return }
+        guard !readOnly else { notice = LocalizedNotice("配置目前为只读，请先检查配置文件。", "The configuration is read-only. Check the configuration file."); return }
         var next = configuration
         change(&next)
         next.normalizeAppearance()
@@ -784,26 +788,26 @@ final class AppStore: ObservableObject {
         do {
             try systemDock.setHidden(hidden)
             update { $0.hideSystemDock = hidden }
-        } catch { message = "无法更改系统 Dock：\(error.localizedDescription)" }
+        } catch { notice = LocalizedNotice("无法更改系统 Dock", "Could not change the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
     }
 
     func restoreSystemDock() {
         do {
             try systemDock.restore()
             if !readOnly { update { $0.hideSystemDock = false } }
-        } catch { message = "系统 Dock 恢复失败：\(error.localizedDescription)" }
+        } catch { notice = LocalizedNotice("系统 Dock 恢复失败", "Could not restore the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
     }
 
     func importPins() {
         let apps = SystemDockService.importPinnedApps()
-        guard !apps.isEmpty else { message = "系统 Dock 中没有读到可导入的固定应用。"; return }
+        guard !apps.isEmpty else { notice = LocalizedNotice("系统 Dock 中没有读到可导入的固定应用。", "No pinned applications were found in the system Dock."); return }
         update { $0.insert(apps) }
-        message = "已补入系统 Dock 中尚未固定的应用，现有分组和顺序已保留。"
+        notice = LocalizedNotice("已补入系统 Dock 中尚未固定的应用，现有分组和顺序已保留。", "Imported additional pinned apps from the system Dock and kept your groups and order.")
     }
 
     func addApplications() {
         let panel = NSOpenPanel()
-        panel.title = "添加应用到 DualDock"
+        panel.title = L("添加应用到 DualDock", "Add Applications to DualDock")
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
         panel.allowedContentTypes = [.applicationBundle]
         panel.allowsMultipleSelection = true
@@ -847,7 +851,7 @@ final class AppStore: ObservableObject {
 
     func launch(_ app: AppReference) {
         activationService.open(app, at: resolvedURL(app)) { [weak self] message in
-            self?.message = message
+            self?.notice = message
         }
     }
 
@@ -910,7 +914,7 @@ final class AppStore: ObservableObject {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(configuration).write(to: configURL, options: .atomic)
-        } catch { message = "配置保存失败：\(error.localizedDescription)" }
+        } catch { notice = LocalizedNotice("配置保存失败", "Could not save the configuration").appending(SystemDockService.ServiceError.notice(for: error)) }
     }
 
     /// UI changes are published immediately; continuous slider motion does not

@@ -3,6 +3,7 @@ import SwiftUI
 /// One native button makes the chevron, title and header whitespace equally
 /// clickable, while keeping keyboard activation and the expanded state explicit.
 struct SettingsDisclosureStyle: DisclosureGroupStyle {
+    @Environment(\.dualDockLanguage) private var localize
     func makeBody(configuration: Configuration) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { configuration.isExpanded.toggle() } label: {
@@ -17,8 +18,8 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("高级设置")
-            .accessibilityValue(configuration.isExpanded ? "已展开" : "已收起")
+            .accessibilityLabel(localize("高级设置", "Advanced"))
+            .accessibilityValue(configuration.isExpanded ? localize("已展开", "Expanded") : localize("已收起", "Collapsed"))
             if configuration.isExpanded { configuration.content.padding(.bottom, 16) }
         }
     }
@@ -46,6 +47,7 @@ struct SettingsFormRow<Content: View>: View {
 }
 
 struct SettingsFormSlider: View {
+    @Environment(\.dualDockLanguage) private var localize
     let title: String
     var note: String? = nil
     @Binding var value: Double
@@ -70,7 +72,7 @@ struct SettingsFormSlider: View {
                     TextField(title, value: constrained, format: .number.precision(.fractionLength(0...1)))
                         .labelsHidden().multilineTextAlignment(.trailing).monospacedDigit()
                         .textFieldStyle(.roundedBorder).frame(width: 56).focused($editingValue)
-                        .accessibilityLabel("\(title)数值").onSubmit { onEditingChanged(false) }
+                        .accessibilityLabel(localize("\(title)数值", "\(title) value")).onSubmit { onEditingChanged(false) }
                     Text(unit).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 20, alignment: .leading)
                 }.frame(width: 81)
             }

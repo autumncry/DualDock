@@ -19,7 +19,7 @@ final class WindowPreviewCardView: NSView {
         thumbnailButton.target = self
         thumbnailButton.action = #selector(activatePreview)
         thumbnailButton.toolTip = title
-        thumbnailButton.setAccessibilityLabel("切换到 \(title)")
+        thumbnailButton.setAccessibilityLabel(L("切换到 \(title)", "Switch to \(title)"))
         addSubview(thumbnailButton)
 
         titleLabel.font = .systemFont(ofSize: 11)
@@ -29,8 +29,8 @@ final class WindowPreviewCardView: NSView {
 
         closeButton.target = self
         closeButton.action = #selector(closePreview)
-        closeButton.toolTip = "关闭窗口"
-        closeButton.setAccessibilityLabel("关闭窗口：\(title)")
+        closeButton.toolTip = L("关闭窗口", "Close Window")
+        closeButton.setAccessibilityLabel(L("关闭窗口：\(title)", "Close \(title)"))
         addSubview(closeButton)
         layout()
     }

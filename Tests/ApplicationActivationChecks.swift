@@ -51,7 +51,7 @@ struct ApplicationActivationChecks {
             restoreWindow: { restored.append($0.pid); return .raised }, fileExists: { _ in true },
             openApplication: { url, done in opened.append(url); done(nil, nil) })
         ApplicationActivationService(environment: environment).open(reference, at: URL(fileURLWithPath: path)) {
-            failures.append($0)
+            failures.append($0.text)
         }
         var checks = 0
         var errors = 0
@@ -82,7 +82,7 @@ struct ApplicationActivationChecks {
                 fileExists: { _ in fileExists },
                 openApplication: { url, done in opened.append(url); done(nil, nil) })
             ApplicationActivationService(environment: environment).open(app, at: URL(fileURLWithPath: app.path)) {
-                failures.append($0)
+                failures.append($0.text)
             }
         }
         route([browser, background])

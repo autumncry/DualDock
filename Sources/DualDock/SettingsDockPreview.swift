@@ -8,11 +8,11 @@ enum DockPreviewFocus: Equatable { case none, size, density, length, height }
 /// user's running applications, pins, groups or current Dock length.
 enum SettingsDockExample {
     static let apps: [AppReference] = [
-        .init(id: "com.apple.mail", name: "邮件", path: "/System/Applications/Mail.app"),
-        .init(id: "com.apple.iCal", name: "日历", path: "/System/Applications/Calendar.app"),
-        .init(id: "com.apple.Notes", name: "备忘录", path: "/System/Applications/Notes.app"),
+        .init(id: "com.apple.mail", name: "Mail", path: "/System/Applications/Mail.app"),
+        .init(id: "com.apple.iCal", name: "Calendar", path: "/System/Applications/Calendar.app"),
+        .init(id: "com.apple.Notes", name: "Notes", path: "/System/Applications/Notes.app"),
         .init(id: "com.apple.Safari", name: "Safari", path: "/Applications/Safari.app"),
-        .init(id: "com.apple.Music", name: "音乐", path: "/System/Applications/Music.app")
+        .init(id: "com.apple.Music", name: "Music", path: "/System/Applications/Music.app")
     ]
     static let entries = apps.map { DockEntry(name: $0.name, apps: [$0]) }
 
@@ -44,6 +44,7 @@ enum SettingsDockExample {
 }
 
 struct SettingsDockPreview: View {
+    @Environment(\.dualDockLanguage) private var localize
     @ObservedObject var store: AppStore
     let displayID: String?
     var focus: DockPreviewFocus = .none
@@ -64,8 +65,8 @@ struct SettingsDockPreview: View {
         VStack(alignment: .leading, spacing: 9) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("布局示例").font(.system(size: 12, weight: .medium))
-                    Text("示例图标，随设置变化")
+                    Text(localize("布局示例", "Sample Dock")).font(.system(size: 12, weight: .medium))
+                    Text(localize("示例图标，随设置变化", "Sample icons follow your settings"))
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(edgeTitle(edge)).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -78,7 +79,7 @@ struct SettingsDockPreview: View {
                         GeometryReader { proxy in
                             let layout = SettingsPreviewLayout(geometry: g, zoom: zoom, viewportSize: proxy.size)
                             if layout.maximumScrollOffset.x > 0 {
-                                Text(g.edge.isHorizontal ? "左右滚动查看示例" : "上下滚动查看示例")
+                                Text(g.edge.isHorizontal ? localize("左右滚动查看示例", "Scroll horizontally to see more") : localize("上下滚动查看示例", "Scroll vertically to see more"))
                                     .font(.system(size: 11)).foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity,
                                            alignment: g.edge == .top ? .bottom : .top)
@@ -87,14 +88,14 @@ struct SettingsDockPreview: View {
                         }.allowsHitTesting(false)
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("布局示例，\(edgeTitle(edge)) Dock，五个固定示例图标，不反映实际应用列表")
-                    .help("滚动查看完整示例；点击示例后也可使用方向键")
+                    .accessibilityLabel(localize("布局示例，\(edgeTitle(edge)) Dock，五个固定示例图标，不反映实际应用列表", "Sample Dock at the \(edgeTitle(edge).lowercased()) edge with five example icons"))
+                    .help(localize("滚动查看完整示例；点击示例后也可使用方向键", "Scroll to see the full example, or click it and use the arrow keys"))
             }
             .background(Color(nsColor: .underPageBackgroundColor).opacity(0.6))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
-            Text("用于说明大小、间距与位置，不代表当前打开的应用。")
+            Text(localize("用于说明大小、间距与位置，不代表当前打开的应用。", "Five example apps illustrate icon size, spacing, and position."))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
@@ -226,5 +227,5 @@ private final class SettingsPreviewCanvasView: NSView {
 }
 
 func edgeTitle(_ edge: DockEdge) -> String {
-    switch edge { case .bottom: return "底部"; case .left: return "左侧"; case .right: return "右侧"; case .top: return "顶部" }
+    switch edge { case .bottom: return L("底部", "Bottom"); case .left: return L("左侧", "Left"); case .right: return L("右侧", "Right"); case .top: return L("顶部", "Top") }
 }

@@ -17,7 +17,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1060, height: 760),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = "DualDock 设置"
+        window.title = L("DualDock 设置", "DualDock Settings")
         window.minSize = NSSize(width: 820, height: 580)
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
@@ -27,6 +27,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 1060, height: 760))
         super.init(window: window)
         window.delegate = self
+        NotificationCenter.default.addObserver(self, selector: #selector(updateLanguage),
+                                               name: .dualDockLanguageDidChange, object: nil)
     }
     required init?(coder: NSCoder) { nil }
 
@@ -46,7 +48,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         publishVisibility()
     }
 
+    @objc private func updateLanguage() {
+        window?.title = L("DualDock 设置", "DualDock Settings")
+        if editingMenu != nil { installEditingMenuIfNeeded() }
+    }
+
     func stop() {
+        NotificationCenter.default.removeObserver(self, name: .dualDockLanguageDidChange, object: nil)
         previousApplication = nil
         window?.close()
         if let editingMenu, NSApp.mainMenu === editingMenu { NSApp.mainMenu = nil }
@@ -75,23 +83,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let menu = NSMenu()
         let appItem = NSMenuItem(title: "DualDock", action: nil, keyEquivalent: "")
         let appMenu = NSMenu(title: "DualDock")
-        appMenu.addItem(withTitle: "设置…", action: #selector(requestSettings(_:)), keyEquivalent: ",").target = self
+        appMenu.addItem(withTitle: L("设置…", "Settings…"), action: #selector(requestSettings(_:)), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "退出 DualDock", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
+        appMenu.addItem(withTitle: L("退出 DualDock", "Quit DualDock"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
         appItem.submenu = appMenu
         menu.addItem(appItem)
-        let fileItem = NSMenuItem(title: "文件", action: nil, keyEquivalent: "")
-        let fileMenu = NSMenu(title: "文件")
-        fileMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let fileItem = NSMenuItem(title: L("文件", "File"), action: nil, keyEquivalent: "")
+        let fileMenu = NSMenu(title: L("文件", "File"))
+        fileMenu.addItem(withTitle: L("关闭窗口", "Close Window"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu
         menu.addItem(fileItem)
-        let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
-        let editMenu = NSMenu(title: "编辑")
-        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
-        let redo = editMenu.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        let editItem = NSMenuItem(title: L("编辑", "Edit"), action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: L("编辑", "Edit"))
+        editMenu.addItem(withTitle: L("撤销", "Undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: L("重做", "Redo"), action: Selector(("redo:")), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(.separator())
-        for (title, action, key) in [("剪切", "cut:", "x"), ("拷贝", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
+        for (title, action, key) in [(L("剪切", "Cut"), "cut:", "x"), (L("拷贝", "Copy"), "copy:", "c"), (L("粘贴", "Paste"), "paste:", "v"), (L("全选", "Select All"), "selectAll:", "a")] {
             editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
         editItem.submenu = editMenu

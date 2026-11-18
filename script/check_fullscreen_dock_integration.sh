@@ -11,7 +11,7 @@ xcrun swiftc -swift-version 5 -O -emit-module -emit-library -module-name DualDoc
 # only by appending the fixture extension in this temporary compilation unit.
 cat "$ROOT_DIR/Sources/DualDock/DisplayCoordinator.swift" "$ROOT_DIR/Tests/FullscreenDockIntegrationChecks.swift" > "$CHECK_DIR/CoordinatorWithChecks.swift"
 xcrun swiftc -swift-version 5 -O \
-  "$CHECK_DIR/CoordinatorWithChecks.swift" \
+  "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$CHECK_DIR/CoordinatorWithChecks.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowInteractionService.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionBackend.swift" \
   "$ROOT_DIR/Sources/DualDock/DockVisibilityController.swift" "$ROOT_DIR/Sources/DualDock/WindowObstructionService.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowPreviewCardView.swift" \

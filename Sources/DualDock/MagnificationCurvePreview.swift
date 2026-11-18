@@ -3,13 +3,14 @@ import DualDockCore
 
 /// Uses the same curve as DockGeometry; sample dots represent nearby icons.
 struct MagnificationCurvePreview: View {
+    @Environment(\.dualDockLanguage) private var localize
     let peak: Double
     let radius: Double
     let enabled: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(enabled ? "曲线预览" : "曲线预览 · 放大已关闭")
+            Text(enabled ? localize("曲线预览", "Magnification curve") : localize("曲线预览 · 放大已关闭", "Magnification curve · Off"))
                 .font(.system(size: 12)).foregroundStyle(.secondary)
             Canvas { context, size in
                 let curve = DockMagnificationCurve(radius: CGFloat(radius))
@@ -52,19 +53,19 @@ struct MagnificationCurvePreview: View {
             }
             .frame(height: 100)
             HStack {
-                Text("较远")
+                Text(localize("较远", "Farther"))
                 Spacer()
-                Text("指针位置")
+                Text(localize("指针位置", "Pointer"))
                 Spacer()
-                Text("较远")
+                Text(localize("较远", "Farther"))
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .opacity(enabled ? 1 : 0.5)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("放大曲线预览")
+        .accessibilityLabel(localize("放大曲线预览", "Magnification curve preview"))
         .accessibilityValue(enabled
-            ? String(format: "峰值 %.0f%%，联动范围左右各 %.1f 个图标", peak * 100, radius)
-            : "放大已关闭")
+            ? String(format: localize("峰值 %.0f%%，联动范围左右各 %.1f 个图标", "Peak %.0f%%, range %.1f icons on either side"), peak * 100, radius)
+            : localize("放大已关闭", "Magnification off"))
     }
 }

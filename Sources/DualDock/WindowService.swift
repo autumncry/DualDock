@@ -36,13 +36,13 @@ enum WindowCloseResult: Equatable {
     case unsupported
     case failed
 
-    var message: String? {
+    var notice: LocalizedNotice? {
         switch self {
         case .requested: return nil
-        case .notFound: return "无法准确识别这个窗口，它可能已关闭或发生变化。请重新悬停获取预览后再试。"
-        case .permissionRequired: return "请在 DualDock 的权限设置中允许辅助功能，再关闭窗口。"
-        case .unsupported: return "这个窗口没有可用的关闭按钮，请在原应用中关闭。"
-        case .failed: return "应用暂未接受关闭请求，请稍后重试或在原应用中关闭。"
+        case .notFound: return LocalizedNotice("无法准确识别这个窗口，它可能已关闭或发生变化。请重新悬停获取预览后再试。", "Couldn’t identify this window. Hover over the app to refresh its previews, then try again.")
+        case .permissionRequired: return LocalizedNotice("请在 DualDock 的权限设置中允许辅助功能，再关闭窗口。", "Allow Accessibility in DualDock’s Permissions settings to close a window.")
+        case .unsupported: return LocalizedNotice("这个窗口没有可用的关闭按钮，请在原应用中关闭。", "This window has no available Close button. Close it in its app.")
+        case .failed: return LocalizedNotice("应用暂未接受关闭请求，请稍后重试或在原应用中关闭。", "The app didn’t accept the close request. Try again or close the window in its app.")
         }
     }
 }

@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         coordinator = DisplayCoordinator(store: store)
         coordinator.showSettings = { [weak self] in self?.openSettings() }
         setupMenu()
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshMenuLanguage),
+                                               name: .dualDockLanguageDidChange, object: nil)
         if firstLaunch || store.message != nil || args.contains("--settings") { openSettings() }
         if let index = args.firstIndex(of: "--diagnostics"), index + 1 < args.count {
             let url = URL(fileURLWithPath: args[index + 1])
@@ -51,14 +53,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.image = StatusItemIcon.make()
         statusItem?.button?.toolTip = "DualDock"
+        refreshMenuLanguage()
+    }
+
+    @objc private func refreshMenuLanguage() {
         let menu = NSMenu()
-        menu.addAction("DualDock 设置…") { [weak self] in self?.openSettings() }
-        menu.addAction("添加应用…") { [weak self] in self?.store.addApplications() }
+        menu.addAction(L("DualDock 设置…", "DualDock Settings…")) { [weak self] in self?.openSettings() }
+        menu.addAction(L("添加应用…", "Add Applications…")) { [weak self] in self?.store.addApplications() }
         menu.addItem(.separator())
-        menu.addAction("恢复系统 Dock") { [weak self] in self?.store.restoreSystemDock() }
-        menu.addAction("重新检测显示器") { [weak self] in self?.coordinator.refreshDisplays() }
+        menu.addAction(L("恢复系统 Dock", "Restore System Dock")) { [weak self] in self?.store.restoreSystemDock() }
+        menu.addAction(L("重新检测显示器", "Detect Displays")) { [weak self] in self?.coordinator.refreshDisplays() }
         menu.addItem(.separator())
-        menu.addAction("退出 DualDock") { NSApp.terminate(nil) }
+        menu.addAction(L("退出 DualDock", "Quit DualDock")) { NSApp.terminate(nil) }
         statusItem?.menu = menu
     }
 
@@ -76,10 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do { try store?.systemDock.restore() }
         catch {
             let alert = NSAlert()
-            alert.messageText = "系统 Dock 尚未恢复"
+            alert.messageText = L("系统 Dock 尚未恢复", "The system Dock could not be restored")
             alert.informativeText = error.localizedDescription
-            alert.addButton(withTitle: "留在 DualDock")
-            alert.addButton(withTitle: "仍然退出，下次启动恢复")
+            alert.addButton(withTitle: L("留在 DualDock", "Keep DualDock Open"))
+            alert.addButton(withTitle: L("仍然退出，下次启动恢复", "Quit and Restore on Next Launch"))
             if alert.runModal() == .alertFirstButtonReturn { return .terminateCancel }
         }
         return .terminateNow
@@ -124,6 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "requestedIconSize": store.configuration.iconSize,
             "requestedDockWidth": store.configuration.dockWidth ?? 0,
             "autoAdjustWidth": store.configuration.autoAdjustWidth,
+            "displayLanguage": AppLanguage.current.rawValue,
+            "launchAtLogin": LaunchAtLoginService.Environment.system().status().rawValue,
             "adaptiveSizing": store.configuration.adaptiveSizing,
             "synchronizeSizes": store.configuration.synchronizeSizes,
             "nativeDock": ["iconSize": store.nativeDockMetrics.iconSize,

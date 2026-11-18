@@ -37,7 +37,7 @@ enum WindowInteractionResult: Equatable {
     /// The exact target cannot currently be resolved. Do not reopen a different
     /// window or leave an unrelated, persistent warning in Settings.
     case targetUnavailable
-    case failure(String)
+    case failure(LocalizedNotice)
 }
 
 enum DockWindowAction: Equatable, Sendable { case activate, restore, minimize }
@@ -93,7 +93,7 @@ final class WindowInteractionService {
             case .available(let available): items = available
             case .unavailable: return .targetUnavailable
             case .permissionDenied:
-                return .failure("暂时无法读取这个窗口，请稍后重试或检查辅助功能权限。")
+                return .failure(LocalizedNotice("暂时无法读取这个窗口，请稍后重试或检查辅助功能权限。", "Couldn’t read this window. Try again or check Accessibility permission."))
             }
             guard let fresh = items.first(where: { $0.id == item.id }) else {
                 return .targetUnavailable
@@ -181,8 +181,8 @@ final class WindowInteractionService {
             selected[key(app)] = item.id
             return .handled
         case .missing: return .targetUnavailable
-        case .unsupported: return .failure("这个窗口不支持最小化，请使用原应用的窗口控制。")
-        case .failed: return .failure("应用暂未接受窗口操作，请稍后重试。")
+        case .unsupported: return .failure(LocalizedNotice("这个窗口不支持最小化，请使用原应用的窗口控制。", "This window does not support minimizing. Use its app’s window controls."))
+        case .failed: return .failure(LocalizedNotice("应用暂未接受窗口操作，请稍后重试。", "The app didn’t accept the window action. Try again."))
         case .superseded: return .handled
         }
     }

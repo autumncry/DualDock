@@ -109,6 +109,41 @@ struct WindowMenuChecks {
         check(initial.items[3].title == "打开 Window Fixture", "existing application action missing")
         check(calls.isEmpty, "reading menu mutated a window")
 
+        // A test-only volatile domain takes precedence over the user's saved
+        // preference; restore it before dispatching actions from the original menu.
+        let defaults = UserDefaults.standard
+        let originalArguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+        let noticeDirectory = directory.appendingPathComponent("notice-fixture")
+        try FileManager.default.createDirectory(at: noticeDirectory, withIntermediateDirectories: true)
+        try Data("invalid config".utf8).write(to: noticeDirectory.appendingPathComponent("configuration.json"))
+        let noticeStore = AppStore(directory: noticeDirectory, runningAppsProvider: { [] },
+                                   permissionsProvider: { (false, false) })
+        noticeStore.stopBackgroundServices()
+        let configurationNotice = noticeStore.notice
+        check(configurationNotice != nil && noticeStore.message == configurationNotice?.chinese,
+              "configuration failure was not retained in Chinese")
+        var englishArguments = originalArguments
+        englishArguments[AppLanguage.preferenceKey] = AppLanguage.english.rawValue
+        defaults.setVolatileDomain(englishArguments, forName: UserDefaults.argumentDomain)
+        NotificationCenter.default.post(name: .dualDockLanguageDidChange, object: nil)
+        await Task.yield()
+        check(noticeStore.notice == configurationNotice && noticeStore.message == configurationNotice?.english && noticeStore.message != configurationNotice?.chinese,
+              "the same configuration failure did not switch to English")
+        if let englishMenu = await tile.prepareMenu?() {
+            check(englishMenu.items.prefix(2).map(\.title) == ["Window A", "Window B (Minimized)"],
+                  "language switch lost a window title or left the old minimized suffix")
+            check(englishMenu.items[3].title == "Open Window Fixture", "Dock menu retained the previous language")
+        } else { check(false, "English window menu could not be built") }
+        let namedGroup = DockEntry(name: "手动名称", apps: [app, otherApp], isGroup: true)
+        let groupTile = DockTile(entry: namedGroup, groupID: nil, store: store, size: 48)
+        check(groupTile.accessibilityLabel() == "App group 手动名称, 2 apps",
+              "English tile label rewrote the user's group name")
+        defaults.setVolatileDomain(originalArguments, forName: UserDefaults.argumentDomain)
+        NotificationCenter.default.post(name: .dualDockLanguageDidChange, object: nil)
+        await Task.yield()
+        check(noticeStore.notice == configurationNotice && noticeStore.message == configurationNotice?.chinese,
+              "the same configuration failure did not switch back to Chinese")
+
         let selectedB = initial.items[1]
         check(NSApp.sendAction(selectedB.action!, to: selectedB.target, from: selectedB), "menu action was not dispatched")
         await settle { calls.count == 1 }

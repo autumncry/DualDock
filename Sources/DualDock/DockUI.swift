@@ -298,13 +298,22 @@ final class DockStripView: NSView {
             document.addSubview(line); divider = line
         }
         if entries.isEmpty {
-            let label = NSTextField(labelWithString: isGroup ? "将应用拖到这里" : "拖入应用，开始整理")
+            let label = NSTextField(labelWithString: emptyMessage)
             label.textColor = .secondaryLabelColor
             label.font = .systemFont(ofSize: 11)
             label.alignment = .center
             document.addSubview(label); emptyLabel = label
         }
         return installBaseGeometry(preservingOffset: 0)
+    }
+
+    private var emptyMessage: String {
+        isGroup ? L("将应用拖到这里", "Drag apps here") : L("拖入应用，开始整理", "Drag apps here to organize them")
+    }
+
+    func refreshLanguage() {
+        emptyLabel?.stringValue = emptyMessage
+        tiles.forEach { $0.refreshBadge() }
     }
 
     /// Geometry-only update: keep existing tiles and the active resize gesture alive.
@@ -546,7 +555,7 @@ final class DockStripView: NSView {
         guard backdropFrame.contains(local), settingsAction != nil else { return }
         interactionChanged(true); defer { interactionChanged(false) }
         let menu = NSMenu()
-        menu.addAction("DualDock 设置…") { [weak self] in self?.settingsAction?() }
+        menu.addAction(L("DualDock 设置…", "DualDock Settings…")) { [weak self] in self?.settingsAction?() }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
 

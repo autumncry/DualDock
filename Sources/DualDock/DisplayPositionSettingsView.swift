@@ -2,6 +2,7 @@ import SwiftUI
 import DualDockCore
 
 struct DisplayPositionSettingsView: View {
+    @Environment(\.dualDockLanguage) private var localize
     @ObservedObject var store: AppStore
     @Binding var selectedDisplayID: String?
     let onConfigureSize: (String) -> Void
@@ -9,27 +10,27 @@ struct DisplayPositionSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             if store.displays.isEmpty {
-                SettingsGroup("等待显示器") {
-                    Label("连接显示器后，会在这里显示可用位置。", systemImage: "display")
+                SettingsGroup(localize("等待显示器", "Waiting for a display")) {
+                    Label(localize("连接显示器后，会在这里显示可用位置。", "Connect a display to choose its Dock position."), systemImage: "display")
                         .foregroundStyle(.secondary)
                 }
             }
             ForEach(store.displays) { display in
-                SettingsGroup(display.name + (display.isPrimary ? " · 主显示器" : "")) {
+                SettingsGroup(display.name + (display.isPrimary ? localize(" · 主显示器", " · Main display") : "")) {
                     HStack(alignment: .center, spacing: 24) {
                         positionDiagram(display).frame(width: 174, height: 112)
                         VStack(alignment: .leading, spacing: 13) {
                             Text("\(Int(display.frame.width.rounded())) × \(Int(display.frame.height.rounded())) pt")
                                 .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-                            Picker("Dock 位置", selection: positionBinding(display)) {
+                            Picker(localize("Dock 位置", "Dock position"), selection: positionBinding(display)) {
                                 ForEach([DockEdge.bottom, .left, .right, .top], id: \.self) { edge in Text(edgeTitle(edge)).tag(edge) }
                             }.pickerStyle(.segmented).labelsHidden().disabled(display.isMirrored)
-                                .accessibilityLabel("\(display.name) Dock 位置")
+                                .accessibilityLabel(localize("\(display.name) Dock 位置", "Dock position on \(display.name)"))
                             if display.isMirrored {
-                                Text("镜像屏幕跟随源屏幕的画面与位置。")
+                                Text(localize("镜像屏幕跟随源屏幕的画面与位置。", "This mirrored display uses the source display’s Dock position."))
                                     .font(.system(size: 12)).foregroundStyle(.secondary)
                             } else {
-                                Button(store.configuration.synchronizeSizes ? "调整所有屏幕尺寸" : "调整此屏幕尺寸") {
+                                Button(store.configuration.synchronizeSizes ? localize("调整所有屏幕尺寸", "Adjust Size for All Displays") : localize("调整此屏幕尺寸", "Adjust Size for This Display")) {
                                     selectedDisplayID = display.id
                                     onConfigureSize(display.id)
                                 }.controlSize(.small)
@@ -38,7 +39,7 @@ struct DisplayPositionSettingsView: View {
                     }
                 }
             }
-            Text("位置始终按屏幕分别保存。尺寸是否共享，可在“外观与尺寸”中选择。")
+            Text(localize("位置始终按屏幕分别保存。尺寸是否共享，可在“外观与尺寸”中选择。", "Position is saved per display. Size synchronization is available in Appearance & Size."))
                 .font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
@@ -68,8 +69,8 @@ struct DisplayPositionSettingsView: View {
                 .buttonStyle(.plain).disabled(display.isMirrored)
                 .offset(x: candidate == .left ? -72 : (candidate == .right ? 72 : 0),
                         y: candidate == .top ? -42 : (candidate == .bottom ? 42 : 0))
-                .accessibilityLabel("\(display.name)，放在\(edgeTitle(candidate))")
-                .accessibilityValue(candidate == edge ? "已选择" : "未选择")
+                .accessibilityLabel(localize("\(display.name)，放在\(edgeTitle(candidate))", "Place the Dock on \(display.name) at the \(edgeTitle(candidate).lowercased()) edge"))
+                .accessibilityValue(candidate == edge ? localize("已选择", "Selected") : localize("未选择", "Not selected"))
             }
         }
     }

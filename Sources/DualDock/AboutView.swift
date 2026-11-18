@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct AboutView: View {
+    @Environment(\.dualDockLanguage) private var localize
     private let projectURL = URL(string: "https://github.com/autumncry/DualDock")!
     private let releasesURL = URL(string: "https://github.com/autumncry/DualDock/releases/latest")!
     private let issuesURL = URL(string: "https://github.com/autumncry/DualDock/issues")!
@@ -17,34 +18,34 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("DualDock")
                         .font(.system(size: 25, weight: .semibold))
-                    Text("应用有序收纳，Dock 多屏同在。")
+                    Text(localize("应用有序收纳，Dock 多屏同在。", "Organized apps. A Dock on every display."))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("原生 macOS 多屏 Dock")
+                    Text(localize("原生 macOS 多屏 Dock", "A native multi-display Dock for macOS"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
             }
 
             VStack(spacing: 0) {
-                detailRow("版本") {
+                detailRow(localize("版本", "Version")) {
                     Text(versionDescription)
                         .textSelection(.enabled)
                 }
                 Divider()
-                detailRow("许可证") {
-                    Text("MIT 开源协议")
+                detailRow(localize("许可证", "License")) {
+                    Text(localize("MIT 开源协议", "MIT License"))
                 }
                 Divider()
-                detailRow("作者与版权") {
+                detailRow(localize("作者与版权", "Author and copyright")) {
                     Text("Copyright © 2026 Ronny Cao")
                         .textSelection(.enabled)
                 }
                 Divider()
-                detailRow("项目主页") {
+                detailRow(localize("项目主页", "Project website")) {
                     VStack(alignment: .leading, spacing: 4) {
                         Link(destination: projectURL) {
-                            Label("GitHub 项目主页", systemImage: "arrow.up.right.square")
+                            Label(localize("GitHub 项目主页", "GitHub repository"), systemImage: "arrow.up.right.square")
                         }
                         Text(projectURL.absoluteString)
                             .font(.system(size: 12))
@@ -54,15 +55,15 @@ struct AboutView: View {
                     }
                 }
                 Divider()
-                detailRow("版本与下载") {
+                detailRow(localize("版本与下载", "Releases")) {
                     Link(destination: releasesURL) {
-                        Label("查看发布版本", systemImage: "arrow.down.circle")
+                        Label(localize("查看发布版本", "View Releases"), systemImage: "arrow.down.circle")
                     }
                 }
                 Divider()
-                detailRow("问题反馈") {
+                detailRow(localize("问题反馈", "Feedback")) {
                     Link(destination: issuesURL) {
-                        Label("提交问题与建议", systemImage: "bubble.left")
+                        Label(localize("提交问题与建议", "Report an Issue"), systemImage: "bubble.left")
                     }
                 }
             }
@@ -73,13 +74,13 @@ struct AboutView: View {
             }
 
             HStack(alignment: .center, spacing: 16) {
-                Text("如果喜欢 DualDock，欢迎在 GitHub 点 Star 支持。")
+                Text(localize("如果喜欢 DualDock，欢迎在 GitHub 点 Star 支持。", "If you enjoy DualDock, give the project a star on GitHub."))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Link(destination: projectURL) {
-                    Label("去 GitHub 支持项目", systemImage: "star")
+                    Label(localize("去 GitHub 支持项目", "Star on GitHub"), systemImage: "star")
                 }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -106,9 +107,9 @@ struct AboutView: View {
     }
 
     private var versionDescription: String {
-        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return "开发版本" }
-        let versionText = "版本 " + version
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return localize("开发版本", "Development build") }
+        let versionText = localize("版本 ", "Version ") + version
         guard let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return versionText }
-        return versionText + " · 构建 " + build
+        return versionText + localize(" · 构建 ", " · Build ") + build
     }
 }

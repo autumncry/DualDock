@@ -281,7 +281,7 @@ final class WindowInteractionBackend {
                                                   applicationPath: process.path, windowID: id)
                 guard liveApplication(identity, expected: nil) != nil else { continue }
                 let title = rawTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-                result.append(.init(id: identity, title: title?.isEmpty == false ? title! : "未命名窗口", frame: frame,
+                result.append(.init(id: identity, title: title?.isEmpty == false ? title! : L("未命名窗口", "Untitled Window"), frame: frame,
                     isMinimized: minimized, isFullscreen: fullscreen,
                     isMaximized: displays.contains { DockVisibilityPolicy.isMaximizedWindow(frame, in: $0.workarea)
                         || DockVisibilityPolicy.isMaximizedWindow(frame, in: $0.frame) },

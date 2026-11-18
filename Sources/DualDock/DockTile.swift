@@ -148,9 +148,9 @@ final class DockTile: NSView, NSDraggingSource {
 
     func refreshBadge() {
         needsDisplay = true
-        let base = entry.isGroup ? "应用组 \(entry.name)，\(entry.apps.count) 个应用" : entry.name
+        let base = entry.isGroup ? L("应用组 \(entry.name)，\(entry.apps.count) 个应用", "App group \(entry.name), \(entry.apps.count) apps") : entry.name
         if let badge = store.badgeLabel(for: entry) {
-            setAccessibilityLabel(entry.isGroup ? "\(base)，有未读提醒" : "\(base)，消息角标 \(badge)")
+            setAccessibilityLabel(entry.isGroup ? L("\(base)，有未读提醒", "\(base), unread notifications") : L("\(base)，消息角标 \(badge)", "\(base), badge \(badge)"))
         } else {
             setAccessibilityLabel(base)
         }

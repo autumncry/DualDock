@@ -10,18 +10,24 @@ final class SystemDockService {
         case invalidJournal
         case synchronizationFailed
         case restartFailed(String)
-        case rollbackFailed(original: String, recovery: String)
+        case rollbackFailed(original: LocalizedNotice, recovery: LocalizedNotice)
 
-        var errorDescription: String? {
+        var errorDescription: String? { notice.text }
+
+        static func notice(for error: Error) -> LocalizedNotice {
+            (error as? Self)?.notice ?? .init(verbatim: error.localizedDescription)
+        }
+
+        private var notice: LocalizedNotice {
             switch self {
             case .invalidJournal:
-                return "系统 Dock 恢复记录无法读取。请保留记录文件，检查后再开启隐藏选项。"
+                return LocalizedNotice("系统 Dock 恢复记录无法读取。请保留记录文件，检查后再开启隐藏选项。", "Couldn’t read the system Dock recovery record. Check the saved file before hiding the Dock again.")
             case .synchronizationFailed:
-                return "无法保存系统 Dock 设置。恢复记录已保留，可稍后重试恢复。"
+                return LocalizedNotice("无法保存系统 Dock 设置。恢复记录已保留，可稍后重试恢复。", "Couldn’t save the system Dock settings. The recovery record is available so you can try restoring them again.")
             case .restartFailed(let detail):
-                return "系统 Dock 设置已保存，但无法重新加载 Dock：\(detail)"
+                return LocalizedNotice("系统 Dock 设置已保存，但无法重新加载 Dock：\(detail)", "Saved the system Dock settings, but couldn’t reload the Dock: \(detail)")
             case .rollbackFailed(let original, let recovery):
-                return "隐藏系统 Dock 失败：\(original)；自动恢复也失败：\(recovery)"
+                return LocalizedNotice("隐藏系统 Dock 失败：\(original.chinese)；自动恢复也失败：\(recovery.chinese)", "Couldn’t hide the system Dock: \(original.english). Automatic recovery also failed: \(recovery.english)")
             }
         }
     }
@@ -138,8 +144,8 @@ final class SystemDockService {
             do {
                 try restore()
             } catch {
-                throw ServiceError.rollbackFailed(original: originalError.localizedDescription,
-                                                  recovery: error.localizedDescription)
+                throw ServiceError.rollbackFailed(original: ServiceError.notice(for: originalError),
+                                                  recovery: ServiceError.notice(for: error))
             }
             throw originalError
         }
@@ -236,7 +242,7 @@ final class SystemDockService {
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
-                ?? "退出状态 \(process.terminationStatus)"
+                ?? L("退出状态 \(process.terminationStatus)", "Exit status \(process.terminationStatus)")
             throw ServiceError.restartFailed(message.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }

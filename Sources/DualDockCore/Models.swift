@@ -143,7 +143,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
         let insertionIndex = target.flatMap { id in entries.firstIndex { $0.id == id } } ?? entries.endIndex
         entries.insert(contentsOf: additions, at: insertionIndex)
     }
-    public mutating func merge(appID: String, into target: UUID) {
+    public mutating func merge(appID: String, into target: UUID, defaultGroupName: String = "应用组") {
         guard let targetEntry = entries.first(where: { $0.id == target }),
               !targetEntry.apps.contains(where: { $0.id == appID }),
               let app = entries.flatMap(\.apps).first(where: { $0.id == appID }) else { return }
@@ -154,7 +154,7 @@ public struct DockConfiguration: Codable, Equatable, Sendable {
             if entries[index].id == target {
                 if !entries[index].isGroup {
                     entries[index].isGroup = true
-                    entries[index].name = "应用组"
+                    entries[index].name = defaultGroupName
                 }
                 entries[index].apps.append(app)
             } else {

@@ -9,7 +9,24 @@ import ScreenCaptureKit
 /// owned fixtures behind current windows to capture native material accurately.
 @main struct RenderSettings {
     @MainActor private static var useWindowServer = false
+    @MainActor private static var captureCount = 0
+
     @MainActor static func main() throws {
+        // The standalone renderer uses its own defaults domain. Never use the
+        // installed app's preference domain, even when a capture fails.
+        precondition(Bundle.main.bundleIdentifier != "local.ronny.DualDock" &&
+                     ProcessInfo.processInfo.processName == "RenderSettings")
+        if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--expect-language" {
+            guard AppLanguage.current.rawValue == CommandLine.arguments[2] else { exit(1) }
+            return
+        }
+        let defaults = UserDefaults.standard
+        let savedLanguage = defaults.object(forKey: AppLanguage.preferenceKey)
+        defer {
+            if let savedLanguage { defaults.set(savedLanguage, forKey: AppLanguage.preferenceKey) }
+            else { defaults.removeObject(forKey: AppLanguage.preferenceKey) }
+        }
+        AppLanguage.set(.simplifiedChinese)
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         NSApp.finishLaunching()
@@ -92,6 +109,10 @@ import ScreenCaptureKit
             try capture(AnyView(SettingsView(store:store,initialSection:.appearance,displayID:"A")),
                         name:"appearance-many-apps-\(dark ? "dark" : "light")",size:NSSize(width:1060,height:760),dark:dark,output:output)
         }
+        store.update { $0.entries = config.entries; $0.customSizing = .visualDefault }
+        fixturePermissions = (accessibility:true,capture:true)
+        store.refreshPermissions()
+        try languageMatrix(store: store, login: login, output: output)
         store.stopBackgroundServices()
         let metadata: [String:Any] = [
             "captureMode":useWindowServer ? "window-server-owned-fixtures" : "hidden-view-cache",
@@ -101,14 +122,113 @@ import ScreenCaptureKit
                 ? "Native views captured in inactive fixture windows with an owned solid backdrop; no live user configuration or interactions are represented."
                 : "Native backdrop material is unavailable offscreen: sidebar selected-row fill is unreliable. Content rendering only; do not use to accept sidebar appearance.",
             "windows":"No activation requested. Window-server mode closes each owned fixture and its backdrop immediately after capture.",
-            "captureCount":28
+            "captureCount":captureCount
         ]
         try JSONSerialization.data(withJSONObject:metadata,options:[.prettyPrinted,.sortedKeys])
             .write(to:output.appendingPathComponent("capture-metadata.json"))
-        print("Rendered 28 native settings captures using isolated fixtures; mode: \(useWindowServer ? "window server" : "hidden view cache")")
+        print("Rendered \(captureCount) native settings captures using isolated fixtures; mode: \(useWindowServer ? "window server" : "hidden view cache")")
     }
 
-    @MainActor static func capture(_ view:AnyView,name:String,size:NSSize,dark:Bool,output:URL) throws {
+    @MainActor private static func languageMatrix(store: AppStore, login: LaunchAtLoginService, output: URL) throws {
+        // All three stages reuse the exact same SettingsView, hosting view and
+        // window. Only the production language preference changes between frames.
+        let transitions: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "live-general-zh"), (.english, "live-general-en"), (.simplifiedChinese, "live-general-zh-restored")
+        ]
+        try capture(AnyView(SettingsView(store: store, initialSection: .general, displayID: "A",
+            launchAtLoginService: login)), name: "live-general", size: NSSize(width: 1060, height: 760),
+            dark: false, output: output, transitions: transitions)
+
+        try verifyLiveSidebar(in: output, names: transitions.map { $0.1 })
+        AppLanguage.set(.english)
+        try verifyPreferenceAfterRelaunch(.english)
+        for dark in [false, true] {
+            let theme = dark ? "dark" : "light"
+            for section in SettingsSection.allCases {
+                try capture(AnyView(SettingsView(store: store, initialSection: section, displayID: "A",
+                    launchAtLoginService: login)), name: "en-\(section.rawValue)-\(theme)",
+                    size: NSSize(width: 1060, height: 760), dark: dark, output: output)
+            }
+            for section in [SettingsSection.general, .appearance] {
+                try capture(AnyView(SettingsView(store: store, initialSection: section, displayID: "A",
+                    launchAtLoginService: login)), name: "en-\(section.rawValue)-compact-\(theme)",
+                    size: NSSize(width: 820, height: 580), dark: dark, output: output)
+            }
+            try capture(AnyView(AppearanceSettingsView(store:store,selectedDisplayID:.constant("A"),advancedInitially:true)
+                .font(.system(size:13)).toggleStyle(.switch).controlSize(.regular).padding(26)
+                .environment(\.dualDockLanguage, .english).environment(\.locale, Locale(identifier:"en"))),
+                name:"en-appearance-advanced-\(theme)",size:NSSize(width:850,height:1260),dark:dark,output:output)
+        }
+
+        let firstRegistration = LaunchAtLoginService(environment: .init(status: { .notFound },
+            register: { throw NSError(domain: "LoginFixture", code: 42,
+                userInfo: [NSLocalizedDescriptionKey: "Registration could not be completed."]) },
+            unregister: {}, openSettings: {}))
+        firstRegistration.setEnabled(true)
+        try capture(AnyView(SettingsView(store: store, initialSection: .general, displayID: "A",
+            launchAtLoginService: firstRegistration)), name: "en-general-registration-failed",
+            size: NSSize(width: 820, height: 720), dark: false, output: output)
+        AppLanguage.set(.simplifiedChinese)
+        try verifyPreferenceAfterRelaunch(.simplifiedChinese)
+    }
+
+    private static func verifyLiveSidebar(in output: URL, names: [String]) throws {
+        // Compare only the category labels in the sidebar; this excludes the
+        // picker, content-specific state, window chrome, scroll and animations.
+        let windowSize = CGSize(width: 1060, height: 760)
+        let region = CGRect(x: 46, y: 76, width: 121, height: 260)
+        func grayscaleLabels(_ name: String) throws -> [UInt8] {
+            let url = output.appendingPathComponent(name + ".png")
+            guard let data = try? Data(contentsOf: url),
+                  let image = NSBitmapImageRep(data: data)?.cgImage,
+                  let crop = image.cropping(to: region.applying(
+                    CGAffineTransform(scaleX: CGFloat(image.width) / windowSize.width,
+                                      y: CGFloat(image.height) / windowSize.height))) else {
+                throw NSError(domain: "RenderSettings", code: 7,
+                              userInfo: [NSLocalizedDescriptionKey: "Cannot inspect live sidebar image"])
+            }
+            let width = Int(region.width), height = Int(region.height)
+            var bytes = [UInt8](repeating: 0, count: width * height)
+            try bytes.withUnsafeMutableBytes { buffer in
+                guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                    bitsPerComponent: 8, bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(),
+                    bitmapInfo: CGImageAlphaInfo.none.rawValue) else {
+                    throw NSError(domain: "RenderSettings", code: 8)
+                }
+                context.draw(crop, in: CGRect(origin: .zero, size: region.size))
+            }
+            return bytes
+        }
+        let zh = try grayscaleLabels(names[0])
+        let en = try grayscaleLabels(names[1])
+        let back = try grayscaleLabels(names[2])
+        func changedFraction(_ a: [UInt8], _ b: [UInt8]) -> Double {
+            Double(zip(a, b).filter { abs(Int($0) - Int($1)) > 32 }.count) / Double(a.count)
+        }
+        let switched = changedFraction(zh, en), restored = changedFraction(zh, back)
+        guard switched > 0.02 && restored < switched * 0.25 else {
+            throw NSError(domain: "RenderSettings", code: 9, userInfo: [
+                NSLocalizedDescriptionKey: "Live sidebar switch failed: changed=\(switched), restored=\(restored)"
+            ])
+        }
+        print("Same-window language change verified in sidebar text: changed=\(switched), restored=\(restored)")
+    }
+
+    @MainActor private static func verifyPreferenceAfterRelaunch(_ language: AppLanguage) throws {
+        UserDefaults.standard.synchronize()
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        child.arguments = ["--expect-language", language.rawValue]
+        try child.run()
+        child.waitUntilExit()
+        guard child.terminationStatus == 0 else {
+            throw NSError(domain: "RenderSettings", code: 6,
+                          userInfo: [NSLocalizedDescriptionKey: "Language preference did not survive a fresh process"])
+        }
+    }
+
+    @MainActor static func capture(_ view:AnyView,name:String,size:NSSize,dark:Bool,output:URL,
+                                   transitions: [(AppLanguage, String)]? = nil) throws {
         let appearance = NSAppearance(named:dark ? .darkAqua : .aqua)!
         NSApp.appearance = appearance
         var captureError: Error?
@@ -130,43 +250,48 @@ import ScreenCaptureKit
                 window.setContentSize(size)
                 hosting.frame = bounds
                 defer { window.close() }
-                RunLoop.main.run(until:Date(timeIntervalSinceNow:0.2))
-                hosting.layoutSubtreeIfNeeded()
-                window.displayIfNeeded()
-                hosting.display()
-                CATransaction.flush()
-                precondition(hosting.bounds.size == size, "Capture viewport changed")
-                if useWindowServer {
-                    let bitmap = try windowServerCapture(window:window,size:size,appearance:appearance)
+                let stages = transitions ?? [(AppLanguage.current, name)]
+                for (language, name) in stages {
+                    AppLanguage.set(language)
+                    captureCount += 1
+                    RunLoop.main.run(until:Date(timeIntervalSinceNow:0.2))
+                    hosting.layoutSubtreeIfNeeded()
+                    window.displayIfNeeded()
+                    hosting.display()
+                    CATransaction.flush()
+                    precondition(hosting.bounds.size == size, "Capture viewport changed")
+                    if useWindowServer {
+                        let bitmap = try windowServerCapture(window:window,size:size,appearance:appearance)
+                        guard let data = bitmap.representation(using:.png,properties:[:]) else { fatalError("No PNG") }
+                        try data.write(to:output.appendingPathComponent(name+".png"))
+                        print("\(name): \(Int(size.width))×\(Int(size.height)) pt, \(bitmap.pixelsWide)×\(bitmap.pixelsHigh) px (window server)")
+                        continue
+                    }
+                    guard let cached = hosting.bitmapImageRepForCachingDisplay(in:bounds) else { fatalError("No bitmap") }
+                    hosting.cacheDisplay(in:bounds,to:cached)
+
+                    // cacheDisplay captures the view's alpha, excluding the real
+                    // NSWindow background. Preserve native control alpha by drawing
+                    // the NSImage source-over the same resolved AppKit background.
+                    // NSBitmapImageRep.draw uses copy and would erase the background.
+                    let bitmap = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:cached.pixelsWide,
+                        pixelsHigh:cached.pixelsHigh,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,
+                        isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
+                    bitmap.size = size
+                    NSGraphicsContext.saveGraphicsState()
+                    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep:bitmap)
+                    NSColor.windowBackgroundColor.setFill()
+                    bounds.fill()
+                    let rendered = NSImage(size:size)
+                    rendered.addRepresentation(cached)
+                    rendered.draw(in:bounds,from:.zero,operation:.sourceOver,fraction:1)
+                    NSGraphicsContext.restoreGraphicsState()
+                    precondition(bitmap.colorAt(x:bitmap.pixelsWide-1,y:bitmap.pixelsHigh-1)?.alphaComponent == 1,
+                                 "Capture still has a transparent background")
                     guard let data = bitmap.representation(using:.png,properties:[:]) else { fatalError("No PNG") }
                     try data.write(to:output.appendingPathComponent(name+".png"))
-                    print("\(name): \(Int(size.width))×\(Int(size.height)) pt, \(bitmap.pixelsWide)×\(bitmap.pixelsHigh) px (window server)")
-                    return
+                    print("\(name): \(Int(size.width))×\(Int(size.height)) pt, \(bitmap.pixelsWide)×\(bitmap.pixelsHigh) px")
                 }
-                guard let cached = hosting.bitmapImageRepForCachingDisplay(in:bounds) else { fatalError("No bitmap") }
-                hosting.cacheDisplay(in:bounds,to:cached)
-
-                // cacheDisplay captures the view's alpha, excluding the real
-                // NSWindow background. Preserve native control alpha by drawing
-                // the NSImage source-over the same resolved AppKit background.
-                // NSBitmapImageRep.draw uses copy and would erase the background.
-                let bitmap = NSBitmapImageRep(bitmapDataPlanes:nil,pixelsWide:cached.pixelsWide,
-                    pixelsHigh:cached.pixelsHigh,bitsPerSample:8,samplesPerPixel:4,hasAlpha:true,
-                    isPlanar:false,colorSpaceName:.deviceRGB,bytesPerRow:0,bitsPerPixel:0)!
-                bitmap.size = size
-                NSGraphicsContext.saveGraphicsState()
-                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep:bitmap)
-                NSColor.windowBackgroundColor.setFill()
-                bounds.fill()
-                let rendered = NSImage(size:size)
-                rendered.addRepresentation(cached)
-                rendered.draw(in:bounds,from:.zero,operation:.sourceOver,fraction:1)
-                NSGraphicsContext.restoreGraphicsState()
-                precondition(bitmap.colorAt(x:bitmap.pixelsWide-1,y:bitmap.pixelsHigh-1)?.alphaComponent == 1,
-                             "Capture still has a transparent background")
-                guard let data = bitmap.representation(using:.png,properties:[:]) else { fatalError("No PNG") }
-                try data.write(to:output.appendingPathComponent(name+".png"))
-                print("\(name): \(Int(size.width))×\(Int(size.height)) pt, \(bitmap.pixelsWide)×\(bitmap.pixelsHigh) px")
             } catch { captureError = error }
         }
         if let captureError { throw captureError }

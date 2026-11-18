@@ -18,6 +18,9 @@ STAGED_APP="$STAGING_DIR/DualDock.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 cp "$BIN_DIR/DualDock" "$STAGED_APP/Contents/MacOS/DualDock"
 cp "$ROOT_DIR/Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
+for LANGUAGE_DIR in "$ROOT_DIR"/Resources/*.lproj; do
+  ditto "$LANGUAGE_DIR" "$STAGED_APP/Contents/Resources/$(basename "$LANGUAGE_DIR")"
+done
 cp "$ROOT_DIR/LICENSE" "$STAGED_APP/Contents/Resources/LICENSE.txt"
 if [ ! -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
   xcrun swift "$ROOT_DIR/script/make_icon.swift" "$ROOT_DIR/Resources" >&2

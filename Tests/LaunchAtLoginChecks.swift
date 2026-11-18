@@ -104,7 +104,23 @@ struct LaunchAtLoginChecks {
         check(service.isEnabled && service.errorMessage != nil,
               "Successful unregister call with still-enabled status was reported as disabled")
 
-        for unavailable in [LaunchAtLoginService.Status.notFound, .unknown] {
+        // Background Task Management can return notFound for a fresh main-app
+        // login item even when the installed application can register successfully.
+        systemState = .notFound; service.refresh()
+        let beforeFirstRegistration = registers
+        check(service.canChangeRegistration, "Fresh login item disabled the first registration")
+        registerResult = .enabled
+        service.setEnabled(true)
+        check(registers == beforeFirstRegistration + 1 && service.isEnabled, "Cannot register from notFound")
+        unregisterResult = .notFound
+        service.setEnabled(false)
+        check(!service.isEnabled && service.errorMessage == nil, "Removed record was treated as an unregister failure")
+        registerFails = true
+        service.setEnabled(true)
+        check(!service.isEnabled && service.errorMessage != nil && service.canChangeRegistration, "Failed first request cannot be retried")
+        registerFails = false
+
+        for unavailable in [LaunchAtLoginService.Status.unknown] {
             systemState = unavailable; service.refresh()
             let before = (registers, unregisters)
             check(!service.canChangeRegistration && !service.isEnabled, "Unavailable system service stayed editable")

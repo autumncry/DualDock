@@ -84,7 +84,7 @@ Three primary controls cover everyday changes:
 - **Icon spacing:** continuously adjust 0–100. Zero places neighboring visible artwork bounds together; 100 leaves about one visible icon width between them. Original artwork size and shape are preserved.
 - **Length:** fit the content, fill the available edge, or use a fixed screen percentage.
 
-Advanced settings expose padding, minimum height, fixed length percentage, alignment, and optional icon shrinking before scrolling. The entire header toggles the section. Percentage spacing is retained when space runs out; icons shrink if enabled, then overflow scrolls without a visible scrollbar. The layout example uses five fixed sample icons that respond to sizing and position, independently of the running-app list.
+Advanced settings expose padding, Dock Height, fixed length percentage, alignment, and optional icon shrinking before scrolling. The entire header toggles the section. Percentage spacing is retained when space runs out; icons shrink if enabled, then overflow scrolls without a visible scrollbar. The layout example uses five fixed sample icons that respond to sizing and position, independently of the running-app list.
 
 Upgrades preserve existing dimensions and appearance. Editing the new spacing slider opts that profile into visible-artwork spacing. Reset restores recommended dimensions for the selected scope.
 
@@ -115,9 +115,11 @@ The Dock stays available while you use a group, preview, context menu, or drag o
 
 Settings use a category sidebar with configuration on the right: **General, Appearance & Size, Displays & Position, Interaction, Permissions, Help, and About**. The window can be resized and minimized. About includes the version, MIT license, and project links. The app interface remains in Simplified Chinese.
 
+To switch the app to English, open **通用 (General) → 显示语言 (Display Language)** and select **English**. The change takes effect immediately and is remembered at the next launch.
+
 Enable **Launch at Login** in General to start DualDock after signing into macOS. The control reflects system registration and provides an approval link when required. Opening Settings does not register the app automatically.
 
-<img src="docs/images/dualdock-settings.png" width="1000" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
+<img src="docs/images/dualdock-settings-en.png" width="1000" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
 
 <sub>Native settings capture using an isolated example configuration.</sub>
 

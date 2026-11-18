@@ -15,7 +15,7 @@ xcrun swiftc -swift-version 5 -Onone \
     -o "$CHECK_DIR/libDualDockCore.dylib"
 
 xcrun swiftc -swift-version 5 -Onone \
-    "$ROOT_DIR/Sources/DualDock/SystemDockService.swift" \
+    "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$ROOT_DIR/Sources/DualDock/SystemDockService.swift" \
     "$ROOT_DIR/Tests/SystemDockChecks.swift" \
     -I "$CHECK_DIR" -L "$CHECK_DIR" -lDualDockCore \
     -Xlinker -rpath -Xlinker "$CHECK_DIR" \

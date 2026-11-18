@@ -217,7 +217,7 @@ final class ApplicationActivationService {
         pendingRecovery = nil
     }
 
-    func open(_ app: AppReference, at url: URL, onFailure: @escaping (String) -> Void) {
+    func open(_ app: AppReference, at url: URL, onFailure: @escaping (LocalizedNotice) -> Void) {
         cancelPendingRecovery()
         let canonicalURL = url.standardizedFileURL.resolvingSymlinksInPath()
         // Ordinary apps need their native reopen event, including when every
@@ -235,17 +235,17 @@ final class ApplicationActivationService {
         let regular = matches.filter(\.regular)
         if !regular.isEmpty {
             guard let process = Self.processTarget(candidates: regular, windowOrder: environment.windowOrder()) else {
-                onFailure("\(app.name) 有多个运行实例，暂时无法准确确定目标窗口。请从窗口预览中选择。")
+                onFailure(LocalizedNotice("\(app.name) 有多个运行实例，暂时无法准确确定目标窗口。请从窗口预览中选择。", "Multiple instances of \(app.name) are running. Choose the window from its preview."))
                 return
             }
             let activated = environment.activate(process)
             let restored = environment.restoreWindow(process)
             if !activated && restored != .raised {
-                onFailure("无法切换到 \(app.name) 的现有窗口，请稍后重试。")
+                onFailure(LocalizedNotice("无法切换到 \(app.name) 的现有窗口，请稍后重试。", "Couldn’t switch to an open window in \(app.name). Try again."))
             }
             return
         }
-        onFailure("\(app.name) 没有可切换的运行窗口，请先从所属应用中打开。")
+        onFailure(LocalizedNotice("\(app.name) 没有可切换的运行窗口，请先从所属应用中打开。", "\(app.name) has no available windows. Open a window from its parent app."))
     }
 
     nonisolated static func processTarget(candidates: [Process], windowOrder: [pid_t]) -> Process? {
@@ -287,15 +287,15 @@ final class ApplicationActivationService {
         url.deletingLastPathComponent().pathComponents.contains { $0.lowercased().hasSuffix(".app") }
     }
 
-    private func openBundle(_ app: AppReference, at url: URL, onFailure: @escaping (String) -> Void) {
+    private func openBundle(_ app: AppReference, at url: URL, onFailure: @escaping (LocalizedNotice) -> Void) {
         guard environment.fileExists(url) else {
-            onFailure("找不到 \(app.name)，请重新添加该应用。")
+            onFailure(LocalizedNotice("找不到 \(app.name)，请重新添加该应用。", "Couldn’t find \(app.name). Add the app again."))
             return
         }
         let request = generation
         let expectedPath = url.standardizedFileURL.resolvingSymlinksInPath().path
         environment.openApplication(url) { [weak self] process, error in
-            if let error { onFailure("无法打开 \(app.name)：\(error)") }
+            if let error { onFailure(LocalizedNotice("无法打开 \(app.name)：\(error)", "Couldn’t open \(app.name): \(error)")) }
             guard error == nil, let self, self.generation == request,
                   let process, process.regular, !process.terminated,
                   process.bundlePath == expectedPath,

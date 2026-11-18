@@ -10,7 +10,7 @@ xcrun swiftc -swift-version 5 -O -emit-module -emit-library -module-name DualDoc
   -module-cache-path "$CHECK_DIR/module-cache" -o "$CHECK_DIR/libDualDockCore.dylib"
 
 xcrun swiftc -swift-version 5 -O \
-  "$ROOT_DIR/Sources/DualDock/DockUI.swift" "$ROOT_DIR/Sources/DualDock/DockTile.swift" \
+  "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$ROOT_DIR/Sources/DualDock/DockUI.swift" "$ROOT_DIR/Sources/DualDock/DockTile.swift" \
   "$ROOT_DIR/Sources/DualDock/DockResizeCursor.swift" \
   "$ROOT_DIR/Sources/DualDock/DockDisplayInfo.swift" "$ROOT_DIR/Sources/DualDock/DockPresentation.swift" \
   "$ROOT_DIR/Sources/DualDock/NativeDockMetricsService.swift" \

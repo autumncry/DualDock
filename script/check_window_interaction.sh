@@ -8,7 +8,7 @@ xcrun swiftc -swift-version 5 -O -emit-module -emit-library -module-name DualDoc
   -emit-module-path "$CHECK_DIR/DualDockCore.swiftmodule" \
   -module-cache-path "$CHECK_DIR/module-cache" -o "$CHECK_DIR/libDualDockCore.dylib"
 xcrun swiftc -swift-version 5 -O \
-  "$ROOT_DIR/Sources/DualDock/WindowInteractionService.swift" \
+  "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionService.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowInteractionBackend.swift" \
   "$ROOT_DIR/Sources/DualDock/ApplicationActivationService.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowService.swift" \

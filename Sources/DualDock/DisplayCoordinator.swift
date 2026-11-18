@@ -79,6 +79,13 @@ final class DisplayCoordinator {
         store.$resizeRevision.dropFirst().sink { [weak self] _ in
             self?.scheduleGeometryRefresh()
         }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: .dualDockLanguageDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, !self.stopped else { return }
+                self.dismissPopups()
+                self.docks.values.forEach { $0.strip.refreshLanguage() }
+            }.store(in: &subscriptions)
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.dismissPopups(); self?.refreshDisplays() }
         }
@@ -324,7 +331,7 @@ final class DisplayCoordinator {
             self?.handleDrop(info, target: nil, groupID: tile.entry.id, merge: true, after: true) ?? false
         }
         let panel = DockPanel()
-        panel.title = "应用组 · \(tile.entry.name)"
+        panel.title = L("应用组 · \(tile.entry.name)", "App Group · \(tile.entry.name)")
         panel.setFullscreenOverlay(visibilitySnapshot.fullscreen.contains(Self.id(screen)))
         panel.level = .popUpMenu
         panel.contentView = strip
@@ -394,7 +401,7 @@ final class DisplayCoordinator {
             return
         }
         let panel = DockPanel()
-        panel.title = "窗口预览 · \(app.name)"
+        panel.title = L("窗口预览 · \(app.name)", "Window Previews · \(app.name)")
         panel.setFullscreenOverlay(visibilitySnapshot.fullscreen.contains(Self.id(screen)))
         panel.level = .popUpMenu
         let background = NSVisualEffectView()
@@ -453,12 +460,12 @@ final class DisplayCoordinator {
         dismissPopups()
         let result = store.windows.close(item, for: app)
         store.refreshPermissions()
-        guard let message = result.message else { return }
-        store.message = message
+        guard let notice = result.notice else { return }
+        store.notice = notice
         let alert = NSAlert()
-        alert.messageText = "无法关闭这个窗口"
-        alert.informativeText = message
-        alert.addButton(withTitle: "好")
+        alert.messageText = L("无法关闭这个窗口", "Couldn’t Close Window")
+        alert.informativeText = notice.text
+        alert.addButton(withTitle: L("好", "OK"))
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }
@@ -595,13 +602,13 @@ final class DisplayCoordinator {
                     memberBefore = index + 1 < members.count ? members[index + 1].id : nil
                 }
                 for app in apps {
-                    config.merge(appID: app.id, into: groupID)
+                    config.merge(appID: app.id, into: groupID, defaultGroupName: L("应用组", "App Group"))
                     config.moveMember(id: app.id, before: memberBefore, groupID: groupID)
                 }
             } else if merge, let target {
                 if !config.entries.contains(where: { $0.id == target.id }), let targetApp = target.apps.first { config.insert([targetApp]) }
                 let targetID = config.entries.first { $0.id == target.id || (!target.isGroup && $0.apps.first?.id == target.apps.first?.id) }?.id
-                if let targetID { for app in apps { config.merge(appID: app.id, into: targetID) } }
+                if let targetID { for app in apps { config.merge(appID: app.id, into: targetID, defaultGroupName: L("应用组", "App Group")) } }
             } else {
                 for app in apps {
                     config.moveAppOut(appID: app.id, before: before)
@@ -636,7 +643,7 @@ final class DisplayCoordinator {
         switch result {
         case .handled, .targetUnavailable: break
         case .fallbackToApplication: applicationActions.launch(app)
-        case .failure(let message): store.message = message
+        case .failure(let notice): store.notice = notice
         }
     }
 
@@ -649,19 +656,19 @@ final class DisplayCoordinator {
         menuTrackingObserver = observer
         menu.delegate = observer
         if tile.entry.isGroup {
-            menu.addAction("重命名应用组…") { [weak self] in self?.rename(tile.entry) }
-            menu.addAction("展开为独立应用") { [weak self] in self?.store.update { $0.ungroup(id: tile.entry.id) } }
-            menu.addAction("打开组内全部应用") { [weak self] in
+            menu.addAction(L("重命名应用组…", "Rename Group…")) { [weak self] in self?.rename(tile.entry) }
+            menu.addAction(L("展开为独立应用", "Ungroup Apps")) { [weak self] in self?.store.update { $0.ungroup(id: tile.entry.id) } }
+            menu.addAction(L("打开组内全部应用", "Open All Apps in Group")) { [weak self] in
                 guard let self else { return }
                 self.beginWindowIntent(replacingQueuedActions: true)
                 tile.entry.apps.forEach { self.applicationActions.launch($0) }
             }
             menu.addItem(.separator())
-            menu.addAction("移除应用组") { [weak self] in self?.store.update { $0.removeEntry(id: tile.entry.id) } }
+            menu.addAction(L("移除应用组", "Remove Group")) { [weak self] in self?.store.update { $0.removeEntry(id: tile.entry.id) } }
         } else if let app = tile.entry.apps.first {
             if let windows, !windows.items.isEmpty {
                 for item in windows.items {
-                    let title = item.title + (item.isMinimized ? "（已最小化）" : "")
+                    let title = item.title + (item.isMinimized ? L("（已最小化）", " (Minimized)") : "")
                     menu.addAction(title) { [weak self] in
                         guard let self else { return }
                         self.dismissPopups()
@@ -678,22 +685,22 @@ final class DisplayCoordinator {
                 }
                 menu.addItem(.separator())
             }
-            menu.addAction("打开 \(app.name)") { [weak self] in
+            menu.addAction(L("打开 \(app.name)", "Open \(app.name)")) { [weak self] in
                 guard let self else { return }
                 self.beginWindowIntent(replacingQueuedActions: true)
                 self.applicationActions.launch(app)
             }
             if store.configuration.allAppIDs.contains(app.id) {
-                if tile.groupID != nil { menu.addAction("移出应用组") { [weak self] in self?.store.update { $0.moveAppOut(appID: app.id) } } }
-                menu.addAction("从 Dock 移除") { [weak self] in self?.store.update { $0.removeApp(id: app.id) } }
-            } else { menu.addAction("固定到 Dock") { [weak self] in self?.store.update { $0.insert([app]) } } }
-            menu.addAction("在 Finder 中显示") { [weak self] in
+                if tile.groupID != nil { menu.addAction(L("移出应用组", "Move Out of Group")) { [weak self] in self?.store.update { $0.moveAppOut(appID: app.id) } } }
+                menu.addAction(L("从 Dock 移除", "Remove from Dock")) { [weak self] in self?.store.update { $0.removeApp(id: app.id) } }
+            } else { menu.addAction(L("固定到 Dock", "Keep in Dock")) { [weak self] in self?.store.update { $0.insert([app]) } } }
+            menu.addAction(L("在 Finder 中显示", "Show in Finder")) { [weak self] in
                 self?.beginWindowIntent(replacingQueuedActions: true)
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)])
             }
             if store.isRunning(app) {
                 menu.addItem(.separator())
-                menu.addAction("退出 \(app.name)") { [weak self] in
+                menu.addAction(L("退出 \(app.name)", "Quit \(app.name)")) { [weak self] in
                     self?.beginWindowIntent(replacingQueuedActions: true)
                     self?.store.quit(app)
                 }
@@ -705,12 +712,12 @@ final class DisplayCoordinator {
     private func rename(_ entry: DockEntry) {
         dismissPopups()
         let alert = NSAlert()
-        alert.messageText = "应用组名称"
+        alert.messageText = L("应用组名称", "Group Name")
         let field = NSTextField(string: entry.name)
         field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
         alert.accessoryView = field
-        alert.addButton(withTitle: "保存")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L("保存", "Save"))
+        alert.addButton(withTitle: L("取消", "Cancel"))
         NSApp.activate(ignoringOtherApps: true)
         alert.window.initialFirstResponder = field
         if alert.runModal() == .alertFirstButtonReturn { store.update { $0.renameGroup(id: entry.id, name: field.stringValue) } }

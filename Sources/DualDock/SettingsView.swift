@@ -1,9 +1,27 @@
 import SwiftUI
 import DualDockCore
 
+private struct DualDockLanguageKey: EnvironmentKey {
+    static var defaultValue: AppLanguage { .current }
+}
+
+extension EnvironmentValues {
+    var dualDockLanguage: AppLanguage {
+        get { self[DualDockLanguageKey.self] }
+        set { self[DualDockLanguageKey.self] = newValue }
+    }
+}
+
+extension AppLanguage {
+    func callAsFunction(_ chinese: String, _ english: String) -> String {
+        self == .english ? english : chinese
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var store: AppStore
     private let launchAtLoginService: LaunchAtLoginService?
+    @State private var language = AppLanguage.current
     @State private var selection: SettingsSection? = .general
     @State private var selectedDisplayID: String?
     @FocusState private var focusedSection: SettingsSection?
@@ -33,7 +51,7 @@ struct SettingsView: View {
                                 Image(systemName: section.symbol)
                                     .font(.system(size: 14, weight: .regular))
                                     .frame(width: 18, height: 18).accessibilityHidden(true)
-                                Text(section.title).font(.system(size: 13, weight: selected == section ? .medium : .regular))
+                                Text(section.sidebarTitle).font(.system(size: 13, weight: selected == section ? .medium : .regular))
                                     .lineLimit(1)
                                 Spacer(minLength: 0)
                             }
@@ -45,11 +63,11 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .focused($focusedSection, equals: section)
+                        .accessibilityLabel(section.title)
                         .accessibilityAddTraits(selected == section ? .isSelected : [])
                     }
                 }
                 .padding(.horizontal, 10)
-                .accessibilityLabel("设置分类")
                 .onMoveCommand { direction in
                     guard direction == .up || direction == .down,
                           let index = SettingsSection.allCases.firstIndex(of: focusedSection ?? selected) else { return }
@@ -58,7 +76,7 @@ struct SettingsView: View {
                     focusedSection = SettingsSection.allCases[next]
                 }
                 Spacer(minLength: 20)
-                Text("改动即时生效")
+                Text(language("改动即时生效", "Applied instantly"))
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .padding(.horizontal, 20).padding(.vertical, 17)
             }
@@ -85,7 +103,7 @@ struct SettingsView: View {
                                 Text(message).textSelection(.enabled)
                                 Spacer(minLength: 0)
                                 Button { store.message = nil } label: { Image(systemName: "xmark") }
-                                    .buttonStyle(.plain).help("关闭提示").accessibilityLabel("关闭提示")
+                                    .buttonStyle(.plain).help(L("关闭提示", "Dismiss message")).accessibilityLabel(L("关闭提示", "Dismiss message"))
                             }
                             .padding(14)
                             .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
@@ -98,6 +116,11 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .controlBackgroundColor))
+        }
+        .environment(\.dualDockLanguage, language)
+        .environment(\.locale, Locale(identifier: language.rawValue))
+        .onReceive(NotificationCenter.default.publisher(for: .dualDockLanguageDidChange)) { _ in
+            language = AppLanguage.current
         }
         .font(.system(size: 13))
         .toggleStyle(.switch)
