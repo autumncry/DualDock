@@ -1,5 +1,29 @@
 import SwiftUI
 
+/// One native button makes the chevron, title and header whitespace equally
+/// clickable, while keeping keyboard activation and the expanded state explicit.
+struct SettingsDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { configuration.isExpanded.toggle() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary).frame(width: 12)
+                        .accessibilityHidden(true)
+                    configuration.label
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("高级设置")
+            .accessibilityValue(configuration.isExpanded ? "已展开" : "已收起")
+            if configuration.isExpanded { configuration.content.padding(.bottom, 16) }
+        }
+    }
+}
+
 /// Shared three-column rhythm: labels, controls, then numeric values.
 struct SettingsFormRow<Content: View>: View {
     let title: String

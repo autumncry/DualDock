@@ -32,9 +32,9 @@ struct AppearanceSettingsView: View {
                 Spacer(minLength: 8)
                 if !adaptive {
                     HStack(spacing: 7) {
-                        preset("小巧", size: 36, density: 0.3)
-                        preset("标准", size: 48, density: 0.5)
-                        preset("舒展", size: 60, density: 0.7)
+                        preset("小巧", size: 36, spacing: 10)
+                        preset("标准", size: 48, spacing: 20)
+                        preset("舒展", size: 60, spacing: 40)
                     }
                 }
             }.controlSize(.small)
@@ -76,20 +76,11 @@ struct AppearanceSettingsView: View {
                 supportingText("受屏幕空间限制，实际图标为 \(dockPoints(presentation.style.iconSize))。")
             }
             Divider()
-            SettingsFormSlider(title: "疏密", note: "紧凑 → 宽松", value: Binding(get: { preferences.density * 100 }, set: { value in
-                store.updateCustomSizing(for: selectedDisplayID) { $0.density = value / 100 }
-            }), range: 0...100, unit: "%", onEditingChanged: finishEditing,
+            SettingsFormSlider(title: "图标间距", note: "贴合 → 一个图标宽", value: Binding(
+                get: { store.spacingPercent(for: selectedDisplayID) },
+                set: { store.setSpacingPercent($0, for: selectedDisplayID) }),
+                range: 0...100, unit: "%", onEditingChanged: finishEditing,
                 onFocus: { focus = $0 ? .density : .none })
-                .disabled(preferences.gapOverride != nil && preferences.paddingOverride != nil)
-            if preferences.gapOverride != nil && preferences.paddingOverride != nil {
-                HStack {
-                    Text("间距与留白已自定").font(.system(size: 11)).foregroundStyle(.secondary)
-                    Button("恢复联动") {
-                        store.updateCustomSizing(for: selectedDisplayID) { $0.gapOverride = nil; $0.paddingOverride = nil }
-                    }.controlSize(.small).help("将间距与两端留白恢复为自动计算")
-                    Spacer()
-                }.padding(.leading, 128).padding(.bottom, 10)
-            }
             Divider()
             SettingsFormRow("长度", note: lengthDescription) {
                 Picker("长度", selection: Binding(get: { preferences.lengthMode }, set: { value in
@@ -110,11 +101,8 @@ struct AppearanceSettingsView: View {
     private var advancedControls: some View {
         DisclosureGroup(isExpanded: $advanced) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("手动值优先；恢复自动后，参数重新跟随大小与疏密。")
+                Text("精细调整留白与高度；图标间距在上方统一设置。")
                     .font(.system(size: 12)).foregroundStyle(.secondary).padding(.bottom, 12)
-                overrideControl("图标间距", field: .gap, keyPath: \.gapOverride,
-                    actual: presentation.style.gap, range: 0...max(40, preferences.gapOverride ?? 0), focus: .density)
-                Divider()
                 overrideControl("两端留白", field: .padding, keyPath: \.paddingOverride,
                     actual: presentation.style.leadingPadding, range: 2...max(60, preferences.paddingOverride ?? 0), focus: .density)
                 Divider()
@@ -142,24 +130,27 @@ struct AppearanceSettingsView: View {
                 SettingsFormRow("内容较少时") {
                     Picker("内容较少时", selection: binding(\.alignment)) {
                         Text("居中").tag(DockContentAlignment.center)
-                        Text("均分").tag(DockContentAlignment.distribute)
+                        if preferences.spacingPercent == nil { Text("均分").tag(DockContentAlignment.distribute) }
                         Text("靠起点").tag(DockContentAlignment.start)
                     }.labelsHidden().pickerStyle(.segmented).frame(maxWidth: 330, alignment: .leading)
                 }
                 Divider()
                 Toggle("放不下时先缩小图标", isOn: binding(\.shrinkBeforeScroll)).padding(.vertical, 12)
-                Text("优先收紧间距；仍然放不下时可沿 Dock 滚动，不显示滚动条。")
+                Text(preferences.spacingPercent == nil
+                    ? "优先收紧间距；仍然放不下时可沿 Dock 滚动。"
+                    : "保持间距比例，按需缩小图标；仍放不下时可沿 Dock 滚动。")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }.padding(.top, 16)
         } label: {
             HStack {
                 Text("高级设置").font(.system(size: 13, weight: .medium))
                 Spacer()
-                Text(overrideCount > 0 ? "\(overrideCount) 项自定" : "间距、留白与高度")
+                Text(overrideCount > 0 ? "\(overrideCount) 项自定" : "留白、高度与溢出")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 13)
+        .disclosureGroupStyle(SettingsDisclosureStyle())
+        .padding(.horizontal, 16)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.35), in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
     }
@@ -177,12 +168,15 @@ struct AppearanceSettingsView: View {
         Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 128).padding(.bottom, 10)
     }
-    private func preset(_ title: String, size: Double, density: Double) -> some View {
+    private func preset(_ title: String, size: Double, spacing: Double) -> some View {
         Button(title) {
-            store.updateCustomSizing(for: selectedDisplayID) { $0.iconSize = size; $0.density = density }
+            store.updateCustomSizing(for: selectedDisplayID) {
+                $0.iconSize = size; $0.spacingPercent = spacing; $0.gapOverride = nil
+                if $0.alignment == .distribute { $0.alignment = .center }
+            }
         }
-        .tint(abs(preferences.iconSize - size) < 0.01 && abs(preferences.density - density) < 0.01 ? Color.accentColor : nil)
-        .help("\(title)：图标 \(Int(size)) pt，高级自定值保持不变")
+        .tint(abs(preferences.iconSize - size) < 0.01 && abs((preferences.spacingPercent ?? -1) - spacing) < 0.01 ? Color.accentColor : nil)
+        .help("\(title)：图标 \(Int(size)) pt，留白与高度自定值保持不变")
     }
     private func overrideControl(_ title: String, field: DockSizingOverride,
                                  keyPath: WritableKeyPath<DockCustomSizing, Double?>,
@@ -205,7 +199,7 @@ struct AppearanceSettingsView: View {
         })
     }
     private var overrideCount: Int {
-        [preferences.gapOverride, preferences.paddingOverride, preferences.minimumHeightOverride].compactMap { $0 }.count
+        [preferences.paddingOverride, preferences.minimumHeightOverride].compactMap { $0 }.count
             + (preferences.lengthMode == .fixed ? 1 : 0)
     }
     private var lengthDescription: String {

@@ -26,7 +26,7 @@ import ScreenCaptureKit
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var config = DockConfiguration()
         config.hideSystemDock = false; config.showBadges = false; config.showPreviews = false
-        config.customSizing = DockCustomSizing()
+        config.customSizing = .visualDefault
         config.entries = ["Mail", "Calendar", "Notes", "Reminders", "Safari", "Preview", "Music"].map { name in
             let path = name == "Safari" ? "/Applications/Safari.app" : "/System/Applications/\(name).app"
             let id = Bundle(path:path)?.bundleIdentifier ?? "fixture.\(name)"
@@ -44,10 +44,12 @@ import ScreenCaptureKit
         store.updateDisplays([
             .init(id:"A",runtimeID:1,name:"内建视网膜显示屏",frame:CGRect(x:0,y:0,width:1800,height:1169),visibleFrame:CGRect(x:0,y:0,width:1800,height:1129),isPrimary:true),
             .init(id:"B",runtimeID:2,name:"Studio Display",frame:CGRect(x:1800,y:0,width:2560,height:1440),visibleFrame:CGRect(x:1800,y:0,width:2560,height:1415))])
+        let login = LaunchAtLoginService(environment: .init(status: { .notRegistered },
+            register: {}, unregister: {}, openSettings: {}))
         for dark in [false, true] {
             let theme = dark ? "dark" : "light"
             for section in SettingsSection.allCases {
-                try capture(AnyView(SettingsView(store:store,initialSection:section,displayID:"A")),
+                try capture(AnyView(SettingsView(store:store,initialSection:section,displayID:"A",launchAtLoginService:login)),
                             name:"\(section.rawValue)-\(theme)", size:NSSize(width:1060,height:760),dark:dark,output:output)
             }
             try capture(AnyView(SettingsView(store:store,initialSection:.appearance,displayID:"A")),
@@ -79,7 +81,7 @@ import ScreenCaptureKit
                     .font(.system(size:13)).toggleStyle(.switch).padding(26)),
                     name:"appearance-manual-overrides-light",size:NSSize(width:850,height:1360),dark:false,output:output)
         store.update {
-            $0.customSizing = DockCustomSizing()
+            $0.customSizing = .visualDefault
             for index in 0..<24 {
                 let source = fixtureApps[index % fixtureApps.count]
                 let app = AppReference(id:"fixture.extra.\(index)",name:source.name,path:source.path)

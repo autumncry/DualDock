@@ -17,7 +17,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .general: return "选择 Dock 显示的内容，管理常用应用。"
-        case .appearance: return "从大小、疏密和长度开始，实时查看效果。"
+        case .appearance: return "调整大小、间距和长度，通过示例查看效果。"
         case .displays: return "为每块屏幕安排一个顺手的位置。"
         case .interaction: return "让窗口切换、放大与隐藏符合你的习惯。"
         case .permissions: return "开启需要的能力，所有窗口图像留在本机。"

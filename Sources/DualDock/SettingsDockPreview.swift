@@ -4,58 +4,81 @@ import DualDockCore
 
 enum DockPreviewFocus: Equatable { case none, size, density, length, height }
 
-/// Uses production geometry at the user's explicit preview zoom.
+/// A fixed set of sample apps illustrates preferences without mirroring the
+/// user's running applications, pins, groups or current Dock length.
+enum SettingsDockExample {
+    static let apps: [AppReference] = [
+        .init(id: "com.apple.mail", name: "邮件", path: "/System/Applications/Mail.app"),
+        .init(id: "com.apple.iCal", name: "日历", path: "/System/Applications/Calendar.app"),
+        .init(id: "com.apple.Notes", name: "备忘录", path: "/System/Applications/Notes.app"),
+        .init(id: "com.apple.Safari", name: "Safari", path: "/Applications/Safari.app"),
+        .init(id: "com.apple.Music", name: "音乐", path: "/System/Applications/Music.app")
+    ]
+    static let entries = apps.map { DockEntry(name: $0.name, apps: [$0]) }
+
+    static func geometry(preferences: DockCustomSizing, edge: DockEdge,
+                         nativeMetrics: NativeDockMetrics? = nil,
+                         contentBounds: [CGRect]) -> DockGeometry {
+        // These virtual dimensions keep length modes illustrative. The example
+        // never inherits the real screen's app count or an old absolute length.
+        let length: Double = edge.isHorizontal ? 900 : 600
+        if let nativeMetrics {
+            let style = DockGeometryStyle(iconSize: nativeMetrics.iconSize,
+                barThickness: nativeMetrics.barThickness, gap: nativeMetrics.itemSpacing,
+                leadingPadding: nativeMetrics.leadingPadding, trailingPadding: nativeMetrics.trailingPadding,
+                separatorLength: 0, magnificationScale: 1)
+            return .make(count: apps.count, edge: edge, style: style, maximumLength: length)
+        }
+        var example = preferences
+        example.legacyFixedLength = nil
+        let resolved = DockCustomSizingResolver.resolve(example, count: apps.count, dividerIndex: nil,
+            maximumLength: length, maximumHeight: max(240, example.minimumHeightOverride ?? 0),
+            contentBounds: contentBounds, edge: edge)
+        let style = DockGeometryStyle(iconSize: resolved.iconSize, barThickness: resolved.thickness,
+            gap: resolved.gap, leadingPadding: resolved.padding, trailingPadding: resolved.padding,
+            separatorLength: 0, magnificationScale: 1, contentAlignment: example.alignment,
+            contentBounds: contentBounds, spacingPercent: example.spacingPercent.map { CGFloat($0) })
+        return .make(count: apps.count, edge: edge, style: style,
+                     maximumLength: length, fixedLength: resolved.length)
+    }
+}
+
 struct SettingsDockPreview: View {
     @ObservedObject var store: AppStore
     let displayID: String?
     var focus: DockPreviewFocus = .none
     var compact = false
-    @State private var zoom = 0.75
 
-    private var display: DockDisplayInfo? { store.displays.first { $0.id == displayID } }
-    private var presentation: DockPresentation { store.presentation(for: displayID) }
-    private var entries: [DockEntry] { store.displayedEntries }
-    private var geometry: DockGeometry {
-        var style = presentation.style
-        style.magnificationScale = 1
-        return .make(count: entries.count, edge: presentation.edge, style: style,
-                     maximumLength: presentation.maximumLength, fixedLength: presentation.fixedLength,
-                     dividerIndex: store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil)
+    private var edge: DockEdge { displayID.map { store.edge(for: $0) } ?? .bottom }
+    // Fixed per orientation, never auto-fit while a slider is being adjusted.
+    private var zoom: CGFloat { edge.isHorizontal ? 0.75 : 0.45 }
+    var exampleGeometry: DockGeometry {
+        SettingsDockExample.geometry(
+            preferences: store.configuration.adaptiveSizing ? DockCustomSizing() : store.customSizing(for: displayID),
+            edge: edge, nativeMetrics: store.configuration.adaptiveSizing ? store.nativeDockMetrics : nil,
+            contentBounds: store.contentBounds(for: SettingsDockExample.entries))
     }
 
     var body: some View {
-        let g = geometry
-        let actualIcon = g.canonicalIconFrames.first?.width ?? presentation.style.iconSize
-        let requestedIcon = store.customSizing(for: displayID).iconSize
-        let adjusted = !store.configuration.adaptiveSizing && abs(actualIcon - requestedIcon) > 0.1
+        let g = exampleGeometry
         VStack(alignment: .leading, spacing: 9) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("Dock 预览").font(.system(size: 12, weight: .medium))
-                    Text(display?.name ?? edgeTitle(presentation.edge))
+                    Text("布局示例").font(.system(size: 12, weight: .medium))
+                    Text("示例图标，随设置变化")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
-                    Text("缩放").font(.system(size: 11)).foregroundStyle(.secondary)
-                    Picker("预览缩放", selection: $zoom) {
-                        Text("50%").tag(0.5)
-                        Text("75%").tag(0.75)
-                        Text("100%").tag(1.0)
-                    }
-                    .labelsHidden().pickerStyle(.menu).controlSize(.small).frame(width: 68)
-                    .help("固定缩放比例，调整 Dock 尺寸时保持不变")
+                    Text(edgeTitle(edge)).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 15).frame(height: 38)
                 SettingsPreviewCanvas(geometry: g, zoom: zoom, focus: focus,
-                    images: entries.map { entry in
-                        SettingsPreviewImages(isGroup: entry.isGroup,
-                            images: entry.apps.prefix(entry.isGroup ? 3 : 1).map { store.icon(for: $0) })
-                    })
+                    images: SettingsDockExample.apps.map { store.icon(for: $0) })
                     .frame(height: 152)
                     .overlay {
                         GeometryReader { proxy in
                             let layout = SettingsPreviewLayout(geometry: g, zoom: zoom, viewportSize: proxy.size)
                             if layout.maximumScrollOffset.x > 0 {
-                                Text(g.edge.isHorizontal ? "左右滚动查看完整 Dock" : "上下滚动查看完整 Dock")
+                                Text(g.edge.isHorizontal ? "左右滚动查看示例" : "上下滚动查看示例")
                                     .font(.system(size: 11)).foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity,
                                            alignment: g.edge == .top ? .bottom : .top)
@@ -64,37 +87,24 @@ struct SettingsDockPreview: View {
                         }.allowsHitTesting(false)
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(edgeTitle(presentation.edge)) Dock，实际图标 \(dockPoints(actualIcon))，高度 \(dockPoints(g.barThickness))，\(entries.count) 个应用或分组，预览缩放 \(Int(zoom * 100))%")
-                    .help("滚动查看完整 Dock；点击预览后也可使用方向键")
+                    .accessibilityLabel("布局示例，\(edgeTitle(edge)) Dock，五个固定示例图标，不反映实际应用列表")
+                    .help("滚动查看完整示例；点击示例后也可使用方向键")
             }
             .background(Color(nsColor: .underPageBackgroundColor).opacity(0.6))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
-            HStack(spacing: 8) {
-                Text("实际图标 \(dockPoints(actualIcon)) · 高度 \(dockPoints(g.barThickness)) · 间距 \(dockPoints(presentation.style.gap))")
-                    .monospacedDigit().lineLimit(1)
-                Spacer(minLength: 0)
-                if adjusted {
-                    Text("受可用空间限制").lineLimit(1)
-                        .help("请求图标 \(dockPoints(requestedIcon))，当前屏幕和 Dock 长度下实际为 \(dockPoints(actualIcon))。预览缩放保持 \(Int(zoom * 100))%。")
-                }
-            }
-            .font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("用于说明大小、间距与位置，不代表当前打开的应用。")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
-}
-
-private struct SettingsPreviewImages {
-    let isGroup: Bool
-    let images: [NSImage]
 }
 
 private struct SettingsPreviewCanvas: NSViewRepresentable {
     let geometry: DockGeometry
     let zoom: CGFloat
     let focus: DockPreviewFocus
-    let images: [SettingsPreviewImages]
+    let images: [NSImage]
 
     func makeNSView(context: Context) -> SettingsPreviewCanvasView { SettingsPreviewCanvasView() }
     func updateNSView(_ view: SettingsPreviewCanvasView, context: Context) {
@@ -109,17 +119,15 @@ private final class SettingsPreviewCanvasView: NSView {
     private var geometry: DockGeometry?
     private var zoom: CGFloat = 0.75
     private var focus: DockPreviewFocus = .none
-    private var images: [SettingsPreviewImages] = []
+    private var images: [NSImage] = []
     private var scrollOffset = CGPoint.zero
-    private let folder = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
-        .withSymbolConfiguration(.init(paletteColors: [.systemBlue]))
 
     private var previewLayout: SettingsPreviewLayout? {
         geometry.map { SettingsPreviewLayout(geometry: $0, zoom: zoom, viewportSize: bounds.size,
                                              scrollOffset: scrollOffset) }
     }
 
-    func update(geometry: DockGeometry, zoom: CGFloat, focus: DockPreviewFocus, images: [SettingsPreviewImages]) {
+    func update(geometry: DockGeometry, zoom: CGFloat, focus: DockPreviewFocus, images: [NSImage]) {
         if self.geometry?.edge != geometry.edge { scrollOffset = .zero }
         self.geometry = geometry
         self.zoom = zoom
@@ -161,18 +169,7 @@ private final class SettingsPreviewCanvasView: NSView {
         }
         for (index, rect) in layout.iconFrames.enumerated() where images.indices.contains(index) {
             guard rect.intersects(layout.visibleDockFrame) else { continue }
-            let entry = images[index]
-            if entry.isGroup {
-                drawImage(folder, in: rect)
-                let centers: [CGFloat] = entry.images.count == 1 ? [0.5] : entry.images.count == 2 ? [0.37, 0.63] : [0.29, 0.5, 0.71]
-                for (index, image) in entry.images.enumerated() {
-                    let side = rect.width * 0.31
-                    drawImage(image, in: CGRect(x: rect.minX + centers[index] * rect.width - side / 2,
-                        y: rect.minY + rect.height * 0.48, width: side, height: side))
-                }
-            } else {
-                drawImage(entry.images.first, in: rect)
-            }
+            drawImage(images[index], in: rect)
             if focus == .size {
                 let outline = NSBezierPath(roundedRect: rect, xRadius: rect.width * 0.22, yRadius: rect.width * 0.22)
                 outline.setLineDash([3, 2], count: 2, phase: 0)

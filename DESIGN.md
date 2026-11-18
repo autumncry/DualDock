@@ -60,6 +60,10 @@ components:
   dock-preview:
     height: "190pt"
     rounded: "{rounded.group}"
+    horizontalScale: 0.75
+    verticalScale: 0.45
+  advanced-header:
+    minimumHeight: "44pt"
 ---
 
 # Design System: DualDock
@@ -80,18 +84,28 @@ Labels are 13 pt medium, body 13 pt regular, supporting text 12 pt and captions 
 
 ## Appearance and sizing
 
-Screen picker and synchronization share the upper-right header. The system/custom selector and small presets precede one shallow preview. Below it, rows align labels, flexible controls and right-side values. Frequent choices are 大小、疏密、长度、位置. Precise gap, padding, minimum height, fixed length and overflow choices remain in one expandable advanced group.
+Screen picker and synchronization share the upper-right header. The system/custom selector and small presets precede one shallow layout example. Below it, rows align labels, flexible controls and right-side values. Frequent choices are 大小、图标间距、长度、位置. The unified 0–100 spacing control replaces 疏密 and the duplicate advanced gap control. Padding, minimum height, fixed length, alignment and overflow choices remain in one advanced group.
 
-The preview card is 190 pt, including its own header, followed by one quiet metrics line. The 50/75/100% zoom is explicitly chosen and never recalculated when icon size changes. At fixed zoom, doubling an unconstrained real icon doubles its drawn preview size. Use production resolved geometry, all visible entries and actual app icons. Scroll content beyond the viewport; do not shrink it to fit. Screen constraints may still reduce the real Dock's effective icon size, which must be disclosed separately. There is no second local-detail preview.
+The layout-example card is 190 pt, including its own header, followed by one quiet explanatory line. It always contains the same five sample apps: Mail, Calendar, Notes, Safari and Music. It does not read the user's running-app list, pins, groups or live Dock presentation. The title is “布局示例” and the supporting copy explicitly distinguishes the sample from the current apps. Size, spacing, length, position, padding and height update the example from the selected preferences. System-follow mode uses read-only native metrics.
 
-The drawing surface supports all four edges and hidden-scrollbar panning. It represents base size without hover magnification. Preview scale is local presentation state and must not change saved Dock settings. The view updates in place during sizing changes.
+The example uses fixed 75% scale horizontally and 45% vertically. These orientation-specific constants are never recalculated to fit a size-slider change, and there is no zoom menu or “actual size” readout. Virtual edge lengths are 900 pt horizontally and 600 pt vertically; a saved legacy absolute screen length is not copied into this illustrative layout. Overflow pans without a visible scrollbar. The surface depicts base size rather than hover magnification, supports all four edges and updates in place.
 
-System mode follows native metrics and preserves manual values. Synchronization uses the currently selected screen as source. Positions remain per-screen. Both manual gap and padding overrides disable the density slider until the user chooses “恢复联动”. Reset actions say “恢复所有屏幕尺寸” or “恢复此屏幕尺寸”; they never silently clear app groups or positions.
+New spacing is measured between visible artwork bounds while the original square bitmap canvas, scale, aspect and pixels remain unchanged. At 0, adjacent artwork bounding boxes meet along the ordering axis. At 100, the gap equals the mean visible main-axis extent of the adjacent pair; intermediate values interpolate proportionally. This describes bounding boxes, not guaranteed contact between every irregular silhouette. Artwork metadata is cached rather than scanned during each animation frame. Transparent drawing canvases may overlap; hit ownership, indicators and badges use the corresponding content geometry.
+
+Opening settings does not rewrite a legacy layout. Existing density/gap values remain effective until the user explicitly edits the new spacing control, chooses a new preset or resets sizing. The slider presents the legacy layout's approximate visual-equivalent percentage. In the new mode the requested ratio remains authoritative: overflow does not secretly compress the gaps, and uniform-distribution alignment cannot override the ratio. Optional shrinking scales the optical row proportionally and scrolling handles remaining overflow. Native-follow sizing retains native behavior.
+
+The advanced header is one native button with a minimum height of 44 pt. Chevron, title, status text and the intervening whitespace toggle the same expanded state exactly once. It retains native keyboard activation and explicit expanded/collapsed accessibility text; this design contract does not assert a completed VoiceOver or physical-keyboard acceptance run.
+
+Synchronization uses the currently selected screen as source. Positions remain per-screen. Reset actions say “恢复所有屏幕尺寸” or “恢复此屏幕尺寸”; they never silently clear app groups or positions. Existing manual padding and height remain visible and individually resettable.
 
 ## About and supporting pages
 
 About uses a 72 pt icon, 25 pt product name, the full slogan and native macOS descriptor. Preserve version/build, MIT, author/copyright, visible project URL, releases, feedback and Star support. These are aligned rows, not a marketing hero. Other pages retain actual production features and permission/recovery actions; prototype-only controls must not enter production.
 
+General includes an opt-in “登录时启动” control backed by `SMAppService.mainApp`. Reading or opening settings must not register the app. ServiceManagement status is the source of truth: only enabled is shown as on; pending system approval stays off with an explanation, an “打开系统登录项” action and cancellation. Registration errors must remain visible rather than being saved as a successful local preference. This starts the app after user login, not before the macOS session exists.
+
 ## Verification
 
-Capture the actual native views in isolated fixtures at default and compact widths, Light/Dark, all categories, native/manual sizing, old overrides, no-display and many-app states. Use WindowServer captures of owned nonactivating windows for materials; view-cache images alone are insufficient. Separate these controlled captures and pixel regressions from physical-mouse desktop acceptance. The preview geometry has pure Core tests plus a retained-view rendering check. Document the exact evidence for each release.
+Capture actual native views in isolated fixtures at default and compact widths, Light/Dark, all categories, native/manual sizing, old overrides, no-display and overflow states. Include fixed samples across different real-app counts, spacing endpoints on all four edges, and expanded/collapsed headers. Use WindowServer captures of owned nonactivating windows for materials; view-cache images alone are insufficient.
+
+Separate controlled geometry tests, retained-view rendering, native event dispatch and injected login-service state checks from physical-mouse, VoiceOver and actual-login acceptance. The fixed-sample geometry has focused checks for 0/7/40 real fixture apps and responsive controls. Login tests must not register or unregister the real app unless that action is explicitly authorized. Record the exact evidence and remaining limits for each release; this document's source update itself is not fresh desktop or login validation.

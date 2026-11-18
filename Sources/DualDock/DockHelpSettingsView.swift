@@ -9,9 +9,9 @@ struct DockHelpSettingsView: View {
                 Label("点击文件夹展开；右键可重命名或拆分。", systemImage: "cursorarrow.click")
             }
             SettingsGroup("调整外观") {
-                Text("先选择一个预设，再调大小、疏密和长度。预览会同步展示结果。")
+                Text("先选择一个预设，再调大小、图标间距和长度。固定示例图标会随设置变化。")
                 DisclosureGroup("大小与高级设置有什么区别？") {
-                    Text("大小直接控制图标，栏高默认自动计算。疏密联动自动间距与留白。高级设置可单独固定参数，每项都能恢复自动；手动值不会被基础调节覆盖。")
+                    Text("大小控制图标，栏高默认自动计算。图标间距为 0 时可见边界贴合，100 时相隔约一个图标宽度。高级设置保留留白、高度与溢出选项，点击整条标题行即可展开。")
                         .foregroundStyle(.secondary).padding(.top, 8)
                 }
                 DisclosureGroup("如何直接拖动 Dock？") {

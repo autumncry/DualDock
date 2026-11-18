@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-17",
+  "generatedAt": "2026-11-18",
   "title": "Design System: DualDock",
   "extensions": {
     "typographyMeta": {
@@ -122,7 +122,16 @@
         "sidebarWidthPoints": 176,
         "sidebarRowHeightPoints": 34,
         "previewCardHeightPoints": 190,
-        "customSizingBehavior": "One fixed-zoom preview above aligned label/control/value rows; advanced settings expand below."
+        "customSizingBehavior": "Five fixed sample apps respond to size, unified spacing, length and position above aligned controls; no live-row mirroring.",
+        "exampleScale": {
+          "horizontal": 0.75,
+          "vertical": 0.45
+        },
+        "exampleReferenceLengthPoints": {
+          "horizontal": 900,
+          "vertical": 600
+        },
+        "advancedHeaderMinimumHeightPoints": 44
       },
       "componentRendering": {
         "mode": "native-only",
@@ -139,13 +148,21 @@
           "file": "Sources/DualDock/SettingsControls.swift",
           "excerpt": ".frame(width: 108, alignment: .leading)"
         },
-        "Fixed-zoom preview": {
-          "file": "Sources/DualDock/SettingsDockPreview.swift",
-          "excerpt": "SettingsPreviewLayout(geometry: g, zoom: zoom, viewportSize: proxy.size)"
-        },
         "About": {
           "file": "Sources/DualDock/AboutView.swift",
           "excerpt": ".frame(width: 72, height: 72)"
+        },
+        "Layout example": {
+          "file": "Sources/DualDock/SettingsDockPreview.swift",
+          "excerpt": "SettingsDockExample.geometry("
+        },
+        "Advanced disclosure": {
+          "file": "Sources/DualDock/SettingsControls.swift",
+          "excerpt": ".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"
+        },
+        "Login startup": {
+          "file": "Sources/DualDock/LaunchAtLoginService.swift",
+          "excerpt": "let service = SMAppService.mainApp"
         }
       },
       "evidence": {
@@ -162,17 +179,36 @@
           "Sources/DualDock/DockHelpSettingsView.swift",
           "Sources/DualDock/AboutView.swift",
           "Sources/DualDock/SettingsControls.swift",
-          "Sources/DualDockCore/SettingsPreviewLayout.swift"
+          "Sources/DualDockCore/SettingsPreviewLayout.swift",
+          "Sources/DualDock/LaunchAtLoginService.swift",
+          "Sources/DualDockCore/DockOpticalSpacingPolicy.swift",
+          "Sources/DualDock/IconArtworkBounds.swift"
         ],
         "renderDirectory": ".impeccable/review/settings/",
-        "reviewedInThisDocumentationPass": [
-          "appearance-light.png",
-          "appearance-compact-dark.png",
-          "appearance-right-light.png",
-          "about-compact-light.png"
-        ],
+        "reviewedInThisDocumentationPass": [],
         "captureMethod": "WindowServer captures of owned inactive fixture windows with synthetic data, never physical-mouse acceptance.",
-        "assetChanges": "Existing app icon and slogan retained; no generated raster assets."
+        "assetChanges": "Existing app icon and slogan retained; no generated raster assets.",
+        "documentationPassScope": "Updated against current source behavior; fresh native screenshot/release acceptance is recorded separately.",
+        "verificationLimits": "Do not infer physical mouse, VoiceOver, clean-machine installation or actual-login acceptance from fixtures and injected services."
+      },
+      "spacingModel": {
+        "range": [
+          0,
+          100
+        ],
+        "zero": "Adjacent visible artwork bounding boxes meet along the ordering axis.",
+        "hundred": "Gap equals the mean adjacent visible dimension along the ordering axis.",
+        "bitmapPolicy": "Keep original square drawing canvas, bitmap scale, aspect and pixels; cached artwork bounds drive layout and hit ownership.",
+        "legacyPolicy": "Opening settings preserves legacy geometry; explicit spacing/preset/reset choices enter the new path.",
+        "overflowPolicy": "Preserve the percentage; optional shrinking scales the optical row, then scrolls if needed. No silent gap compression.",
+        "nativeMode": "Continues to follow system Dock metrics."
+      },
+      "loginStartup": {
+        "api": "SMAppService.mainApp",
+        "default": "Opt-in; settings reads do not register.",
+        "sourceOfTruth": "ServiceManagement status",
+        "pendingApproval": "Toggle remains off; explain pending state and offer system-settings/cancel actions.",
+        "verificationLimit": "Injected state tests do not prove a real logout/login launch."
       }
     }
   },
@@ -187,14 +223,14 @@
     {
       "name": "Aligned sizing form",
       "kind": "custom",
-      "description": "Native sliders and editable values; 108 pt label column, 20 pt gap, 81 pt value column.",
+      "description": "Native size, unified 0–100 artwork spacing, length and position controls; 108 pt label column, 20 pt gap, 81 pt value column.",
       "html": "",
       "css": ""
     },
     {
-      "name": "Fixed-zoom Dock preview",
+      "name": "Fixed-sample layout example",
       "kind": "custom",
-      "description": "190 pt card, 50/75/100% zoom, one metrics line, real geometry and scrollable overflow.",
+      "description": "190 pt card with five stable system-app samples, 75% horizontal/45% vertical scale, responsive preferences and scrollable overflow. No live-app list or actual-size claims.",
       "html": "",
       "css": ""
     },
@@ -204,6 +240,20 @@
       "description": "Restrained identity with complete version/license/author/project/download/feedback/support content.",
       "html": "",
       "css": ""
+    },
+    {
+      "name": "Advanced header",
+      "kind": "custom",
+      "description": "One 44 pt native button covers chevron, title, status and whitespace; exposes expanded/collapsed state.",
+      "html": "",
+      "css": ""
+    },
+    {
+      "name": "Login startup",
+      "kind": "custom",
+      "description": "Opt-in system-backed login registration with honest pending approval and error states.",
+      "html": "",
+      "css": ""
     }
   ],
   "narrative": {
@@ -211,25 +261,37 @@
     "overview": "User-approved November 17 draft implemented in native SwiftUI/AppKit. Semantic macOS colors and system fonts remain authoritative.",
     "keyCharacteristics": [
       "Compact left-aligned navigation",
-      "Single fixed-zoom preview above aligned form rows",
-      "Progressive disclosure and explicit per-screen scope",
+      "Five fixed samples above aligned sizing rows",
+      "Unified visible-artwork spacing and explicit per-screen scope",
+      "Whole-header advanced disclosure and opt-in login startup",
       "Complete About content"
     ],
     "rules": [
       {
-        "name": "Fixed preview scale",
-        "body": "Never auto-fit when the user changes Dock size. Show the actual resolved size separately from the requested size.",
+        "name": "Illustrative sample",
+        "body": "Keep five fixed examples independent from real apps; use orientation-specific fixed scale and clearly label the surface as a layout example.",
         "section": "layout"
       },
       {
+        "name": "Visible spacing",
+        "body": "Use 0–100 visible-artwork spacing without cropping or enlarging bitmaps and without silently compressing the requested ratio.",
+        "section": "components"
+      },
+      {
         "name": "Preserve settings",
-        "body": "UI layout changes must not reset existing groups, dimensions, permissions, overrides or per-display positions.",
+        "body": "Preserve legacy geometry until explicit new-spacing choices, and retain groups, permissions and per-display positions.",
+        "section": "components"
+      },
+      {
+        "name": "System startup state",
+        "body": "Only ServiceManagement enabled status means login startup is on; reading settings never registers the app.",
         "section": "components"
       }
     ],
     "dos": [
       "Use native controls and semantic colors.",
-      "Check compact, dark, advanced, system-follow and overflow states."
+      "Check compact, dark, advanced, system-follow, overflow and sample-invariance states.",
+      "Distinguish fixture and injected-service checks from real desktop, VoiceOver and login acceptance."
     ],
     "donts": [
       "Do not replace native settings with a web view.",
