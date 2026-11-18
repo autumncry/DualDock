@@ -32,7 +32,7 @@ public enum DockMode: String, Codable, CaseIterable, Sendable {
 }
 
 public struct DockConfiguration: Codable, Equatable, Sendable {
-    public static let currentVersion = 10
+    public static let currentVersion = 11
     public var version: Int = currentVersion
     public var entries: [DockEntry] = []
     public var mode: DockMode = .standard

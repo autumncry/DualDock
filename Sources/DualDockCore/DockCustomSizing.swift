@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 public enum DockLengthMode: String, Codable, CaseIterable, Sendable { case fit, fill, fixed }
 public enum DockContentAlignment: String, Codable, CaseIterable, Sendable { case center, distribute, start }
@@ -8,6 +9,8 @@ public enum DockSizingOverride: CaseIterable, Sendable { case gap, padding, mini
 public struct DockCustomSizing: Codable, Equatable, Sendable {
     public var iconSize: Double = 48
     public var density: Double = 0.5
+    /// Nil retains the legacy canvas-gap/density interpretation on upgrade.
+    public var spacingPercent: Double?
     public var lengthMode: DockLengthMode = .fit
     public var fixedLengthPercent: Double = 60
     public var gapOverride: Double?
@@ -21,9 +24,16 @@ public struct DockCustomSizing: Codable, Equatable, Sendable {
 
     public init() {}
 
+    public static var visualDefault: DockCustomSizing {
+        var value = DockCustomSizing()
+        value.spacingPercent = 20
+        return value
+    }
+
     public mutating func normalize() {
         iconSize = iconSize.isFinite ? max(1, iconSize) : 48
         density = density.isFinite ? min(1, max(0, density)) : 0.5
+        spacingPercent = spacingPercent.flatMap { $0.isFinite ? min(100, max(0, $0)) : nil }
         fixedLengthPercent = fixedLengthPercent.isFinite ? min(100, max(20, fixedLengthPercent)) : 60
         gapOverride = gapOverride.flatMap { $0.isFinite ? max(0, $0) : nil }
         paddingOverride = paddingOverride.flatMap { $0.isFinite ? max(2, $0) : nil }
@@ -59,7 +69,8 @@ public struct DockCustomSizing: Codable, Equatable, Sendable {
     /// A fit-mode end drag captures whitespace; inward/corner motion scales the
     /// visible icon-to-height ratio, regardless of the legacy slider ratio.
     public func resized(from original: DockManualSizing, to draft: DockManualSizing,
-                        maximumLength: Double, count: Int, dividerIndex: Int?) -> DockCustomSizing {
+                        maximumLength: Double, count: Int, dividerIndex: Int?,
+                        contentBounds: [CGRect] = [], edge: DockEdge = .bottom) -> DockCustomSizing {
         var result = self
         let changedHeight = abs(draft.thickness - original.thickness) > 0.000001
         let changedLength = abs(draft.length - original.length) > 0.000001
@@ -71,7 +82,11 @@ public struct DockCustomSizing: Codable, Equatable, Sendable {
         if changedLength {
             if lengthMode == .fit {
                 let gap = result.gapOverride ?? result.iconSize * (0.04 + 0.26 * result.density)
-                let span = DockContentLengthPolicy.contentSpan(count: count, iconSize: result.iconSize,
+                let span = result.spacingPercent.map {
+                    DockOpticalSpacingPolicy.contentSpan(count: count, iconSize: result.iconSize,
+                        spacingPercent: $0, contentBounds: contentBounds, edge: edge,
+                        separatorLength: 13 * result.iconSize / 48, dividerIndex: dividerIndex)
+                } ?? DockContentLengthPolicy.contentSpan(count: count, iconSize: result.iconSize,
                     gap: gap, separatorLength: 13 * result.iconSize / 48, dividerIndex: dividerIndex)
                 result.paddingOverride = max(2, (draft.length - span) / 2)
             } else {
@@ -104,12 +119,17 @@ public struct DockResolvedSizing: Equatable, Sendable {
 
 public enum DockCustomSizingResolver {
     public static func resolve(_ preferences: DockCustomSizing, count: Int, dividerIndex: Int?,
-                               maximumLength: Double, maximumHeight: Double) -> DockResolvedSizing {
+                               maximumLength: Double, maximumHeight: Double,
+                               contentBounds: [CGRect] = [], edge: DockEdge = .bottom) -> DockResolvedSizing {
         var p = preferences
         p.normalize()
         let limit = maximumLength.isFinite ? max(1, maximumLength) : 1000
         let heightLimit = maximumHeight.isFinite ? max(1, maximumHeight) : 100
         let n = max(0, count)
+        if p.spacingPercent != nil {
+            return resolveVisual(p, count: n, dividerIndex: dividerIndex,
+                maximumLength: limit, maximumHeight: heightLimit, contentBounds: contentBounds, edge: edge)
+        }
         var icon = min(p.iconSize, max(1, heightLimit - 4))
         var gap = p.gapOverride ?? icon * (0.04 + 0.26 * p.density)
         let padding = min(limit, p.paddingOverride ?? icon * (0.12 + 0.18 * p.density))
@@ -146,5 +166,39 @@ public enum DockCustomSizingResolver {
         return DockResolvedSizing(iconSize: icon, gap: gap, padding: padding,
             thickness: thickness, length: length, separatorLength: 13 * icon / 48,
             isScrollable: span(icon, gap) + 2 * padding > length + 0.000001)
+    }
+
+    private static func resolveVisual(_ p: DockCustomSizing, count: Int, dividerIndex: Int?,
+                                      maximumLength: Double, maximumHeight: Double,
+                                      contentBounds: [CGRect], edge: DockEdge) -> DockResolvedSizing {
+        let percent = p.spacingPercent ?? 0
+        var icon = min(p.iconSize, max(1, maximumHeight - 4))
+        let padding = min(maximumLength, p.paddingOverride ?? icon * (0.12 + 0.18 * p.density))
+        func span(_ side: Double) -> Double {
+            DockOpticalSpacingPolicy.contentSpan(count: count, iconSize: side,
+                spacingPercent: percent, contentBounds: contentBounds, edge: edge,
+                separatorLength: 13 * side / 48, dividerIndex: dividerIndex)
+        }
+        let requestedLength: Double
+        switch p.lengthMode {
+        case .fit: requestedLength = span(icon) + 2 * padding
+        case .fill: requestedLength = maximumLength
+        case .fixed: requestedLength = p.legacyFixedLength ?? maximumLength * p.fixedLengthPercent / 100
+        }
+        let length = min(maximumLength, max(1, requestedLength))
+        if p.shrinkBeforeScroll, count > 0, span(icon) + 2 * padding > length {
+            // The percentage stays authoritative. Scale the complete optical row
+            // proportionally, then scroll if even the minimum icon cannot fit.
+            let candidate = (length - 2 * padding) / max(0.001, span(1))
+            icon = min(icon, max(min(24, icon), candidate))
+        }
+        let clearance = min(4, icon * 0.24)
+        let thickness = min(maximumHeight, p.minimumHeightOverride.map { max($0, icon + clearance) }
+            ?? (icon + 2 * padding))
+        return DockResolvedSizing(iconSize: icon,
+            gap: DockOpticalSpacingPolicy.meanGap(count: count, iconSize: icon,
+                spacingPercent: percent, contentBounds: contentBounds, edge: edge),
+            padding: padding, thickness: thickness, length: length,
+            separatorLength: 13 * icon / 48, isScrollable: span(icon) + 2 * padding > length + 0.000001)
     }
 }

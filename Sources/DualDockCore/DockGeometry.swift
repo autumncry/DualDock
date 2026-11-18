@@ -11,11 +11,14 @@ public struct DockGeometryStyle: Equatable, Sendable {
     public var magnificationScale: CGFloat
     public var magnificationRadius: CGFloat
     public var contentAlignment: DockContentAlignment
+    public var contentBounds: [CGRect]
+    public var spacingPercent: CGFloat?
 
     public init(iconSize: CGFloat, barThickness: CGFloat, gap: CGFloat,
                 leadingPadding: CGFloat, trailingPadding: CGFloat,
                 separatorLength: CGFloat = 13, magnificationScale: CGFloat = 1,
-                magnificationRadius: CGFloat = 2.5, contentAlignment: DockContentAlignment = .center) {
+                magnificationRadius: CGFloat = 2.5, contentAlignment: DockContentAlignment = .center,
+                contentBounds: [CGRect] = [], spacingPercent: CGFloat? = nil) {
         self.iconSize = iconSize
         self.barThickness = barThickness
         self.gap = gap
@@ -25,6 +28,8 @@ public struct DockGeometryStyle: Equatable, Sendable {
         self.magnificationScale = magnificationScale
         self.magnificationRadius = magnificationRadius
         self.contentAlignment = contentAlignment
+        self.contentBounds = contentBounds
+        self.spacingPercent = spacingPercent
     }
 }
 
@@ -38,10 +43,21 @@ public struct DockGeometry: Equatable, Sendable {
     public let canonicalViewportRect: CGRect
     public let canonicalTileFrames: [CGRect]
     public let canonicalIconFrames: [CGRect]
+    public let canonicalContentFrames: [CGRect]
+    public let canonicalHitFrames: [CGRect]
     public let canonicalDotFrames: [CGRect]
     public let canonicalDividerFrame: CGRect?
     public let bodyLength: CGFloat
     public let barThickness: CGFloat
+    private struct OpticalContext: Equatable, Sendable {
+        let bounds: [CGRect]
+        let percent: CGFloat
+        let baseIconSize: CGFloat
+        let outerInset: CGFloat
+        let separatorLength: CGFloat
+        let dividerIndex: Int?
+    }
+    private let opticalContext: OpticalContext?
 
     public var canvasTransform: DockAxisTransform {
         .init(edge: edge, length: canonicalCanvasSize.width, thickness: canonicalCanvasSize.height)
@@ -55,6 +71,9 @@ public struct DockGeometry: Equatable, Sendable {
     public var viewportRect: CGRect { canvasTransform.rectToPhysical(canonicalViewportRect) }
     public var tileFrames: [CGRect] { canonicalTileFrames.map(documentTransform.rectToPhysical) }
     public var iconFrames: [CGRect] { canonicalIconFrames.map(documentTransform.rectToPhysical) }
+    public var contentFrames: [CGRect] { canonicalContentFrames.map(documentTransform.rectToPhysical) }
+    public var hitFrames: [CGRect] { canonicalHitFrames.map(documentTransform.rectToPhysical) }
+    public var canonicalFocusFrames: [CGRect] { canonicalContentFrames }
     public var dotFrames: [CGRect] { canonicalDotFrames.map(documentTransform.rectToPhysical) }
     public var dividerFrame: CGRect? { canonicalDividerFrame.map(documentTransform.rectToPhysical) }
     public var scrollRange: CGFloat { max(0, canonicalDocumentSize.width - canonicalViewportRect.width) }
@@ -78,6 +97,11 @@ public struct DockGeometry: Equatable, Sendable {
                             focusIndex: CGFloat? = nil, dividerIndex: Int? = nil,
                             scrollOffset: CGFloat = 0, terminalAnchor: CGFloat? = nil,
                             resizeMargin: CGFloat = 0) -> DockGeometry {
+        if let percent = style.spacingPercent, percent.isFinite {
+            return makeOptical(count: count, edge: edge, style: style, maximumLength: maximumLength,
+                fixedLength: fixedLength, focusIndex: focusIndex, dividerIndex: dividerIndex,
+                scrollOffset: scrollOffset, terminalAnchor: terminalAnchor, resizeMargin: resizeMargin)
+        }
         func finite(_ value: CGFloat, fallback: CGFloat) -> CGFloat { value.isFinite ? value : fallback }
         let n = max(0, count)
         let limit = max(1, finite(maximumLength, fallback: 1))
@@ -175,8 +199,95 @@ public struct DockGeometry: Equatable, Sendable {
             canonicalDocumentSize: CGSize(width: documentLength, height: canvasDepth),
             canonicalBackdropRect: CGRect(x: endMargin, y: 0, width: bodyLength, height: thickness),
             canonicalViewportRect: viewport, canonicalTileFrames: tiles, canonicalIconFrames: icons,
+            canonicalContentFrames: icons, canonicalHitFrames: tiles,
             canonicalDotFrames: dots, canonicalDividerFrame: separatorFrame,
-            bodyLength: bodyLength, barThickness: thickness)
+            bodyLength: bodyLength, barThickness: thickness, opticalContext: nil)
+    }
+
+    private static func makeOptical(count: Int, edge: DockEdge, style: DockGeometryStyle,
+                                    maximumLength: CGFloat, fixedLength: CGFloat?, focusIndex: CGFloat?,
+                                    dividerIndex: Int?, scrollOffset: CGFloat, terminalAnchor: CGFloat?,
+                                    resizeMargin: CGFloat) -> DockGeometry {
+        func finite(_ value: CGFloat, fallback: CGFloat) -> CGFloat { value.isFinite ? value : fallback }
+        let count = max(0, count)
+        let limit = max(1, finite(maximumLength, fallback: 1))
+        let thickness = max(1, finite(style.barThickness, fallback: 66))
+        let side = min(thickness, max(1, finite(style.iconSize, fallback: 48)))
+        let leading = max(0, finite(style.leadingPadding, fallback: 0))
+        let trailing = max(0, finite(style.trailingPadding, fallback: 0))
+        let percent = DockOpticalSpacingPolicy.fraction(style.spacingPercent ?? 0) * 100
+        let separator = dividerIndex.map { $0 > 0 && $0 < count
+            ? max(0, finite(style.separatorLength, fallback: 0)) : 0 } ?? 0
+        let contentBounds = DockOpticalSpacingPolicy.canonicalBounds(style.contentBounds, count: count, edge: edge)
+        let outerInset = max(0, (thickness - side) / 2)
+        let base = DockOpticalSpacingPolicy.row(sizes: Array(repeating: side, count: count),
+            bounds: contentBounds, spacingPercent: percent, outerInset: outerInset,
+            separatorLength: separator, dividerIndex: dividerIndex)
+        let required = (count == 0 ? max(120, side * 2) : base.span) + leading + trailing
+        let requested = fixedLength.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? required
+        let bodyLength = min(limit, max(1, requested))
+        let fits = required <= bodyLength + 0.000001
+        let scale = max(1, finite(style.magnificationScale, fallback: 1))
+        let curve = DockMagnificationCurve(radius: style.magnificationRadius)
+        let peak = count == 0 ? side : min(side * scale, max(side, fits ? limit : bodyLength))
+        let delta = peak - side
+        let reservedPeak = count == 0 ? side : min(side * scale, max(side, limit))
+        let reserve = reservedPeak - side
+        let handleMargin = max(0, finite(resizeMargin, fallback: 0))
+        // Optical gaps grow with their adjacent artwork. Reserve that extra
+        // wave width too, plus half an icon delta for asymmetric canvas margins.
+        let opticalFactor = curve.reserveFactor(itemCount: count) * (1 + percent / 100) + 0.5
+        let bleed = count > 0 ? ceil(reserve * opticalFactor) : 0
+        let endMargin = min(max(bleed, handleMargin), max(0, (limit - bodyLength) / 2))
+        let canvasLength = bodyLength + 2 * endMargin
+        let canvasDepth = thickness + max(reserve, handleMargin)
+        let viewport = CGRect(x: fits ? 0 : endMargin, y: 0,
+                              width: fits ? canvasLength : bodyLength, height: canvasDepth)
+        let documentLength = fits ? viewport.width : max(viewport.width, required)
+        // Distributing leftover space would silently replace the chosen ratio.
+        let alignmentOffset = style.contentAlignment == .start ? 0 : max(0, bodyLength - required) / 2
+        let baseLeading = fits ? endMargin + leading + alignmentOffset : leading
+        let offset = min(max(0, finite(scrollOffset, fallback: 0)), max(0, documentLength - viewport.width))
+        let focus = focusIndex.flatMap { $0.isFinite && count > 0 ? min(CGFloat(count - 1), max(0, $0)) : nil }
+        let sizes = (0..<count).map { index in
+            side + delta * curve.weight(atDistance: focus.map { abs(CGFloat(index) - $0) } ?? curve.radius)
+        }
+        let wave = DockOpticalSpacingPolicy.row(sizes: sizes, bounds: contentBounds,
+            spacingPercent: percent, outerInset: outerInset,
+            separatorLength: separator, dividerIndex: dividerIndex)
+        var shift = baseLeading
+        if let focus, let baseAnchor = position(focus, frames: base.contents),
+           let waveAnchor = position(focus, frames: wave.contents) {
+            let terminal = focus <= 0 || focus >= CGFloat(count - 1)
+            let anchor = terminal ? terminalAnchor.flatMap { $0.isFinite ? $0 : nil } ?? (baseAnchor + baseLeading)
+                                  : baseAnchor + baseLeading
+            shift = anchor - waveAnchor
+            let lower = Int(floor(focus)), upper = min(count - 1, lower + 1)
+            let fraction = focus - CGFloat(lower)
+            let left = wave.contents[lower].minX
+                + (wave.contents[upper].minX - wave.contents[lower].minX) * fraction + shift
+            let right = wave.contents[lower].maxX
+                + (wave.contents[upper].maxX - wave.contents[lower].maxX) * fraction + shift
+            if left < offset { shift += offset - left }
+            else if right > offset + viewport.width { shift -= right - offset - viewport.width }
+        }
+        let icons = wave.icons.map { $0.offsetBy(dx: shift, dy: 0) }
+        let contents = wave.contents.map { $0.offsetBy(dx: shift, dy: 0) }
+        let hits = DockOpticalSpacingPolicy.hitFrames(icons: icons, contents: contents,
+            thickness: thickness, baseIconSize: side, separatorLength: separator, dividerIndex: dividerIndex)
+        let tiles = zip(icons, hits).map { $0.union($1) }
+        let dots = DockOpticalSpacingPolicy.dotFrames(contents: contents)
+        let divider = wave.dividerX.map { CGRect(x: $0 + shift - 0.5,
+            y: max(2, thickness * 0.15), width: 1, height: max(1, thickness * 0.7)) }
+        return DockGeometry(edge: edge,
+            canonicalCanvasSize: CGSize(width: canvasLength, height: canvasDepth),
+            canonicalDocumentSize: CGSize(width: documentLength, height: canvasDepth),
+            canonicalBackdropRect: CGRect(x: endMargin, y: 0, width: bodyLength, height: thickness),
+            canonicalViewportRect: viewport, canonicalTileFrames: tiles, canonicalIconFrames: icons,
+            canonicalContentFrames: contents, canonicalHitFrames: hits, canonicalDotFrames: dots,
+            canonicalDividerFrame: divider, bodyLength: bodyLength, barThickness: thickness,
+            opticalContext: OpticalContext(bounds: contentBounds, percent: percent, baseIconSize: side,
+                outerInset: outerInset, separatorLength: separator, dividerIndex: dividerIndex))
     }
 
     public func documentPointToCanonical(_ point: CGPoint) -> CGPoint { documentTransform.pointToCanonical(point) }
@@ -196,13 +307,13 @@ public struct DockGeometry: Equatable, Sendable {
     }
 
     public func focusIndex(at coordinate: CGFloat) -> CGFloat? {
-        guard let first = canonicalIconFrames.first, let last = canonicalIconFrames.last else { return nil }
+        guard let first = canonicalContentFrames.first, let last = canonicalContentFrames.last else { return nil }
         if coordinate <= first.midX { return 0 }
-        if coordinate >= last.midX { return CGFloat(canonicalIconFrames.count - 1) }
-        for index in 0..<(canonicalIconFrames.count - 1) {
-            let left = canonicalIconFrames[index].midX, right = canonicalIconFrames[index + 1].midX
+        if coordinate >= last.midX { return CGFloat(canonicalContentFrames.count - 1) }
+        for index in 0..<(canonicalContentFrames.count - 1) {
+            let left = canonicalContentFrames[index].midX, right = canonicalContentFrames[index + 1].midX
             if coordinate >= left && coordinate <= right {
-                return CGFloat(index) + (coordinate - left) / max(1, right - left)
+                return CGFloat(index) + (coordinate - left) / max(0.000001, right - left)
             }
         }
         return nil
@@ -210,11 +321,11 @@ public struct DockGeometry: Equatable, Sendable {
 
     public func magnificationFocus(at physicalDocumentPoint: CGPoint, basedOn base: DockGeometry) -> CGFloat? {
         let point = documentPointToCanonical(physicalDocumentPoint)
-        guard let first = canonicalTileFrames.first, let last = canonicalTileFrames.last,
-              let baseFirst = base.canonicalTileFrames.first, let baseLast = base.canonicalTileFrames.last else { return nil }
+        guard let first = canonicalHitFrames.first, let last = canonicalHitFrames.last,
+              let baseFirst = base.canonicalHitFrames.first, let baseLast = base.canonicalHitFrames.last else { return nil }
         let inRow = point.x >= min(first.minX, baseFirst.minX) && point.x <= max(last.maxX, baseLast.maxX)
             && point.y >= 0 && point.y <= barThickness
-        guard inRow || canonicalIconFrames.contains(where: { $0.contains(point) }) else { return nil }
+        guard inRow || canonicalContentFrames.contains(where: { $0.contains(point) }) else { return nil }
         return base.focusIndex(at: point.x)
     }
 
@@ -239,6 +350,31 @@ public struct DockGeometry: Equatable, Sendable {
             // toward the target early: growing early could overlap a neighbor
             // whose position is still approaching the same zero-gap boundary.
             a >= b && a - b < 0.08 ? b : a + (b - a) * t
+        }
+        if opticalContext != nil || target.opticalContext != nil {
+            guard let context = opticalContext, context == target.opticalContext else { return target }
+            let sizes = zip(canonicalIconFrames, target.canonicalIconFrames).map { size($0.width, $1.width) }
+            let row = DockOpticalSpacingPolicy.row(sizes: sizes, bounds: context.bounds,
+                spacingPercent: context.percent, outerInset: context.outerInset,
+                separatorLength: context.separatorLength, dividerIndex: context.dividerIndex)
+            let firstX = (canonicalIconFrames.first?.minX ?? 0)
+                + ((target.canonicalIconFrames.first?.minX ?? 0) - (canonicalIconFrames.first?.minX ?? 0)) * t
+            let shift = firstX - (row.icons.first?.minX ?? 0)
+            let icons = row.icons.map { $0.offsetBy(dx: shift, dy: 0) }
+            let contents = row.contents.map { $0.offsetBy(dx: shift, dy: 0) }
+            let hits = DockOpticalSpacingPolicy.hitFrames(icons: icons, contents: contents,
+                thickness: barThickness, baseIconSize: context.baseIconSize,
+                separatorLength: context.separatorLength, dividerIndex: context.dividerIndex)
+            let tiles = zip(icons, hits).map { $0.union($1) }
+            let divider = row.dividerX.map { CGRect(x: $0 + shift - 0.5,
+                y: max(2, barThickness * 0.15), width: 1, height: max(1, barThickness * 0.7)) }
+            return DockGeometry(edge: edge, canonicalCanvasSize: canonicalCanvasSize,
+                canonicalDocumentSize: canonicalDocumentSize, canonicalBackdropRect: canonicalBackdropRect,
+                canonicalViewportRect: canonicalViewportRect, canonicalTileFrames: tiles,
+                canonicalIconFrames: icons, canonicalContentFrames: contents, canonicalHitFrames: hits,
+                canonicalDotFrames: DockOpticalSpacingPolicy.dotFrames(contents: contents),
+                canonicalDividerFrame: divider, bodyLength: bodyLength, barThickness: barThickness,
+                opticalContext: context)
         }
         func rect(_ a: CGRect, _ b: CGRect) -> CGRect {
             CGRect(x: a.minX + (b.minX - a.minX) * t, y: a.minY + (b.minY - a.minY) * t,
@@ -269,8 +405,10 @@ public struct DockGeometry: Equatable, Sendable {
             canonicalViewportRect: canonicalViewportRect,
             canonicalTileFrames: tiles,
             canonicalIconFrames: icons,
+            canonicalContentFrames: icons,
+            canonicalHitFrames: tiles,
             canonicalDotFrames: dots,
-            canonicalDividerFrame: divider, bodyLength: bodyLength, barThickness: barThickness)
+            canonicalDividerFrame: divider, bodyLength: bodyLength, barThickness: barThickness, opticalContext: nil)
     }
 
     public func maximumDifference(from other: DockGeometry) -> CGFloat {
