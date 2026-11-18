@@ -51,7 +51,7 @@ struct CustomSizingStoreChecks {
               "Running-app fixture was not used by the displayed entries")
         check(store.configuration.customSizing == nil, "Migration eagerly changed legacy sizing")
         check(store.configuration.entries == legacy.entries, "Migration changed groups")
-        check(try Data(contentsOf: directory.appendingPathComponent("configuration-before-v10.json")) == originalBytes,
+        check(try Data(contentsOf: directory.appendingPathComponent("configuration-before-v\(DockConfiguration.currentVersion).json")) == originalBytes,
               "Migration backup changed bytes")
         let oldPresentation = store.presentation(for: "A")
         let snapshot = store.customSizing(for: "A")

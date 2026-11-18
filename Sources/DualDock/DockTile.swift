@@ -22,6 +22,9 @@ final class DockTile: NSView, NSDraggingSource {
     private var layoutEdge: DockEdge = .bottom
     private var explicitIconBounds: NSRect?
     private var explicitDotBounds: NSRect?
+    private var explicitContentBounds: NSRect?
+    private var explicitHitBounds: NSRect?
+    private var usesOpticalGeometry = false
     private var hovered = false
     private var dragStart: NSPoint?
     private var dragging = false
@@ -97,9 +100,12 @@ final class DockTile: NSView, NSDraggingSource {
     /// All rectangles arrive in the document coordinate space. Only positions
     /// transform between edges; the image, folder and badge remain upright.
     func applyGeometry(frame: NSRect, iconFrame: NSRect, dotFrame: NSRect,
-                       baseIconSize: CGFloat, edge: DockEdge) {
+                       baseIconSize: CGFloat, edge: DockEdge, contentFrame: NSRect? = nil, hitFrame: NSRect? = nil,
+                       optical: Bool = false) {
         let icon = iconFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
         let dot = dotFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
+        let content = (contentFrame ?? iconFrame).offsetBy(dx: -frame.minX, dy: -frame.minY)
+        let hit = (hitFrame ?? frame).offsetBy(dx: -frame.minX, dy: -frame.minY)
         let scale = (baseIconSize.isFinite ? max(1, baseIconSize) : 48) / 48
         // A translated layer keeps the same pixels. Only local drawing geometry
         // invalidates its backing image; subtracting large document coordinates
@@ -112,15 +118,22 @@ final class DockTile: NSView, NSDraggingSource {
         let sizeChanged = abs(self.frame.width - frame.width) >= 0.000001
             || abs(self.frame.height - frame.height) >= 0.000001
         let changed = sizeChanged || !same(explicitIconBounds, icon) || !same(explicitDotBounds, dot)
-            || unitScale != scale || layoutEdge != edge
+            || !same(explicitContentBounds, content) || unitScale != scale || layoutEdge != edge
+            || usesOpticalGeometry != optical
         if self.frame.origin != frame.origin { setFrameOrigin(frame.origin) }
         if sizeChanged { setFrameSize(frame.size) }
         explicitIconBounds = icon
         explicitDotBounds = dot
+        explicitContentBounds = content
+        explicitHitBounds = hit
+        usesOpticalGeometry = optical
         unitScale = scale
         layoutEdge = edge
         if changed { needsDisplay = true }
     }
+
+    var visibleContentBounds: NSRect { explicitContentBounds ?? visualIconBounds }
+    var interactionBounds: NSRect { explicitHitBounds ?? bounds }
 
     var runningIndicatorBounds: NSRect {
         explicitDotBounds ?? NSRect(x: bounds.midX - 2 * unitScale, y: 2 * unitScale,
@@ -171,7 +184,7 @@ final class DockTile: NSView, NSDraggingSource {
             }
             NSBezierPath(roundedRect: marker, xRadius: width / 2, yRadius: width / 2).fill()
         }
-        if let label = store.badgeLabel(for: entry) { drawBadge(label, in: iconRect) }
+        if let label = store.badgeLabel(for: entry) { drawBadge(label, in: visibleContentBounds) }
     }
 
     private func drawBadge(_ label: String, in icon: NSRect) {
@@ -253,7 +266,7 @@ final class DockTile: NSView, NSDraggingSource {
 
     override func mouseUp(with event: NSEvent) {
         if suppressMouseUp { suppressMouseUp = false; return }
-        let shouldOpen = !dragging && bounds.contains(convert(event.locationInWindow, from: nil))
+        let shouldOpen = !dragging && interactionBounds.contains(convert(event.locationInWindow, from: nil))
         dragStart = nil
         endInteraction()
         if shouldOpen { onPress?() }
@@ -313,7 +326,7 @@ final class DockTile: NSView, NSDraggingSource {
     }
 
     private func presentContextMenu(_ menu: NSMenu, window: NSWindow) {
-        let icon = window.convertToScreen(convert(visualIconBounds, to: nil))
+        let icon = window.convertToScreen(convert(visibleContentBounds, to: nil))
         let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: icon.midX, y: icon.midY)) } ?? window.screen
         guard let screen else { return }
         menu.update()
@@ -360,10 +373,12 @@ final class DockTile: NSView, NSDraggingSource {
 
     /// Express order along the visible row: left-to-right or top-to-bottom.
     func dropPosition(at point: NSPoint) -> (after: Bool, central: Bool) {
+        let region = usesOpticalGeometry ? visibleContentBounds : bounds
         let fraction = layoutEdge.isHorizontal
-            ? (point.x - bounds.minX) / max(1, bounds.width)
-            : (bounds.maxY - point.y) / max(1, bounds.height)
-        return (fraction > 0.5, fraction > 0.22 && fraction < 0.78)
+            ? (point.x - region.minX) / max(1, region.width)
+            : (region.maxY - point.y) / max(1, region.height)
+        return (fraction > 0.5, fraction > 0.22 && fraction < 0.78
+                && (!usesOpticalGeometry || region.contains(point)))
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { clearDrop() }

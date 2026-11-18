@@ -30,6 +30,7 @@ final class AppStore: ObservableObject {
     private let permissionsProvider: (() -> (accessibility: Bool, capture: Bool))?
     private var observers: [NSObjectProtocol] = []
     private var icons: [String: NSImage] = [:]
+    private var artworkBounds: [String: CGRect] = [:]
     private var readOnly = false
     private var initialSetupComplete = false
     private var pendingSave: Task<Void, Never>?
@@ -68,7 +69,7 @@ final class AppStore: ObservableObject {
                 }
             } else {
                 initial.insert(SystemDockService.importPinnedApps())
-                initial.customSizing = DockCustomSizing()
+                initial.customSizing = .visualDefault
             }
         } catch {
             readOnly = true
@@ -307,9 +308,18 @@ final class AppStore: ObservableObject {
         let bounds = sizingBounds(for: displayID)
         if let custom = storedCustomSizing(for: displayID), custom.lengthMode == .fit,
            let effective = resolvedCustomSizing(for: displayID) {
-            let required = DockContentLengthPolicy.contentSpan(count: displayedEntryCount,
-                iconSize: effective.iconSize, gap: effective.gap, separatorLength: effective.separatorLength,
-                dividerIndex: sizingDividerIndex) + 2 * min(2, effective.padding)
+            let span: Double
+            if let percent = custom.spacingPercent {
+                span = DockOpticalSpacingPolicy.contentSpan(count: displayedEntryCount, iconSize: effective.iconSize,
+                    spacingPercent: percent, contentBounds: contentBounds(for: displayedEntries),
+                    edge: resolvedDisplayID(displayID).map { edge(for: $0) } ?? .bottom,
+                    separatorLength: effective.separatorLength, dividerIndex: sizingDividerIndex)
+            } else {
+                span = DockContentLengthPolicy.contentSpan(count: displayedEntryCount,
+                    iconSize: effective.iconSize, gap: effective.gap, separatorLength: effective.separatorLength,
+                    dividerIndex: sizingDividerIndex)
+            }
+            let required = span + 2 * min(2, effective.padding)
             return DockResizeBounds(minLength: min(bounds.maxLength, required), maxLength: bounds.maxLength,
                 minThickness: bounds.minThickness, maxThickness: bounds.maxThickness)
         }
@@ -436,7 +446,8 @@ final class AppStore: ObservableObject {
         if let custom = storedCustomSizing(for: displayID) {
             let revised = custom.resized(from: original, to: sizing,
                 maximumLength: sizingBounds(for: displayID).maxLength,
-                count: displayedEntryCount, dividerIndex: sizingDividerIndex)
+                count: displayedEntryCount, dividerIndex: sizingDividerIndex,
+                contentBounds: contentBounds(for: displayedEntries), edge: resolvedDisplayID(displayID).map { edge(for: $0) } ?? .bottom)
             updateCustomSizing(for: displayID) { $0 = revised }
             return
         }
@@ -496,7 +507,8 @@ final class AppStore: ObservableObject {
         if let custom = storedCustomSizing(for: preview.displayID) {
             let revised = custom.resized(from: preview.originalSizing, to: normalized,
                 maximumLength: sizingBounds(for: preview.displayID).maxLength,
-                count: displayedEntryCount, dividerIndex: sizingDividerIndex)
+                count: displayedEntryCount, dividerIndex: sizingDividerIndex,
+                contentBounds: contentBounds(for: displayedEntries), edge: resolvedDisplayID(displayID).map { edge(for: $0) } ?? .bottom)
             updateCustomSizing(for: preview.displayID) { $0 = revised }
             flushPendingSave()
             return
@@ -568,6 +580,37 @@ final class AppStore: ObservableObject {
             fitContent: configuration.manualAutoLength, maximumLength: sizingBounds(for: displayID).maxLength)
     }
 
+    /// Express legacy canvas gaps in the new visible-body scale without
+    /// rewriting a user's saved geometry just by opening Settings.
+    func spacingPercent(for displayID: String?) -> Double {
+        let preferences = customSizing(for: displayID)
+        if let percent = preferences.spacingPercent { return percent }
+        let style = presentation(for: displayID).style
+        let id = resolvedDisplayID(displayID)
+        let edge = id.map { self.edge(for: $0) } ?? .bottom
+        let metrics = contentBounds(for: displayedEntries)
+        let side = max(1, style.iconSize)
+        let bounds = metrics.isEmpty ? [IconArtworkBounds.full] : metrics
+        let pairs = bounds.count > 1 ? Array(zip(bounds, bounds.dropFirst())) : [(bounds[0], bounds[0])]
+        let ratios = pairs.map { left, right -> Double in
+            let a = edge.isHorizontal ? left.width : left.height
+            let b = edge.isHorizontal ? right.width : right.height
+            let trailing = edge.isHorizontal ? 1 - left.maxX : left.minY
+            let leading = edge.isHorizontal ? right.minX : 1 - right.maxY
+            let width = max(0.01, (a + b) / 2)
+            return (Double(style.gap / side) + Double(trailing + leading)) / Double(width) * 100
+        }
+        return min(100, max(0, ratios.reduce(0, +) / Double(ratios.count)))
+    }
+
+    func setSpacingPercent(_ value: Double, for displayID: String?) {
+        updateCustomSizing(for: displayID) { preferences in
+            preferences.spacingPercent = value
+            preferences.gapOverride = nil
+            if preferences.alignment == .distribute { preferences.alignment = .center }
+        }
+    }
+
     func updateCustomSizing(for displayID: String?, _ change: (inout DockCustomSizing) -> Void) {
         guard !configuration.adaptiveSizing, isEditableDisplayReference(displayID) else { return }
         let original = customSizing(for: displayID)
@@ -599,7 +642,7 @@ final class AppStore: ObservableObject {
     }
 
     func resetCustomSizing(for displayID: String?) {
-        updateCustomSizing(for: displayID) { $0 = DockCustomSizing() }
+        updateCustomSizing(for: displayID) { $0 = .visualDefault }
     }
 
     private func resolvedCustomSizing(for displayID: String?) -> DockResolvedSizing? {
@@ -607,11 +650,18 @@ final class AppStore: ObservableObject {
         let id = resolvedDisplayID(displayID)
         let bounds = sizingBounds(for: id)
         if let preview = resizePreview, configuration.synchronizeSizes || preview.displayID == id {
+            // Capture shared preferences in the gesture's source orientation.
+            // Each screen then resolves those same preferences on its own edge.
+            let sourceID = preview.displayID
             preferences = preferences.resized(from: preview.originalSizing, to: preview.sizing,
-                maximumLength: bounds.maxLength, count: displayedEntryCount, dividerIndex: sizingDividerIndex)
+                maximumLength: sizingBounds(for: sourceID).maxLength,
+                count: displayedEntryCount, dividerIndex: sizingDividerIndex,
+                contentBounds: contentBounds(for: displayedEntries), edge: sourceID.map { edge(for: $0) } ?? .bottom)
         }
         return DockCustomSizingResolver.resolve(preferences, count: displayedEntryCount,
-            dividerIndex: sizingDividerIndex, maximumLength: bounds.maxLength, maximumHeight: bounds.maxThickness)
+            dividerIndex: sizingDividerIndex, maximumLength: bounds.maxLength, maximumHeight: bounds.maxThickness,
+            contentBounds: preferences.spacingPercent == nil ? [] : contentBounds(for: displayedEntries),
+            edge: id.map { edge(for: $0) } ?? .bottom)
     }
 
     func presentation(for displayID: String?, group: Bool = false) -> DockPresentation {
@@ -628,7 +678,8 @@ final class AppStore: ObservableObject {
                 style: DockGeometryStyle(iconSize: CGFloat(icon), barThickness: CGFloat(icon + 12),
                     gap: configuration.adaptiveSizing ? CGFloat(nativeDockMetrics.itemSpacing)
                         : CGFloat(custom?.gap ?? effective.iconSpacing * icon / 48),
-                    leadingPadding: 6, trailingPadding: 6, separatorLength: 0, magnificationScale: 1),
+                    leadingPadding: 6, trailingPadding: 6, separatorLength: 0, magnificationScale: 1,
+                    spacingPercent: configuration.adaptiveSizing ? nil : storedCustomSizing(for: id)?.spacingPercent.map { CGFloat($0) }),
                 maximumLength: max(1, (display?.visibleFrame.width ?? CGFloat(sizingLimits.maxWidth)) - 24),
                 fixedLength: nil, resizeMargin: 0, resizeBounds: bounds,
                 requestedManualSizing: requested, canResize: false)
@@ -650,7 +701,11 @@ final class AppStore: ObservableObject {
                     gap: custom.gap, leadingPadding: custom.padding, trailingPadding: custom.padding,
                     separatorLength: custom.separatorLength,
                     magnificationScale: configuration.magnificationEnabled ? configuration.magnificationScale : 1,
-                    magnificationRadius: configuration.magnificationRadius, contentAlignment: preferences.alignment),
+                    magnificationRadius: configuration.magnificationRadius,
+                    contentAlignment: preferences.spacingPercent == nil ? preferences.alignment
+                        : (preferences.alignment == .distribute ? .center : preferences.alignment),
+                    contentBounds: preferences.spacingPercent == nil ? [] : contentBounds(for: displayedEntries),
+                    spacingPercent: preferences.spacingPercent.map { CGFloat($0) }),
                 maximumLength: bounds.maxLength, fixedLength: custom.length, resizeMargin: 6,
                 resizeBounds: customSizingBounds(for: id),
                 requestedManualSizing: requested, canResize: !readOnly,
@@ -771,6 +826,21 @@ final class AppStore: ObservableObject {
         let image = NSWorkspace.shared.icon(forFile: resolvedURL(app).path)
         icons[app.id] = image
         return image
+    }
+
+    func iconContentBounds(for app: AppReference) -> CGRect {
+        let key = app.id + "\n" + app.path
+        if let cached = artworkBounds[key] { return cached }
+        let measured = IconArtworkBounds.measure(icon(for: app))
+        artworkBounds[key] = measured
+        return measured
+    }
+
+    func contentBounds(for entries: [DockEntry]) -> [CGRect] {
+        entries.map { entry in
+            if entry.isGroup { return IconArtworkBounds.folder }
+            return entry.apps.first.map { iconContentBounds(for: $0) } ?? IconArtworkBounds.full
+        }
     }
 
     func isRunning(_ app: AppReference) -> Bool { runningApps.contains { $0.id == app.id } }

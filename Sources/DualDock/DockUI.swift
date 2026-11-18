@@ -119,6 +119,7 @@ private final class DockAnimationTarget: NSObject {
 
 @MainActor
 final class DockStripView: NSView {
+    private var artworkBounds: [CGRect] = []
     private let backdrop = NSVisualEffectView()
     var backdropFrame: NSRect { backdrop.frame }
     private let scrolling = DockScrollView()
@@ -281,6 +282,8 @@ final class DockStripView: NSView {
         isGroup = groupID != nil
         var resolved = supplied ?? store.presentation(for: nil, group: isGroup)
         resolved.maximumLength = min(resolved.maximumLength, max(1, maxWidth))
+        artworkBounds = store.contentBounds(for: entries)
+        if resolved.style.spacingPercent != nil { resolved.style.contentBounds = artworkBounds }
         presentation = resolved
         dividerIndex = !isGroup && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
         for entry in entries {
@@ -307,6 +310,8 @@ final class DockStripView: NSView {
     /// Geometry-only update: keep existing tiles and the active resize gesture alive.
     @discardableResult
     func updatePresentation(_ value: DockPresentation) -> NSSize {
+        var value = value
+        if value.style.spacingPercent != nil { value.style.contentBounds = artworkBounds }
         guard value != presentation else { return frame.size }
         let offset = scrollOffset
         if value.edge != presentation?.edge || !value.canResize { cancelResize() }
@@ -385,14 +390,14 @@ final class DockStripView: NSView {
     private func tileIndex(at local: NSPoint) -> Int? {
         guard scrolling.frame.contains(local), let geometry = currentGeometry else { return nil }
         let point = document.convert(local, from: self)
-        return geometry.tileFrames.firstIndex { $0.contains(point) }
+        return geometry.hitFrames.firstIndex { $0.contains(point) }
     }
 
     private func interactionTileIndex(at local: NSPoint) -> Int? {
         guard let index = tileIndex(at: local) else { return nil }
         if backdropFrame.contains(local) { return index }
         let tile = tiles[index]
-        return tile.visualIconBounds.contains(tile.convert(local, from: self)) ? index : nil
+        return tile.visibleContentBounds.contains(tile.convert(local, from: self)) ? index : nil
     }
 
     func updateMousePassthrough() { updateMousePassthrough(at: NSEvent.mouseLocation) }
@@ -476,7 +481,7 @@ final class DockStripView: NSView {
         let local = convert(event.locationInWindow, from: nil)
         guard let handle = resizeHandle(at: local) else { return }
         let clickTile = interactionTileIndex(at: local).map { tiles[$0] }.flatMap { tile in
-            tile.visualIconBounds.contains(tile.convert(local, from: self)) ? tile : nil
+            tile.visibleContentBounds.contains(tile.convert(local, from: self)) ? tile : nil
         }
         let lengthOnly = handle == .leading || handle == .trailing
         let bounds = lengthOnly ? (p.lengthResizeBounds ?? p.resizeBounds) : p.resizeBounds
@@ -514,7 +519,7 @@ final class DockStripView: NSView {
             window?.invalidateCursorRects(for: self)
         } else if let tile = session.clickTile, let window {
             let local = tile.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
-            if tile.visualIconBounds.contains(local) { tile.onPress?() }
+            if tile.visibleContentBounds.contains(local) { tile.onPress?() }
         }
     }
 
@@ -594,18 +599,18 @@ final class DockStripView: NSView {
     }
 
     private func updateTerminalAnchor(pointer: CGFloat, geometry: DockGeometry, base: DockGeometry) {
-        let count = base.canonicalIconFrames.count
+        let count = base.canonicalFocusFrames.count
         guard count > 0, let focusIndex, focusIndex <= 0 || focusIndex >= CGFloat(count - 1) else {
             terminalIndex = nil; terminalDisplacement = 0; terminalAnchor = nil
             return
         }
         let index = focusIndex <= 0 ? 0 : count - 1
         let direction: CGFloat = index == 0 ? -1 : 1
-        let center = base.canonicalIconFrames[index].midX
+        let center = base.canonicalFocusFrames[index].midX
         if terminalIndex != index {
             // Keep a displaced end icon under a pointer arriving from the
             // opposite end, but do not turn later outward movement into a drag.
-            terminalDisplacement = max(0, direction * (geometry.canonicalIconFrames[index].midX - center))
+            terminalDisplacement = max(0, direction * (geometry.canonicalFocusFrames[index].midX - center))
         }
         terminalIndex = index
         terminalDisplacement = min(terminalDisplacement, max(0, direction * (pointer - center)))
@@ -687,7 +692,9 @@ final class DockStripView: NSView {
         let frames = value.tileFrames, icons = value.iconFrames, dots = value.dotFrames
         for index in tiles.indices {
             tiles[index].applyGeometry(frame: frames[index], iconFrame: icons[index], dotFrame: dots[index],
-                                       baseIconSize: presentation?.style.iconSize ?? 48, edge: value.edge)
+                baseIconSize: presentation?.style.iconSize ?? 48, edge: value.edge,
+                contentFrame: value.contentFrames[index], hitFrame: value.hitFrames[index],
+                optical: presentation?.style.spacingPercent != nil)
         }
         divider?.frame = value.dividerFrame ?? .zero
         desiredWidth = value.bodyLength

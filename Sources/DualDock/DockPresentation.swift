@@ -5,7 +5,7 @@ import DualDockCore
 struct DockPresentation: Equatable, Sendable {
     let displayID: String?
     let edge: DockEdge
-    let style: DockGeometryStyle
+    var style: DockGeometryStyle
     var maximumLength: CGFloat
     let fixedLength: CGFloat?
     let resizeMargin: CGFloat
