@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AboutView: View {
     @Environment(\.dualDockLanguage) private var localize
+    @ObservedObject private var updates = SoftwareUpdateService.shared
     private let projectURL = URL(string: "https://github.com/autumncry/DualDock")!
     private let releasesURL = URL(string: "https://github.com/autumncry/DualDock/releases/latest")!
     private let issuesURL = URL(string: "https://github.com/autumncry/DualDock/issues")!
@@ -29,8 +30,24 @@ struct AboutView: View {
 
             VStack(spacing: 0) {
                 detailRow(localize("版本", "Version")) {
-                    Text(versionDescription)
-                        .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 12) {
+                            Text(versionDescription)
+                                .textSelection(.enabled)
+                            Button {
+                                updates.check()
+                            } label: {
+                                Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .controlSize(.small)
+                            .disabled(!updates.canCheck)
+                        }
+                        if let error = updates.startupError {
+                            Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
+                                .font(.callout).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
                 Divider()
                 detailRow(localize("许可证", "License")) {

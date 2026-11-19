@@ -10,6 +10,7 @@ case "$CONFIGURATION" in
 esac
 cd "$ROOT_DIR"
 
+
 swift build -c "$CONFIGURATION" >&2
 BIN_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
 STAGING_DIR="$(mktemp -d "$ROOT_DIR/.build/dualdock-package.XXXXXX")"
@@ -17,6 +18,17 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 STAGED_APP="$STAGING_DIR/DualDock.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
 cp "$BIN_DIR/DualDock" "$STAGED_APP/Contents/MacOS/DualDock"
+# Keep the released framework structure and its nested signed helpers intact.
+mkdir -p "$STAGED_APP/Contents/Frameworks"
+FRAMEWORK="$STAGED_APP/Contents/Frameworks/Sparkle.framework"
+"$ROOT_DIR/script/sparkle_tools.sh" --extract-framework-to "$STAGING_DIR/vendor" >/dev/null
+mv "$STAGING_DIR/vendor/Sparkle.framework" "$FRAMEWORK"
+mv "$STAGING_DIR/vendor/LICENSE" "$STAGED_APP/Contents/Resources/Sparkle-LICENSE.txt"
+codesign --verify --deep --strict "$FRAMEWORK" >&2
+# Fail packaging if a test-only fallback was linked, or if the bundle could
+# only find its updater in the developer's build directory.
+otool -L "$STAGED_APP/Contents/MacOS/DualDock" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle ' >/dev/null
+otool -l "$STAGED_APP/Contents/MacOS/DualDock" | grep -F 'path @executable_path/../Frameworks ' >/dev/null
 cp "$ROOT_DIR/Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
 for LANGUAGE_DIR in "$ROOT_DIR"/Resources/*.lproj; do
   ditto "$LANGUAGE_DIR" "$STAGED_APP/Contents/Resources/$(basename "$LANGUAGE_DIR")"
@@ -29,7 +41,7 @@ fi
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$STAGED_APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - --identifier local.ronny.DualDock \
   --requirements '=designated => identifier "local.ronny.DualDock"' "$STAGED_APP" >&2
-codesign --verify --strict "$STAGED_APP" >&2
+codesign --verify --deep --strict "$STAGED_APP" >&2
 mkdir -p "$(dirname "$APP_BUNDLE")"
 rm -rf "$APP_BUNDLE"
 mv "$STAGED_APP" "$APP_BUNDLE"

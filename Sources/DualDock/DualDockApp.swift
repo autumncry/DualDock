@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let firstLaunch = !FileManager.default.fileExists(atPath: directory.appendingPathComponent("configuration.json").path)
         store = AppStore(directory: directory)
+        SoftwareUpdateService.shared.beforeRelaunch = { [weak self] in self?.store?.flushPendingSave() }
         coordinator = DisplayCoordinator(store: store)
         coordinator.showSettings = { [weak self] in self?.openSettings() }
         setupMenu()
