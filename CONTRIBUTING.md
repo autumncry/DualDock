@@ -21,3 +21,5 @@ python3 Tests/InstallationGuidanceChecks.py
 `script/package_dmg.sh` runs the documentation guard before building, then verifies the installation text in the read-only mounted DMG before publishing the local asset and checksum. A missing or stale installation text fails packaging. The fixture checks cover both routes, the exact Terminal commands and target, and missing/stale DMG contents; they do not claim a clean-machine Gatekeeper launch test.
 
 Apple references: [first-launch alerts](https://support.apple.com/en-us/102445) and [per-app approval](https://support.apple.com/en-gb/guide/mac-help/mh40617/mac).
+
+For updater-enabled releases, preserve the bilingual offline guide and its copy-only Terminal button alongside the plain-text installation notes. Build and sign the final archive with the release account, verify the uploaded assets, then publish the signed appcast. The release sequence is documented in [software updates](docs/software-updates.md).

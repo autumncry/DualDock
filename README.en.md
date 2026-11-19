@@ -138,10 +138,14 @@ Download the latest `DualDock-<version>-arm64.dmg` and optional SHA-256 checksum
 2. Launch DualDock and grant **Screen Recording** and **Accessibility** access in its Permissions settings.
 3. Choose the display mode, adaptive or manual sizing, and each display’s position in Settings, then organize app groups with drag-and-drop. Hiding the system Dock is off by default and can be enabled when desired.
 
-Screen Recording provides window thumbnails; Accessibility identifies, activates, and closes windows, and reads system Dock layout and badge information. If a permission change does not take effect, quit and reopen DualDock. To update, download the new DMG and replace the app; your local configuration is retained.
+Screen Recording provides window thumbnails; Accessibility identifies, activates, and closes windows, and reads system Dock layout and badge information. If a permission change does not take effect, quit and reopen DualDock. Updates retain your local configuration.
 
 > [!NOTE]
 > The current release targets Apple Silicon and uses an ad-hoc signature for personal use. It is not notarized by Apple. If macOS blocks the first launch, consult the [installation notes](docs/installation.txt) (Chinese).
+
+Open **首次安装 - First Launch.html** inside the DMG for an offline guide in English and Chinese. Its **Copy commands** button copies the optional Terminal commands for you to review and run.
+
+**Updates:** From 2.8.0 onward, open **Settings → Support → About DualDock → Check for Updates**. If a newer version is available, review it and confirm the download, installation, and relaunch. Install this first updater-enabled version manually if upgrading from 2.7.0 or earlier.
 
 <!-- first-launch-guidance:start -->
 ### First launch: Apple cannot verify the app or developer

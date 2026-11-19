@@ -25,8 +25,10 @@ class InstallationGuidanceChecks(unittest.TestCase):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(REPOSITORY / relative, destination)
+        shutil.copyfile(REPOSITORY / "docs/first-launch.html", self.root / "docs/first-launch.html")
         self.volume = self.root / "volume"
         self.volume.mkdir()
+        shutil.copyfile(self.root / "docs/first-launch.html", self.volume / "首次安装 - First Launch.html")
         self.installation = self.volume / "安装说明.txt"
         shutil.copyfile(self.root / "docs/installation.txt", self.installation)
 
@@ -39,6 +41,28 @@ class InstallationGuidanceChecks(unittest.TestCase):
     def assert_rejected(self, result, expected):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(expected, result.stderr)
+
+    def test_first_launch_guide_includes_the_exact_copyable_commands(self):
+        import html.parser
+
+        class Commands(html.parser.HTMLParser):
+            active = False
+            text = ""
+            def handle_starttag(self, tag, attrs):
+                if tag == "pre" and dict(attrs).get("id") == "commands":
+                    self.active = True
+            def handle_endtag(self, tag):
+                if tag == "pre":
+                    self.active = False
+            def handle_data(self, value):
+                if self.active:
+                    self.text += value
+
+        parser = Commands()
+        parser.feed((self.root / "docs/first-launch.html").read_text())
+        self.assertEqual(parser.text, QUARANTINE_COMMAND + "\n" + LAUNCH_COMMAND)
+        (self.volume / "首次安装 - First Launch.html").unlink()
+        self.assert_rejected(self.run_guard(volume=True), "first-launch guide")
 
     def test_current_documents_and_packaged_copy_pass(self):
         for volume in (False, True):

@@ -84,6 +84,12 @@ def check_volume(root, volume):
             return [f"{packaged}: DMG installation text differs from docs/installation.txt"]
     except OSError as error:
         return [f"{packaged}: cannot verify DMG installation text ({error})"]
+    guide = volume / "首次安装 - First Launch.html"
+    try:
+        if guide.is_symlink() or guide.read_bytes() != (root / "docs/first-launch.html").read_bytes():
+            return [f"{guide}: missing or stale bilingual first-launch guide"]
+    except OSError as error:
+        return [f"{guide}: cannot verify first-launch guide ({error})"]
     return []
 
 

@@ -28,6 +28,7 @@ trap cleanup EXIT
 mkdir -p "$STAGING_DIR/volume"
 ditto "$APP_PATH" "$STAGING_DIR/volume/DualDock.app"
 ln -s /Applications "$STAGING_DIR/volume/Applications"
+cp "$ROOT_DIR/docs/first-launch.html" "$STAGING_DIR/volume/首次安装 - First Launch.html"
 cp "$ROOT_DIR/docs/installation.txt" "$STAGING_DIR/volume/安装说明.txt"
 cp "$ROOT_DIR/LICENSE" "$STAGING_DIR/volume/LICENSE.txt"
 codesign --verify --strict "$STAGING_DIR/volume/DualDock.app" >&2

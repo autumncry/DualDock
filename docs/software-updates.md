@@ -1,9 +1,24 @@
-# DualDock 应用内更新可行性
+# 发布 DualDock 更新
 
-**建议采用用户点击后检查、确认后安装的方式。** 设置入口可放在“支持 → 关于 DualDock”的版本号旁。2.7.0 仍通过 GitHub Releases 分发 DMG。
+从 2.8.0 起，“支持 → 关于 DualDock → 检查更新”启动 Sparkle 的手动检查。用户确认后，Sparkle 下载更新并验证签名，安装到当前应用的位置，再重新启动。2.7.0 及以前的版本需先手动安装一次带更新器的版本。
 
-Netcatty 1.1.90 的手动检查先向 GitHub 查询最新版本并比较版本号。发现更新后，支持的平台会进入 Electron 更新器的下载流程，设置页显示进度，用户确认后重启安装。[检查逻辑](https://github.com/binaricat/Netcatty/blob/8d15a29bc69ff48c2331298c2015df9570cfcbe9/application/state/useUpdateCheck.ts#L431-L466) · [macOS 安装动作](https://github.com/binaricat/Netcatty/blob/8d15a29bc69ff48c2331298c2015df9570cfcbe9/electron/bridges/autoUpdateBridge.cjs#L564-L590)
+## 发布者设置
 
-DualDock 可用 URLSession 查询官方 Releases，比较稳定版本，展示变更和下载入口。要把“下载”延伸到“替换应用并重启”，建议嵌入原生 Sparkle 2，由发布流程生成 HTTPS appcast、为每个最终 DMG 签署 Ed25519 签名，并将对应公钥嵌入应用。现有 DMG 和 SHA-256 可继续提供给手动安装的用户。发布私钥应由维护者保管；同一发行页上的 SHA-256 文件本身无法验证发布者身份。[Sparkle 集成](https://sparkle-project.org/documentation/) · [发布和签名流程](https://sparkle-project.org/documentation/publishing/)
+正式应用的 `Resources/Info.plist` 保存了更新公钥和固定 HTTPS 更新清单地址。私钥由发布 Mac 的钥匙串保管，Sparkle 账户名为 `DualDock`。现有正式密钥应持续复用。更换发布 Mac 时应先按 Sparkle 文档安全迁移同一密钥。钥匙串和私钥备份由维护者保管，请勿将私钥写入仓库、日志或聊天。[Sparkle 密钥管理](https://sparkle-project.org/documentation/)
 
-当前采用 ad-hoc 代码签名。Sparkle 更新签名和 Apple Developer ID 签名、公证分别承担更新来源验证和系统分发信任。正式集成时需要修改现有 SwiftPM 打包脚本以嵌入框架和其所需组件，校验嵌套签名、执行权限和符号链接。首次带更新器的版本需手动安装一次。发布前宜用两份真实构建验证升级后启动、配置与分组保留、辅助功能和录屏授权、登录项、下载中断与签名不匹配时的恢复。Apple 关于首次启动的安装说明继续保留。[Sparkle 官方签名建议](https://sparkle-project.org/documentation/)
+Sparkle 的更新签名由维护者生成，无需付费的 Apple 开发者账户。macOS 首次启动的验证流程仍见 DMG 内的安装指南。应用的更新公钥用于验证清单和下载文件。[Sparkle 发布文档](https://sparkle-project.org/documentation/publishing/)
+
+## 发布步骤
+
+1. 在 `Resources/Info.plist` 更新版本号与单调递增的构建号，准备对应的中英文发布说明 `docs/release-notes/v版本号.md`。
+2. 使用 `bash script/package_dmg.sh` 构建最终 DMG。脚本核对固定版本的 Sparkle，嵌入框架和安装辅助程序，检查包签名与 DMG 指南。之后如重建 DMG，需重新进行下列签名步骤。
+3. 运行 `bash script/make_appcast.sh`。Sparkle 使用钥匙串中的正式密钥，为最终 DMG 及更新清单签名。脚本以应用内公钥验证签名、文件长度、版本、最低系统要求和下载地址。通过验证的候选清单是 `dist/appcast.xml`。
+4. 创建正式 Git 标签，上传该标签对应的 DMG 与 SHA-256 到 GitHub Release，核对远程文件的 SHA-256，然后发布。发布同一版本后不要替换其 DMG。
+5. 确认正式下载链接可访问后，将验证过的 `dist/appcast.xml` 原样发布到默认分支的 `updates/appcast.xml`。通过下列方式核对用户实际收到的清单，再从“关于 DualDock”检查更新。
+
+```sh
+curl --fail --location https://raw.githubusercontent.com/autumncry/DualDock/main/updates/appcast.xml -o /tmp/dualdock-public-appcast.xml
+cmp /tmp/dualdock-public-appcast.xml dist/appcast.xml
+```
+
+若上传中断，先核对已发布附件并从中断处继续。保留之前有效的在线清单，直至新附件可用。清单签名覆盖具体字节，手工修改版本说明、链接或排版后需重新生成签名。
