@@ -202,4 +202,21 @@ final class PreviewWindowPolicyTests: XCTestCase {
         ), [])
     }
 
+    func testFailedReopenOnlyTemporarilySuppressesUnaddressableHiddenTarget() {
+        func hidden(_ age: TimeInterval? = 0, onScreen: Bool = false, active: Bool = false,
+                    noTarget: Bool = true, sibling: Bool = true, currentSpace: Bool = true) -> Bool {
+            PreviewWindowPolicy.shouldSuppressAfterReopen(failureAge: age, isOnScreen: onScreen,
+                isActive: active, confirmedNoAXTarget: noTarget, hasVisibleSibling: sibling,
+                onCurrentSpace: currentSpace)
+        }
+        XCTAssertTrue(hidden())
+        XCTAssertFalse(hidden(nil))
+        XCTAssertFalse(hidden(30))
+        XCTAssertFalse(hidden(onScreen: true))
+        XCTAssertFalse(hidden(active: true))
+        XCTAssertFalse(hidden(noTarget: false))
+        XCTAssertFalse(hidden(sibling: false))
+        XCTAssertFalse(hidden(currentSpace: false))
+    }
+
 }

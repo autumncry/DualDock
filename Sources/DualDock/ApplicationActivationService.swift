@@ -121,11 +121,7 @@ final class ApplicationActivationService {
                   let minimized = read(window, kAXMinimizedAttribute as CFString) as? Bool,
                   let id = ActivationWindowIdentity.windowID(window), allowed() else { return }
             func ownedWindow() -> [String: Any]? {
-                guard let rows = CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]] else { return nil }
-                return rows.first {
-                    ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == id
-                        && ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == process.pid
-                }
+                VerifiedWindowActivation.sourceRow(windowID: id, pid: process.pid)
             }
             guard let source = ownedWindow(), allowed() else { return }
             if !minimized, (source[kCGWindowIsOnscreen as String] as? Bool) == true { return }
@@ -326,5 +322,126 @@ enum ActivationWindowIdentity {
         guard let function else { return nil }
         var id: CGWindowID = 0
         return function(element, &id) == .success && id != 0 ? id : nil
+    }
+}
+
+/// A captured image may belong to a real WindowServer window that the
+/// application hasn't published through Accessibility. The application may
+/// also have ordered that window out, which requires its native reopen event.
+@MainActor
+enum VerifiedWindowActivation {
+    private enum Exposure { case orderedOut, background, front }
+
+    /// A targeted optionIncludingWindow query can return no rows for a window
+    /// that the app has ordered out. The all-windows snapshot retains its ID.
+    nonisolated private static func rows() -> [[String: Any]]? {
+        CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+    }
+
+    nonisolated static func sourceRow(windowID: CGWindowID, pid: pid_t) -> [String: Any]? {
+        guard let snapshot = rows() else { return nil }
+        return sourceRow(in: snapshot, windowID: windowID, pid: pid)
+    }
+
+    nonisolated private static func sourceRow(in snapshot: [[String: Any]], windowID: CGWindowID, pid: pid_t) -> [String: Any]? {
+        snapshot.first {
+            ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == windowID
+                && ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
+                && ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == 0
+        }
+    }
+
+    static func raise(windowID: CGWindowID, pid: pid_t, launchDate: Date?,
+                      applicationPath: String?, expectedApp: AppReference, reopenOrderedOut: Bool = true,
+                      didReopen: (() -> Void)? = nil) async -> Bool {
+        guard windowID != 0, let launchDate, let applicationPath,
+              let app = NSRunningApplication(processIdentifier: pid),
+              let url = app.bundleURL, !Task.isCancelled else { return false }
+        func live() -> Bool {
+            !app.isTerminated && app.launchDate == launchDate
+                && WindowCloseTargetPolicy.matchesApplication(expected: expectedApp,
+                    capturedPath: applicationPath, capturedLaunchDate: launchDate,
+                    liveBundleID: app.bundleIdentifier, livePath: app.bundleURL?.path, liveLaunchDate: app.launchDate)
+        }
+        func exposure() -> Exposure? {
+            guard !Task.isCancelled, live(),
+                  let rows = Self.rows(),
+                  let row = sourceRow(in: rows, windowID: windowID, pid: pid) else { return nil }
+            guard (row[kCGWindowIsOnscreen as String] as? Bool) == true else { return .orderedOut }
+            // The all-windows inventory includes ordered-out windows, but
+            // only the onscreen query provides the visible front-to-back order.
+            guard app.isActive, let ordered = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                kCGNullWindowID) as? [[String: Any]] else { return .background }
+            let foremost = ordered.first { candidate in
+                (candidate[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
+                    && (candidate[kCGWindowLayer as String] as? NSNumber)?.intValue == 0
+                    && ((candidate[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1) > 0.05
+                    && (candidate[kCGWindowBounds as String] as? [String: Any])
+                        .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+                        .map { $0.width >= 80 && $0.height >= 50 } == true
+            }
+            return (foremost?[kCGWindowNumber as String] as? NSNumber)?.uint32Value == windowID ? .front : .background
+        }
+        guard let initial = exposure() else { return false }
+        if initial == .front { return true }
+        if initial == .orderedOut && reopenOrderedOut {
+            // A path-based reopen is ambiguous if multiple live instances
+            // share this application path. Keep an explicitly selected target exact.
+            let instances = NSWorkspace.shared.runningApplications.filter {
+                !$0.isTerminated && $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath()
+                    == url.standardizedFileURL.resolvingSymlinksInPath()
+            }
+            guard instances.count == 1, instances.first?.processIdentifier == pid else { return false }
+            let options = NSWorkspace.OpenConfiguration()
+            options.activates = true
+            guard let opened = try? await NSWorkspace.shared.openApplication(at: url, configuration: options),
+                  opened.processIdentifier == pid, opened.launchDate == launchDate, !Task.isCancelled else { return false }
+            didReopen?()
+        } else if initial == .background {
+            _ = app.unhide()
+            _ = app.activate(options: [])
+        }
+        // A successful application activation alone cannot confirm which of
+        // its windows came forward. Recheck the original window after reopen.
+        var raised = false
+        for _ in 0..<12 {
+            guard let current = exposure() else { return false }
+            if current == .front { return true }
+            if current == .background && !raised && AXIsProcessTrusted() {
+                raised = await raiseAccessibleWindow(id: windowID, pid: pid, launchDate: launchDate)
+            }
+            do { try await Task.sleep(nanoseconds: 40_000_000) }
+            catch { return false }
+        }
+        return exposure() == .front
+    }
+
+    private static func raiseAccessibleWindow(id: CGWindowID, pid: pid_t, launchDate: Date) async -> Bool {
+        let cancellation = ActivationRecoveryCancellation()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let deadline = ProcessInfo.processInfo.systemUptime + 0.10
+                    func current() -> Bool {
+                        !cancellation.isCancelled && ProcessInfo.processInfo.systemUptime < deadline
+                            && NSRunningApplication(processIdentifier: pid)?.launchDate == launchDate
+                    }
+                    let app = AXUIElementCreateApplication(pid)
+                    AXUIElementSetMessagingTimeout(app, 0.04)
+                    var value: CFTypeRef?
+                    guard current(), AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
+                          let windows = value as? [AXUIElement] else { continuation.resume(returning: false); return }
+                    for window in windows {
+                        guard current() else { break }
+                        AXUIElementSetMessagingTimeout(window, 0.03)
+                        guard ActivationWindowIdentity.windowID(window) == id, current() else { continue }
+                        let result = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+                        continuation.resume(returning: result == .success || result == .cannotComplete)
+                        return
+                    }
+                    continuation.resume(returning: false)
+                }
+            }
+        } onCancel: { cancellation.cancel() }
     }
 }

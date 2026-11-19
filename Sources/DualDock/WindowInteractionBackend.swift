@@ -238,12 +238,25 @@ final class WindowInteractionBackend {
         return matches.count == 1 ? (matches[0][kCGWindowNumber as String] as? NSNumber)?.uint32Value : nil
     }
 
+    /// AXStandardWindow includes some floating panels. WindowServer knows
+    /// their actual layer; minimized and other-Space windows can lack a row.
+    nonisolated static func eligibleContentWindow(id: CGWindowID, knownLayers: [CGWindowID: Int]) -> Bool {
+        knownLayers[id].map { $0 == 0 } ?? true
+    }
+
     nonisolated private static func discover(processes: [ProcessSnapshot], displays: [Display],
                                             allowed: @escaping @Sendable () -> Bool) -> DockWindowInventory {
         let reader = Reader(allowed: allowed)
         guard !reader.expired else { return .unavailable }
         let rows = windowRows()
         guard !reader.expired else { return .unavailable }
+        var layers: [CGWindowID: Int] = [:]
+        for row in rows {
+            if let id = (row[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+               let layer = (row[kCGWindowLayer as String] as? NSNumber)?.intValue {
+                layers[id] = layer
+            }
+        }
         let onscreen = Set(rows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }
             .compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value })
         var result: [DockWindowItem] = []
@@ -273,7 +286,7 @@ final class WindowInteractionBackend {
                 let rawTitle = reader.value(window, kAXTitleAttribute) as? String
                 guard !reader.expired else { return .unavailable }
                 guard let id = matchingID(window, pid: pid, title: rawTitle, frame: frame, rows: rows), id != 0 else { return .unavailable }
-                guard seen.insert(id).inserted else { continue }
+                guard eligibleContentWindow(id: id, knownLayers: layers), seen.insert(id).inserted else { continue }
                 let minimized = reader.value(window, kAXMinimizedAttribute) as? Bool ?? false
                 let fullscreen = reader.value(window, "AXFullScreen") as? Bool ?? false
                 let isFocused = focused.map { CFEqual($0, window) } ?? false

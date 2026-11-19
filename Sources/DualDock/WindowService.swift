@@ -14,9 +14,10 @@ struct WindowPreview: Identifiable {
     let identityTitle: String?
     let processLaunchDate: Date?
     let applicationPath: String?
+    var canClose: Bool
 
     init(windowID: UInt32, pid: pid_t, title: String, image: NSImage?, frame: CGRect,
-         identityTitle: String? = nil, processLaunchDate: Date? = nil, applicationPath: String? = nil) {
+         identityTitle: String? = nil, processLaunchDate: Date? = nil, applicationPath: String? = nil, canClose: Bool = false) {
         self.windowID = windowID
         self.pid = pid
         self.title = title
@@ -25,6 +26,7 @@ struct WindowPreview: Identifiable {
         self.identityTitle = identityTitle
         self.processLaunchDate = processLaunchDate
         self.applicationPath = applicationPath
+        self.canClose = canClose
     }
 }
 
@@ -51,6 +53,13 @@ enum WindowCloseResult: Equatable {
 @MainActor
 final class WindowService {
     private let native = NativeWindowAPI()
+    private struct FailedReopen {
+        let pid: pid_t
+        let launchDate: Date
+        let path: String
+        let time: TimeInterval
+    }
+    private var failedReopens: [CGWindowID: FailedReopen] = [:]
     private var contentRequest: Task<SCShareableContent, Error>?
     var onFullscreenStateChange: (() -> Void)?
     /// Updated with the same native snapshot used by fullscreenDisplayIDs.
@@ -87,6 +96,8 @@ final class WindowService {
         }
         guard !Task.isCancelled else { return [] }
         let accessibility = accessibleWindows(processIDs: processIDs)
+        let now = ProcessInfo.processInfo.systemUptime
+        failedReopens = failedReopens.filter { now - $0.value.time < 30 }
         var seenWindowIDs: Set<CGWindowID> = []
         let windows = content.windows.filter { window in
             guard let owner = window.owningApplication else { return false }
@@ -165,7 +176,7 @@ final class WindowService {
                   let image = snapshots[id] else { return nil }
             let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
             let process = running.first { $0.processIdentifier == owner.processID }
-            return WindowPreview(
+            var preview = WindowPreview(
                 windowID: window.windowID,
                 pid: owner.processID,
                 title: title?.isEmpty == false ? title! : app.name,
@@ -175,81 +186,94 @@ final class WindowService {
                 processLaunchDate: process?.launchDate,
                 applicationPath: process?.bundleURL?.standardizedFileURL.path
             )
+            let inventory = accessibility.targets[owner.processID]
+            let match = inventory.flatMap { resolvedTarget(preview, in: $0) }
+            if let match, case .available = closeControl(of: match.element) { preview.canClose = true }
+            if let failed = failedReopens[id] {
+                let sameWindow = failed.pid == preview.pid && failed.launchDate == preview.processLaunchDate
+                    && failed.path == preview.applicationPath
+                let current = latestContent.windows.first { $0.windowID == id && $0.owningApplication?.processID == preview.pid }
+                let sibling = latestContent.windows.contains { $0.windowID != id && $0.windowLayer == 0 && $0.isOnScreen
+                    && $0.frame.width >= 80 && $0.frame.height >= 50 && $0.owningApplication?.processID == preview.pid }
+                if let current, sameWindow, PreviewWindowPolicy.shouldSuppressAfterReopen(
+                    failureAge: now - failed.time, isOnScreen: current.isOnScreen, isActive: current.isActive,
+                    confirmedNoAXTarget: inventory != nil && match == nil, hasVisibleSibling: sibling,
+                    onCurrentSpace: native.isOnCurrentSpace(id)) { return nil }
+                failedReopens.removeValue(forKey: id)
+            }
+            return preview
         }
     }
 
     @discardableResult
-    func activate(_ item: WindowPreview) -> Bool {
-        guard let app = NSRunningApplication(processIdentifier: item.pid), !app.isTerminated else { return false }
-        guard AXIsProcessTrusted() else {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(options)
-            app.unhide()
-            return app.activate(options: [])
-        }
-
+    func activate(_ item: WindowPreview, for expectedApp: AppReference) async -> Bool {
+        guard !Task.isCancelled, let app = liveApplication(for: item, expected: expectedApp),
+              sourceWindowExists(item) else { return false }
+        var reopenOrderedOut = true
         let application = AXUIElementCreateApplication(item.pid)
         AXUIElementSetMessagingTimeout(application, 0.2)
-        let windows = axWindows(application)
-        let exact = windows.first { native.windowID(for: $0) == item.windowID }
-        let target = exact ?? unambiguousMatch(item, in: windows)
-        app.unhide()
-        guard let target else { return app.activate(options: []) }
+        let inventory = AXIsProcessTrusted() ? targets(of: application) : nil
+        let exactMatch = inventory.flatMap { resolvedTarget(item, in: $0) }
+        let confirmedNoAXTarget = inventory != nil && exactMatch == nil
+        if let match = exactMatch {
+            let target = match.element
+            guard !Task.isCancelled, sourceWindowExists(item) else { return false }
+            app.unhide()
+            if axValue(target, kAXMinimizedAttribute as CFString) as? Bool == true {
+                let restore = AXUIElementSetAttributeValue(target, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                // A native restoration can finish after the AX reply. Avoid
+                // delivering an app reopen event during that animation.
+                reopenOrderedOut = restore != .success && restore != .cannotComplete
+            }
+            _ = app.activate(options: [])
+            _ = AXUIElementSetAttributeValue(target, kAXMainAttribute as CFString, kCFBooleanTrue)
+            _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, target)
+            _ = AXUIElementPerformAction(target, kAXRaiseAction as CFString)
+        }
+        var reopened = false
+        let activated = await VerifiedWindowActivation.raise(windowID: item.windowID, pid: item.pid,
+            launchDate: item.processLaunchDate, applicationPath: item.applicationPath, expectedApp: expectedApp,
+            reopenOrderedOut: reopenOrderedOut, didReopen: { reopened = true })
+        if activated { failedReopens.removeValue(forKey: item.windowID) }
+        else if reopened, !Task.isCancelled, confirmedNoAXTarget,
+                let date = item.processLaunchDate, let path = item.applicationPath {
+            // Retain only the attempted identity; the next fresh capture must
+            // independently confirm it is still hidden and unaddressable.
+            failedReopens[item.windowID] = FailedReopen(pid: item.pid, launchDate: date,
+                path: path, time: ProcessInfo.processInfo.systemUptime)
+        }
+        return activated
+    }
 
-        AXUIElementSetMessagingTimeout(target, 0.2)
-        _ = AXUIElementSetAttributeValue(target, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
-        _ = AXUIElementSetAttributeValue(target, kAXMainAttribute as CFString, kCFBooleanTrue)
-        _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, target)
-        let activated = app.activate(options: [])
-        let raised = AXUIElementPerformAction(target, kAXRaiseAction as CFString) == .success
-        return activated || raised
+    private func liveApplication(for item: WindowPreview, expected: AppReference) -> NSRunningApplication? {
+        guard let app = NSRunningApplication(processIdentifier: item.pid), !app.isTerminated,
+              WindowCloseTargetPolicy.matchesApplication(expected: expected, capturedPath: item.applicationPath,
+                capturedLaunchDate: item.processLaunchDate, liveBundleID: app.bundleIdentifier,
+                livePath: app.bundleURL?.standardizedFileURL.path, liveLaunchDate: app.launchDate) else { return nil }
+        return app
     }
 
     /// Press the matching window's own close button. Never substitute Cmd-W,
     /// the frontmost window, or application termination for a missing target.
     func close(_ item: WindowPreview, for expectedApp: AppReference) -> WindowCloseResult {
         guard AXIsProcessTrusted() else { return .permissionRequired }
-        guard let app = NSRunningApplication(processIdentifier: item.pid), !app.isTerminated,
-              WindowCloseTargetPolicy.matchesApplication(
-                expected: expectedApp, capturedPath: item.applicationPath, capturedLaunchDate: item.processLaunchDate,
-                liveBundleID: app.bundleIdentifier, livePath: app.bundleURL?.standardizedFileURL.path,
-                liveLaunchDate: app.launchDate),
-              sourceWindowExists(item) else { return .notFound }
+        guard let app = liveApplication(for: item, expected: expectedApp), sourceWindowExists(item) else { return .notFound }
 
         let application = AXUIElementCreateApplication(item.pid)
         AXUIElementSetMessagingTimeout(application, 0.2)
-        var value: CFTypeRef?
-        let query = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value)
-        guard query == .success, let windows = value as? [AXUIElement] else { return .failed }
-        let ids = windows.map { element -> CGWindowID? in
-            AXUIElementSetMessagingTimeout(element, 0.15)
-            return native.windowID(for: element)
+        guard let inventory = targets(of: application) else { return .failed }
+        guard let match = resolvedTarget(item, in: inventory) else { return .notFound }
+        let closeButton: AXUIElement
+        switch closeControl(of: match.element) {
+        case .unavailable: return .unsupported
+        case .failed: return .failed
+        case .available(let button): closeButton = button
         }
-        // Normal exact-ID closes do not need per-window title/geometry queries.
-        let needsFallback = ids.allSatisfy { $0 == nil }
-        let candidates = zip(windows, ids).map { element, id in
-            WindowCloseTargetPolicy.Candidate(windowID: id,
-                title: needsFallback ? axValue(element, kAXTitleAttribute as CFString) as? String : nil,
-                frame: needsFallback ? axFrame(element) : nil)
-        }
-        guard let index = WindowCloseTargetPolicy.candidateIndex(
-            windowID: item.windowID, rawTitle: item.identityTitle, frame: item.frame, candidates: candidates)
-        else { return .notFound }
-        guard !needsFallback || fallbackSourceIsUnique(item) else { return .notFound }
-        let target = windows[index]
-        var closeValue: CFTypeRef?
-        let closeQuery = AXUIElementCopyAttributeValue(target, kAXCloseButtonAttribute as CFString, &closeValue)
-        if closeQuery == .noValue || closeQuery == .attributeUnsupported { return .unsupported }
-        guard closeQuery == .success, let closeValue,
-              CFGetTypeID(closeValue) == AXUIElementGetTypeID() else { return .failed }
-        let closeButton = unsafeBitCast(closeValue, to: AXUIElement.self)
-        AXUIElementSetMessagingTimeout(closeButton, 0.2)
-        if axValue(closeButton, kAXEnabledAttribute as CFString) as? Bool == false { return .unsupported }
 
         // Recheck the source after the AX round trips. A closed stale preview
         // must never select a replacement with the same title or position.
         guard !app.isTerminated,
-              needsFallback ? fallbackSourceIsUnique(item) : sourceWindowExists(item) else { return .notFound }
+              match.requiresFallback ? fallbackSourceIsUnique(item) : sourceWindowExists(item) else { return .notFound }
         let action = AXUIElementPerformAction(closeButton, kAXPressAction as CFString)
         guard action == .success else {
             return action == .actionUnsupported ? .unsupported : .failed
@@ -263,14 +287,71 @@ final class WindowService {
         return .requested
     }
 
-    private func sourceWindowExists(_ item: WindowPreview) -> Bool {
-        guard item.windowID != 0,
-              let rows = CGWindowListCopyWindowInfo([.optionIncludingWindow, .excludeDesktopElements], item.windowID) as? [[String: Any]]
-        else { return false }
-        return rows.contains {
-            ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == item.windowID
-                && ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == item.pid
+    private enum CloseControl {
+        case available(AXUIElement)
+        case unavailable
+        case failed
+    }
+
+    private func closeControl(of window: AXUIElement) -> CloseControl {
+        var value: CFTypeRef?
+        let query = AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &value)
+        if query == .noValue || query == .attributeUnsupported { return .unavailable }
+        guard query == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return .failed }
+        let button = unsafeBitCast(value, to: AXUIElement.self)
+        AXUIElementSetMessagingTimeout(button, 0.15)
+        guard (axValue(button, kAXEnabledAttribute as CFString) as? Bool) != false else { return .unavailable }
+        var actions: CFArray?
+        guard AXUIElementCopyActionNames(button, &actions) == .success else { return .failed }
+        guard (actions as? [String])?.contains(kAXPressAction) == true else { return .unavailable }
+        return .available(button)
+    }
+
+    private struct AXTarget {
+        let element: AXUIElement
+        let candidate: WindowCloseTargetPolicy.Candidate
+    }
+
+    /// A screenshot provider may expose windows which the app does not expose
+    /// through Accessibility. Only real window elements can receive an action.
+    private func targets(of application: AXUIElement) -> [AXTarget]? {
+        var value: CFTypeRef?
+        let query = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value)
+        guard query == .success, var elements = value as? [AXUIElement] else { return nil }
+        for key in [kAXFocusedWindowAttribute, kAXMainWindowAttribute] {
+            guard let extra = axValue(application, key as CFString),
+                  CFGetTypeID(extra) == AXUIElementGetTypeID() else { continue }
+            let element = unsafeBitCast(extra, to: AXUIElement.self)
+            if !elements.contains(where: { CFEqual($0, element) }) { elements.append(element) }
         }
+        let identified = elements.compactMap { element -> (AXUIElement, CGWindowID?)? in
+            AXUIElementSetMessagingTimeout(element, 0.15)
+            guard axValue(element, kAXRoleAttribute as CFString) as? String == kAXWindowRole as String else { return nil }
+            return (element, native.windowID(for: element))
+        }
+        let needsFallback = identified.allSatisfy { $0.1 == nil }
+        return identified.map { element, id in
+            AXTarget(element: element, candidate: .init(windowID: id,
+                title: needsFallback ? axValue(element, kAXTitleAttribute as CFString) as? String : nil,
+                frame: needsFallback ? axFrame(element) : nil))
+        }
+    }
+
+    private func resolvedTarget(_ item: WindowPreview, in targets: [AXTarget])
+        -> (element: AXUIElement, requiresFallback: Bool)? {
+        let candidates = targets.map(\.candidate)
+        guard let index = WindowCloseTargetPolicy.candidateIndex(windowID: item.windowID,
+            rawTitle: item.identityTitle, frame: item.frame, candidates: candidates) else { return nil }
+        let match = targets[index]
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(match.element, &pid) == .success, pid == item.pid else { return nil }
+        let requiresFallback = match.candidate.windowID == nil
+        guard !requiresFallback || fallbackSourceIsUnique(item) else { return nil }
+        return (match.element, requiresFallback)
+    }
+
+    private func sourceWindowExists(_ item: WindowPreview) -> Bool {
+        VerifiedWindowActivation.sourceRow(windowID: item.windowID, pid: item.pid) != nil
     }
 
     private func fallbackSourceIsUnique(_ item: WindowPreview) -> Bool {
@@ -326,26 +407,26 @@ final class WindowService {
     }
 
     private struct AccessibleWindows {
+        var targets: [pid_t: [AXTarget]] = [:]
         var knownWindowIDs: [pid_t: Set<CGWindowID>] = [:]
         var companionOverlayIDs: [pid_t: Set<CGWindowID>] = [:]
     }
 
     private func accessibleWindows(processIDs: Set<pid_t>) -> AccessibleWindows {
         var result = AccessibleWindows()
-        guard AXIsProcessTrusted(), native.canResolveWindowIDs else { return result }
+        guard AXIsProcessTrusted() else { return result }
         for pid in processIDs {
             let application = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(application, 0.2)
-            var value: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value) == .success,
-                  let windows = value as? [AXUIElement] else { continue }
-            let identified = windows.compactMap { element -> (CGWindowID, AXUIElement)? in
-                native.windowID(for: element).map { ($0, element) }
+            guard let inventory = targets(of: application) else { continue }
+            result.targets[pid] = inventory
+            let identified = inventory.compactMap { target in
+                target.candidate.windowID.map { ($0, target.element) }
             }
             // Empty or incomplete AX results do not establish reliable absence.
             // A nonempty fully identified list can qualify a hidden generic
             // window for the separate, conservative flat-shell image check.
-            if !identified.isEmpty, identified.count == windows.count {
+            if !identified.isEmpty, identified.count == inventory.count {
                 result.knownWindowIDs[pid] = Set(identified.map { $0.0 })
             }
 
@@ -413,22 +494,6 @@ final class WindowService {
         return image
     }
 
-    private func unambiguousMatch(_ item: WindowPreview, in windows: [AXUIElement]) -> AXUIElement? {
-        let titled = windows.filter { axValue($0, kAXTitleAttribute as CFString) as? String == item.title }
-        if titled.count == 1 { return titled[0] }
-        let candidates = titled.isEmpty ? windows : titled
-        let positioned = candidates.filter { window in
-            guard let frame = axFrame(window) else { return false }
-            return abs(frame.minX - item.frame.minX) < 3 && abs(frame.minY - item.frame.minY) < 3
-                && abs(frame.width - item.frame.width) < 3 && abs(frame.height - item.frame.height) < 3
-        }
-        return positioned.count == 1 ? positioned[0] : nil
-    }
-
-    private func axWindows(_ application: AXUIElement) -> [AXUIElement] {
-        axValue(application, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
-    }
-
     private func axValue(_ element: AXUIElement, _ name: CFString) -> CFTypeRef? {
         var value: CFTypeRef?
         return AXUIElementCopyAttributeValue(element, name, &value) == .success ? value : nil
@@ -457,6 +522,7 @@ final class WindowService {
 private final class NativeWindowAPI {
     private typealias WindowIDFunction = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
     private typealias ConnectionFunction = @convention(c) () -> UInt32
+    private typealias WindowSpacesFunction = @convention(c) (UInt32, UInt32, CFArray) -> Unmanaged<CFArray>?
     private typealias SpacesFunction = @convention(c) (UInt32) -> Unmanaged<CFArray>?
 
     private let processHandle: UnsafeMutableRawPointer?
@@ -464,6 +530,7 @@ private final class NativeWindowAPI {
     private let getWindowID: WindowIDFunction?
     private let connectionID: ConnectionFunction?
     private let copyDisplaySpaces: SpacesFunction?
+    private let copyWindowSpaces: WindowSpacesFunction?
 
     init() {
         processHandle = dlopen(nil, RTLD_LAZY)
@@ -484,6 +551,9 @@ private final class NativeWindowAPI {
             name.withCString { dlsym(skyHandle, $0) }
         }.first
         copyDisplaySpaces = spaces.map { unsafeBitCast($0, to: SpacesFunction.self) }
+        let windowSpaces = ["SLSCopySpacesForWindows", "CGSCopySpacesForWindows"]
+            .compactMap { name in name.withCString { dlsym(skyHandle, $0) } }.first
+        copyWindowSpaces = windowSpaces.map { unsafeBitCast($0, to: WindowSpacesFunction.self) }
     }
 
     deinit {
@@ -491,7 +561,16 @@ private final class NativeWindowAPI {
         if let processHandle { dlclose(processHandle) }
     }
 
-    var canResolveWindowIDs: Bool { getWindowID != nil }
+    func isOnCurrentSpace(_ windowID: CGWindowID) -> Bool {
+        guard let connectionID, let copyWindowSpaces, let copyDisplaySpaces else { return false }
+        let connection = connectionID()
+        guard let spaces = copyWindowSpaces(connection, 7, [NSNumber(value: windowID)] as CFArray)?
+            .takeRetainedValue() as? [NSNumber],
+              let displays = copyDisplaySpaces(connection)?.takeRetainedValue() as? [[String:Any]]
+        else { return false }
+        let active = Set(displays.compactMap { ($0["Current Space"] as? [String:Any]).flatMap(Self.spaceID) })
+        return spaces.contains { active.contains($0.uint64Value) }
+    }
 
     func windowID(for element: AXUIElement) -> CGWindowID? {
         guard let getWindowID else { return nil }

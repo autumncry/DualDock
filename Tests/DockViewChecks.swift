@@ -159,7 +159,7 @@ struct DockViewChecks {
         for size in [NSSize(width: 480, height: 320), NSSize(width: 180, height: 600),
                      NSSize(width: 3000, height: 50), NSSize(width: 80, height: 3000)] {
             let image = NSImage(size: size)
-            let card = WindowPreviewCardView(title: "Fixture", image: image)
+            let card = WindowPreviewCardView(title: "Fixture", image: image, canClose: true)
             var activated = 0
             var closed = 0
             card.onActivate = { activated += 1 }
@@ -172,6 +172,12 @@ struct DockViewChecks {
             card.thumbnailButton.performClick(nil)
             check(closed == 1 && activated == 1, "Thumbnail must not close the window")
             check(card.closeButton.accessibilityLabel()?.contains("关闭窗口") == true, "Close accessibility label missing")
+            card.showIssue("Unavailable", detail: "Hover again", disableClose: true)
+            check(card.closeButton.isHidden && !card.closeButton.isEnabled && card.titleLabel.stringValue == "Unavailable",
+                  "Stale close must show inline feedback and retire the invalid action")
+            let unsupported = WindowPreviewCardView(title: "Read only", image: image, canClose: false)
+            check(unsupported.closeButton.isHidden && !unsupported.closeButton.isEnabled,
+                  "Card exposed a close button without a confirmed close target")
         }
         print("\(checks) hidden AppKit scroll/preview checks passed; no desktop input posted")
     }

@@ -74,6 +74,15 @@ public enum PreviewWindowPolicy {
         return isOnScreen || hasTitle || hasAccessibleWindow != false
     }
 
+    /// A failed reopen describes one specific window and moment. Current
+    /// visibility, AX controls, changed Spaces, or expiry allow another try.
+    public static func shouldSuppressAfterReopen(failureAge: TimeInterval?, isOnScreen: Bool,
+                                                  isActive: Bool, confirmedNoAXTarget: Bool,
+                                                  hasVisibleSibling: Bool, onCurrentSpace: Bool) -> Bool {
+        guard let age = failureAge, age >= 0, age < 30 else { return false }
+        return !isOnScreen && !isActive && confirmedNoAXTarget && hasVisibleSibling && onCurrentSpace
+    }
+
     public static func availablePreviewIDs(
         orderedCandidates: [UInt32],
         validSnapshotIDs: Set<UInt32>,

@@ -51,6 +51,7 @@ final class DisplayCoordinator {
     private var tileAppearanceNeedsRefresh = false
     private var stopped = false
     private var latestWindowIntent: UInt64 = 0
+    private var previewActivation: Task<Void, Never>?
     private var replacingWindowIntent: UInt64 = 0
     private var pointerOutsideSince: Date?
     private var contextMenuTracking = false
@@ -266,6 +267,7 @@ final class DisplayCoordinator {
 
     func stop() {
         stopped = true
+        previewActivation?.cancel()
         windowInteractions.cancel()
         poll?.invalidate()
         visibility?.stop()
@@ -446,16 +448,31 @@ final class DisplayCoordinator {
         for (index, item) in visibleItems.enumerated() {
             guard let image = item.image else { continue }
             let x = layout.cardOrigins[index]
-            let card = WindowPreviewCardView(title: item.title.isEmpty ? app.name : item.title, image: image)
+            let card = WindowPreviewCardView(title: item.title.isEmpty ? app.name : item.title,
+                                             image: image, canClose: item.canClose)
             card.frame.origin = NSPoint(x: x, y: 0)
-            card.onActivate = { [weak self] in
+            card.onActivate = { [weak self, weak card] in
                 guard let self else { return }
-                self.dismissPopups()
-                self.beginWindowIntent(replacingQueuedActions: true)
-                if self.store.windows.activate(item) { self.windowInteractions.remember(item, for: app) }
-                self.store.refreshPermissions()
+                let intent = self.beginWindowIntent(replacingQueuedActions: true)
+                self.previewActivation = Task { [weak self, weak card] in
+                    guard let self, !self.stopped, !Task.isCancelled else { return }
+                    let activated = await self.store.windows.activate(item, for: app)
+                    guard !Task.isCancelled, intent == self.latestWindowIntent, !self.stopped else { return }
+                    if activated {
+                        self.windowInteractions.remember(item, for: app)
+                        if let card, let panel = self.previewPanel, card.window === panel { self.dismissPopups() }
+                    } else {
+                        card?.showIssue(L("请重新选择窗口", "Select the window again"),
+                            detail: L("请重新悬停以刷新窗口预览。", "Hover over the app to refresh its windows."))
+                    }
+                    self.store.refreshPermissions()
+                    self.previewActivation = nil
+                }
             }
-            card.onClose = { [weak self] in self?.closePreview(item, app: app) }
+            card.onClose = { [weak self, weak card] in
+                guard let self, let card else { return }
+                self.closePreview(item, app: app, card: card)
+            }
             document.addSubview(card)
         }
         document.frame = NSRect(x: 0, y: 0, width: layout.documentWidth, height: 140)
@@ -477,20 +494,18 @@ final class DisplayCoordinator {
         refreshMousePassthrough()
     }
 
-    private func closePreview(_ item: WindowPreview, app: AppReference) {
-        // A successful AXPress can open a save sheet instead of closing the
-        // window. Dismiss the snapshot; a later hover always reads fresh state.
-        dismissPopups()
+    private func closePreview(_ item: WindowPreview, app: AppReference, card: WindowPreviewCardView) {
+        beginWindowIntent(replacingQueuedActions: true)
         let result = store.windows.close(item, for: app)
         store.refreshPermissions()
-        guard let notice = result.notice else { return }
-        store.notice = notice
-        let alert = NSAlert()
-        alert.messageText = L("无法关闭这个窗口", "Couldn’t Close Window")
-        alert.informativeText = notice.text
-        alert.addButton(withTitle: L("好", "OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        guard let notice = result.notice else {
+            dismissPopups()
+            return
+        }
+        let summary = result == .permissionRequired
+            ? L("需要辅助功能权限", "Accessibility access required")
+            : L("无法关闭此窗口", "Can't close this window")
+        card.showIssue(summary, detail: notice.text, disableClose: result != .failed)
     }
 
     private func popupFrame(size: NSSize, anchor: NSRect, screen: NSScreen, edge: DockEdge) -> NSRect {
@@ -650,6 +665,8 @@ final class DisplayCoordinator {
 
     @discardableResult
     private func beginWindowIntent(replacingQueuedActions: Bool = false) -> UInt64 {
+        previewActivation?.cancel()
+        previewActivation = nil
         latestWindowIntent &+= 1
         if replacingQueuedActions {
             replacingWindowIntent = latestWindowIntent

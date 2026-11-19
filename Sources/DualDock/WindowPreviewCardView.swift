@@ -9,7 +9,7 @@ final class WindowPreviewCardView: NSView {
     var onActivate: (() -> Void)?
     var onClose: (() -> Void)?
 
-    init(title: String, image: NSImage) {
+    init(title: String, image: NSImage, canClose: Bool) {
         titleLabel = NSTextField(labelWithString: title)
         super.init(frame: NSRect(x: 0, y: 0, width: 192, height: 140))
         thumbnailButton.image = image
@@ -31,6 +31,8 @@ final class WindowPreviewCardView: NSView {
         closeButton.action = #selector(closePreview)
         closeButton.toolTip = L("关闭窗口", "Close Window")
         closeButton.setAccessibilityLabel(L("关闭窗口：\(title)", "Close \(title)"))
+        closeButton.isHidden = !canClose
+        closeButton.isEnabled = canClose
         addSubview(closeButton)
         layout()
     }
@@ -58,7 +60,20 @@ final class WindowPreviewCardView: NSView {
     }
 
     @objc private func activatePreview() { onActivate?() }
-    @objc private func closePreview() { onClose?() }
+    @objc private func closePreview() {
+        guard closeButton.isEnabled, !closeButton.isHidden else { return }
+        onClose?()
+    }
+
+    func showIssue(_ text: String, detail: String, disableClose: Bool = false) {
+        titleLabel.stringValue = text
+        titleLabel.toolTip = detail
+        thumbnailButton.toolTip = detail
+        if disableClose {
+            closeButton.isEnabled = false
+            closeButton.isHidden = true
+        }
+    }
 }
 
 @MainActor

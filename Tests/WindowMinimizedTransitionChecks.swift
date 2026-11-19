@@ -53,6 +53,14 @@ struct WindowMinimizedTransitionChecks {
             }
         }
 
+        let knownLayers: [CGWindowID: Int] = [69: 0, 113: 3, 115: 0]
+        check(!WindowInteractionBackend.eligibleContentWindow(id: 113, knownLayers: knownLayers),
+              "A floating AXStandardWindow displaced the app's ordered-out content")
+        check(WindowInteractionBackend.eligibleContentWindow(id: 69, knownLayers: knownLayers),
+              "A normal content window was rejected")
+        check(WindowInteractionBackend.eligibleContentWindow(id: 199, knownLayers: knownLayers),
+              "A minimized or other-Space AX window absent from CG was rejected")
+
         let delayedPress = Fixture()
         delayedPress.states = [false, nil, nil, true]
         check(delayedPress.run() == .performed, "timed-out press did not confirm later native minimized state")
