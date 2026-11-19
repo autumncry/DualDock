@@ -119,8 +119,8 @@
           "width": 820,
           "height": 540
         },
-        "sidebarWidthPoints": 176,
-        "sidebarRowHeightPoints": 34,
+        "sidebarWidthPoints": 214,
+        "sidebarRowStyle": "Native macOS source list",
         "previewCardHeightPoints": 190,
         "customSizingBehavior": "Five fixed sample apps respond to size, unified spacing, length and position above aligned controls; no live-row mirroring.",
         "exampleScale": {
@@ -142,7 +142,7 @@
       "componentSources": {
         "Navigation": {
           "file": "Sources/DualDock/SettingsView.swift",
-          "excerpt": ".frame(height: 34)"
+          "excerpt": ".listStyle(.sidebar)"
         },
         "Aligned form row": {
           "file": "Sources/DualDock/SettingsControls.swift",
@@ -216,7 +216,7 @@
     {
       "name": "Settings navigation",
       "kind": "nav",
-      "description": "Native buttons with subtle selected fill, uniform symbol slots, keyboard movement and selected accessibility state.",
+      "description": "Native preferences toolbar with four category items, a searchable source list and keyboard navigation.",
       "html": "",
       "css": ""
     },

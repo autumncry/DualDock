@@ -1,46 +1,135 @@
 import Foundation
+import Combine
 
-enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, appearance, displays, interaction, permissions, help, about
-    var id: String { rawValue }
-    var sidebarTitle: String {
-        switch self {
-        case .appearance: return L("外观与尺寸", "Appearance")
-        case .displays: return L("屏幕与位置", "Displays")
-        default: return title
-        }
-    }
+enum SettingsCategory: String, CaseIterable {
+    case dock, interaction, general, support
+
     var title: String {
         switch self {
-        case .general: return L("通用", "General")
-        case .appearance: return L("外观与尺寸", "Appearance & Size")
-        case .displays: return L("屏幕与位置", "Displays & Position")
+        case .dock: return "Dock"
         case .interaction: return L("交互", "Interaction")
-        case .permissions: return L("权限", "Permissions")
-        case .help: return L("使用方法", "User Guide")
-        case .about: return L("关于", "About")
+        case .general: return L("通用", "General")
+        case .support: return L("支持", "Support")
         }
     }
-    var subtitle: String {
-        switch self {
-        case .general: return L("选择 Dock 显示的内容，管理常用应用。", "Choose which apps appear in the Dock and manage startup and language.")
-        case .appearance: return L("调整大小、间距和长度，通过示例查看效果。", "Adjust size, spacing, and length using the sample Dock.")
-        case .displays: return L("为每块屏幕安排一个顺手的位置。", "Choose a Dock edge for each display.")
-        case .interaction: return L("让窗口切换、放大与隐藏符合你的习惯。", "Customize window switching, magnification, and hiding.")
-        case .permissions: return L("开启需要的能力，所有窗口图像留在本机。", "Manage access for window controls and local previews.")
-        case .help: return L("几步上手，整理属于你的工作空间。", "Learn how to organize apps and work across displays.")
-        case .about: return L("版本信息、开源许可与项目支持。", "Version, open-source license, and project support.")
-        }
-    }
+
     var symbol: String {
         switch self {
+        case .dock: return "dock.rectangle"
+        case .interaction: return "cursorarrow.click"
         case .general: return "gearshape"
+        case .support: return "questionmark.circle"
+        }
+    }
+
+    var sections: [SettingsSection] { SettingsSection.allCases.filter { $0.category == self } }
+}
+
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case appearance, displays, contents
+    case interaction, magnification, notifications
+    case general, systemDock, apps, permissions
+    case help, about
+    var id: String { rawValue }
+
+    var category: SettingsCategory {
+        switch self {
+        case .appearance, .displays, .contents: return .dock
+        case .interaction, .magnification, .notifications: return .interaction
+        case .general, .systemDock, .apps, .permissions: return .general
+        case .help, .about: return .support
+        }
+    }
+
+    private var names: (String, String) {
+        switch self {
+        case .appearance: return ("外观与尺寸", "Appearance & Size")
+        case .displays: return ("屏幕与位置", "Displays & Position")
+        case .contents: return ("显示内容", "Dock Contents")
+        case .interaction: return ("窗口与预览", "Windows & Previews")
+        case .magnification: return ("悬停放大", "Magnification")
+        case .notifications: return ("消息提醒", "Notifications")
+        case .general: return ("语言与启动", "Language & Startup")
+        case .systemDock: return ("系统 Dock", "System Dock")
+        case .apps: return ("应用与配置", "Apps & Configuration")
+        case .permissions: return ("权限", "Permissions")
+        case .help: return ("使用方法", "User Guide")
+        case .about: return ("关于 DualDock", "About DualDock")
+        }
+    }
+
+    var title: String { L(names.0, names.1) }
+    var sidebarTitle: String { title }
+
+    // Keep compound control labels intact. Chinese names such as “角标大小”
+    // and English labels with prepositions should be searchable as displayed.
+    private var keywords: String {
+        switch self {
+        case .appearance: return "大小 预设 图标间距 长度 Dock高度 两端留白 高级设置 尺寸模式 跟随系统Dock 恢复自动 同步各屏尺寸 放不下时先缩小图标 size preset icon spacing length Dock height end padding sizing mode advanced reset sync sizes across displays shrink icons before scrolling"
+        case .displays: return "多屏 外接显示器 方向 Dock位置 底部 顶部 左侧 右侧 调整所有屏幕尺寸 调整此屏幕尺寸 screen monitor display Dock position left right top bottom adjust size for all displays"
+        case .contents: return "显示模式 固定应用与分组 运行应用 仅正在运行的应用 pinned apps and groups running apps only display mode"
+        case .interaction: return "全屏 最大化窗口时隐藏Dock 自动隐藏 点击应用图标 悬停显示窗口预览 关闭窗口 缩略图 最小化 click minimize close thumbnail fullscreen maximize auto-hide hide the dock for maximized windows show window previews on hover"
+        case .magnification: return "鼠标悬停放大 动画 放大峰值 联动范围 曲线预览 hover animation magnify icons on hover peak magnification magnification range curve"
+        case .notifications: return "显示消息数量角标 角标大小 未读 红点 叹号 message count show notification badges display badge badge size scale unread"
+        case .general: return "显示语言 英文 中文 开机自启动 登录时启动 打开系统登录项 取消启动申请 display language english chinese launch at login open login items settings cancel request startup"
+        case .systemDock: return "隐藏系统Dock 恢复系统Dock 自动隐藏 原生 hide the system Dock restore system Dock"
+        case .apps: return "添加应用 重新导入系统Dock 打开配置目录 add apps import system Dock apps open configuration folder"
+        case .permissions: return "屏幕录制 辅助功能 刷新授权状态 screen recording accessibility privacy refresh permissions grant access"
+        case .help: return "帮助 教程 拖拽 整理 help guide organize drag"
+        case .about: return "关于 版本 开源协议 项目主页 查看发布版本 提交问题与建议 下载 反馈 支持 version license github releases download support feedback"
+        }
+    }
+
+    func matches(_ query: String) -> Bool {
+        let words = (names.0 + " " + names.1 + " " + keywords)
+            .lowercased().split(whereSeparator: { $0.isWhitespace })
+        let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace || $0.isPunctuation })
+        return !terms.isEmpty && terms.allSatisfy { term in
+            let latin = term.allSatisfy(\.isASCII)
+            return words.contains { latin ? $0.hasPrefix(term) : $0.contains(term) }
+        }
+    }
+
+    var symbol: String {
+        switch self {
         case .appearance: return "slider.horizontal.3"
         case .displays: return "display"
-        case .interaction: return "cursorarrow.click"
+        case .contents: return "square.grid.2x2"
+        case .interaction: return "macwindow"
+        case .magnification: return "plus.magnifyingglass"
+        case .notifications: return "app.badge"
+        case .general: return "globe"
+        case .systemDock: return "dock.rectangle"
+        case .apps: return "folder"
         case .permissions: return "lock.shield"
-        case .help: return "questionmark.circle"
+        case .help: return "book"
         case .about: return "info.circle"
         }
+    }
+}
+
+/// One selection shared by the window toolbar, sidebar and detail pane.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    @Published private(set) var selected: SettingsSection
+    @Published var query = ""
+    private var lastSection: [SettingsCategory: SettingsSection] = [:]
+
+    init(_ section: SettingsSection = .general) { selected = section }
+
+    var visibleSections: [SettingsSection] {
+        isSearching ? SettingsSection.allCases.filter { $0.matches(query) } : selected.category.sections
+    }
+
+    var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    func show(_ section: SettingsSection) {
+        selected = section
+        lastSection[section.category] = section
+        query = ""
+    }
+
+    func show(_ category: SettingsCategory) {
+        if let section = lastSection[category] ?? category.sections.first { show(section) }
     }
 }

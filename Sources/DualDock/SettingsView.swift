@@ -1,6 +1,17 @@
 import SwiftUI
 import DualDockCore
 
+private struct SettingsPageTitleKey: EnvironmentKey {
+    static let defaultValue = ""
+}
+
+private extension EnvironmentValues {
+    var settingsPageTitle: String {
+        get { self[SettingsPageTitleKey.self] }
+        set { self[SettingsPageTitleKey.self] = newValue }
+    }
+}
+
 private struct DualDockLanguageKey: EnvironmentKey {
     static var defaultValue: AppLanguage { .current }
 }
@@ -22,72 +33,68 @@ struct SettingsView: View {
     @ObservedObject var store: AppStore
     private let launchAtLoginService: LaunchAtLoginService?
     @State private var language = AppLanguage.current
-    @State private var selection: SettingsSection? = .general
+    @StateObject private var navigation: SettingsNavigation
     @State private var selectedDisplayID: String?
-    @FocusState private var focusedSection: SettingsSection?
-    private var selected: SettingsSection { selection ?? .general }
+    @FocusState private var searchFocused: Bool
+    private var selected: SettingsSection { navigation.selected }
 
     init(store: AppStore, initialSection: SettingsSection = .general, displayID: String? = nil,
-         launchAtLoginService: LaunchAtLoginService? = nil) {
+         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil) {
         self.store = store
         self.launchAtLoginService = launchAtLoginService
-        _selection = State(initialValue: initialSection)
+        _navigation = StateObject(wrappedValue: navigation ?? SettingsNavigation(initialSection))
         _selectedDisplayID = State(initialValue: displayID)
     }
 
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 9) {
-                    Image(nsImage: NSApplication.shared.applicationIconImage)
-                        .resizable().scaledToFit().frame(width: 26, height: 26).accessibilityHidden(true)
-                    Text("DualDock").font(.system(size: 14, weight: .semibold))
-                }.padding(.horizontal, 19).padding(.top, 23).padding(.bottom, 24)
-                VStack(spacing: 5) {
-                    ForEach(SettingsSection.allCases) { section in
-                        Button { selection = section } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: section.symbol)
-                                    .font(.system(size: 14, weight: .regular))
-                                    .frame(width: 18, height: 18).accessibilityHidden(true)
-                                Text(section.sidebarTitle).font(.system(size: 13, weight: selected == section ? .medium : .regular))
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
-                            .foregroundStyle(selected == section ? Color.accentColor : Color.primary)
-                            .padding(.horizontal, 11).frame(height: 34)
-                            .contentShape(RoundedRectangle(cornerRadius: 7))
-                            .background(selected == section ? Color.accentColor.opacity(0.12) : Color.clear,
-                                        in: RoundedRectangle(cornerRadius: 7))
-                        }
-                        .buttonStyle(.plain)
-                        .focused($focusedSection, equals: section)
-                        .accessibilityLabel(section.title)
-                        .accessibilityAddTraits(selected == section ? .isSelected : [])
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField(language("搜索设置", "Search settings"), text: $navigation.query)
+                        .textFieldStyle(.plain).focused($searchFocused)
+                        .onSubmit { if let first = navigation.visibleSections.first { navigation.show(first) } }
+                        .onExitCommand { navigation.query = "" }
+                    if navigation.isSearching {
+                        Button { navigation.query = ""; searchFocused = true } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }.buttonStyle(.plain).accessibilityLabel(language("清除搜索", "Clear search"))
                     }
                 }
-                .padding(.horizontal, 10)
-                .onMoveCommand { direction in
-                    guard direction == .up || direction == .down,
-                          let index = SettingsSection.allCases.firstIndex(of: focusedSection ?? selected) else { return }
-                    let next = min(SettingsSection.allCases.count - 1, max(0, index + (direction == .down ? 1 : -1)))
-                    selection = SettingsSection.allCases[next]
-                    focusedSection = SettingsSection.allCases[next]
+                .padding(.horizontal, 9).frame(height: 29)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
+                .padding(.horizontal, 11).padding(.top, 14)
+                if navigation.visibleSections.isEmpty {
+                    Text(language("没有匹配的设置", "No matching settings"))
+                        .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 16)
+                    Spacer()
+                } else {
+                    List(selection: Binding<SettingsSection?>(
+                        get: { selected },
+                        set: { if let section = $0 { navigation.show(section) } }
+                    )) {
+                        ForEach(navigation.visibleSections) { section in
+                            HStack(spacing: 8) {
+                                Image(systemName: section.symbol).font(.system(size: 14))
+                                    .foregroundStyle(.secondary).frame(width: 19)
+                                Text(section.sidebarTitle).lineLimit(1)
+                            }.padding(.vertical, 4).tag(section)
+                        }
+                    }.listStyle(.sidebar)
+                        .id(language)
                 }
-                Spacer(minLength: 20)
-                Text(language("改动即时生效", "Applied instantly"))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 20).padding(.vertical, 17)
             }
-            .frame(width: 176)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .frame(width: 214).background(.regularMaterial)
             Divider()
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(selected.title).font(.system(size: 21, weight: .semibold))
-                        Text(selected.subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Label {
+                        Text(selected.title).font(.system(size: 22, weight: .semibold))
+                    } icon: {
+                        Image(systemName: selected.symbol).foregroundStyle(Color.accentColor)
+                            .font(.system(size: 21, weight: .regular))
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if selected == .appearance {
                         SettingsDisplayScope(store: store, selectedDisplayID: $selectedDisplayID)
@@ -96,7 +103,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 30).padding(.top, 23).padding(.bottom, 20)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        content
+                        content.environment(\.settingsPageTitle, selected.title)
                         if let message = store.message {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: "info.circle").foregroundStyle(.secondary)
@@ -122,6 +129,9 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dualDockLanguageDidChange)) { _ in
             language = AppLanguage.current
         }
+        .onReceive(NotificationCenter.default.publisher(for: .focusDualDockSettingsSearch)) { _ in
+            searchFocused = true
+        }
         .font(.system(size: 13))
         .toggleStyle(.switch)
         .controlSize(.regular)
@@ -138,14 +148,15 @@ struct SettingsView: View {
 
     @ViewBuilder private var content: some View {
         switch selected {
-        case .general: GeneralSettingsView(store: store, launchAtLogin: launchAtLoginService)
+        case .general, .contents, .systemDock, .apps:
+            GeneralSettingsView(store: store, launchAtLogin: launchAtLoginService, section: selected)
         case .appearance: AppearanceSettingsView(store: store, selectedDisplayID: $selectedDisplayID, showsScope: false)
         case .displays:
             DisplayPositionSettingsView(store: store, selectedDisplayID: $selectedDisplayID) { id in
                 selectedDisplayID = id
-                selection = .appearance
+                navigation.show(SettingsSection.appearance)
             }
-        case .interaction: InteractionSettingsView(store: store)
+        case .interaction, .magnification, .notifications: InteractionSettingsView(store: store, section: selected)
         case .permissions: PermissionsSettingsView(store: store)
         case .help: DockHelpSettingsView()
         case .about: AboutView()
@@ -160,6 +171,7 @@ struct SettingsView: View {
 }
 
 struct SettingsGroup<Content: View>: View {
+    @Environment(\.settingsPageTitle) private var pageTitle
     let title: String
     let content: Content
     let spacing: CGFloat
@@ -169,14 +181,19 @@ struct SettingsGroup<Content: View>: View {
         self.content = content()
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            Text(title).font(.system(size: 13, weight: .semibold))
-            content
+        if title == pageTitle {
+            GroupBox { rows }
+        } else {
+            GroupBox { rows } label: {
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: spacing) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
     }
 }
 

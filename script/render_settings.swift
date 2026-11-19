@@ -113,6 +113,7 @@ import ScreenCaptureKit
         fixturePermissions = (accessibility:true,capture:true)
         store.refreshPermissions()
         try languageMatrix(store: store, login: login, output: output)
+        if useWindowServer { try checkSettingsNavigation(store: store, output: output) }
         store.stopBackgroundServices()
         let metadata: [String:Any] = [
             "captureMode":useWindowServer ? "window-server-owned-fixtures" : "hidden-view-cache",
@@ -127,6 +128,47 @@ import ScreenCaptureKit
         try JSONSerialization.data(withJSONObject:metadata,options:[.prettyPrinted,.sortedKeys])
             .write(to:output.appendingPathComponent("capture-metadata.json"))
         print("Rendered \(captureCount) native settings captures using isolated fixtures; mode: \(useWindowServer ? "window server" : "hidden view cache")")
+    }
+
+    /// Exercise the actual preferences toolbar and photograph its window chrome.
+    @MainActor private static func checkSettingsNavigation(store: AppStore, output: URL) throws {
+        let navigation = SettingsNavigation()
+        let controller = SettingsWindowController(store: store, navigation: navigation)
+        defer { controller.stop(); AppLanguage.set(.simplifiedChinese) }
+        guard let window = controller.window, let toolbar = window.toolbar else { fatalError("Missing settings toolbar") }
+        precondition(toolbar.displayMode == .iconAndLabel)
+        for category in SettingsCategory.allCases {
+            guard let button = toolbar.items.first(where: { $0.itemIdentifier.rawValue == category.rawValue }),
+                  let action = button.action else { fatalError("Missing native category") }
+            precondition(NSApp.sendAction(action, to: button.target, from: button))
+            precondition(navigation.selected.category == category)
+        }
+        for (query, expected) in [("badge size", SettingsSection.notifications), ("角标", .notifications),
+                                  ("English", .general), ("辅助功能", .permissions)] {
+            navigation.query = query
+            precondition(navigation.visibleSections.contains(expected))
+            navigation.show(expected)
+            precondition(toolbar.selectedItemIdentifier?.rawValue == expected.category.rawValue && navigation.query.isEmpty)
+        }
+        navigation.query = "unmatched-98e1"
+        precondition(navigation.visibleSections.isEmpty)
+        navigation.show(SettingsSection.notifications)
+        navigation.show(SettingsCategory.general)
+        navigation.show(SettingsCategory.interaction)
+        precondition(navigation.selected == .notifications)
+        for (lang, theme, page) in [(AppLanguage.simplifiedChinese, "dark", SettingsSection.appearance),
+                                    (.english, "light", .appearance)] {
+            AppLanguage.set(lang)
+            navigation.show(page)
+            let appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)!
+            window.appearance = appearance
+            let size = NSSize(width: 970, height: 700)
+            let bitmap = try windowServerCapture(window: window, size: size, appearance: appearance)
+            guard let data = bitmap.representation(using: .png, properties: [:]) else { fatalError("No window capture") }
+            try data.write(to: output.appendingPathComponent("settings-window-" + lang.rawValue + ".png"))
+            captureCount += 1
+        }
+        print("Native settings toolbar, bilingual search and remembered sections passed")
     }
 
     @MainActor private static func languageMatrix(store: AppStore, login: LaunchAtLoginService, output: URL) throws {

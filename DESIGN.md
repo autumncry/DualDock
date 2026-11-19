@@ -48,7 +48,7 @@ components:
     rounded: "{rounded.group}"
     padding: "{spacing.group-padding}"
   sidebar:
-    width: "176pt"
+    width: "214pt"
     typography: "{typography.body}"
   numeric-field:
     width: "56pt"
@@ -72,13 +72,12 @@ Approved direction: quiet native macOS settings, based on the 2026-11-17 HTML dr
 
 ## Navigation and hierarchy
 
-The window opens at 1060 × 760 pt of content. AppKit minimum frame is 820 × 580 pt; root content minimum is 820 × 540 pt. The sidebar is 176 pt, with 34 pt rows, consistently sized symbol slots and left-aligned 13 pt labels. Selection uses a subtle accent tint, not a large solid block. Native buttons retain focus and activation; up/down keys move between categories. Selected state is exposed to accessibility.
+Settings opens with 1060 × 760 pt of content. An AppKit preferences toolbar shows Dock, Interaction, General, and Support with native icons and labels. Each category remembers its last selected page during the session. A 214 pt sidebar uses a native source list and a search field. Return opens the first matching page, Escape clears the search, and Command-F focuses it. Search includes both interface languages. The detail pane uses an accent-colored symbol, a 22 pt semibold heading and grouped native controls. Display scope stays next to the sizing page heading.
 
-Use a 21 pt semibold page heading and 12 pt secondary purpose sentence. The title remains above the scrolling content. Seven categories stay intact: 通用、外观与尺寸、屏幕与位置、交互、权限、使用方法、关于. Switching categories returns to the top. Screen scope appears only on the appearance page; screen position has its own per-display controls.
 
 ## Surfaces and typography
 
-`Font.system` and SF Symbols are authoritative. Do not substitute the Figma draft's Noto fallback in the native app. Primary/secondary semantic text adapts to Light/Dark. The main surface is `controlBackgroundColor`, sidebar `windowBackgroundColor`; groups use a subtle window-background tint, 10 pt corners and 0.5 pt separator outline. No sampled screenshot hex palette or decorative shadows.
+`Font.system` and SF Symbols are authoritative. Do not substitute the Figma draft's Noto fallback in the native app. Primary/secondary semantic text adapts to Light/Dark. The main surface is `controlBackgroundColor`, sidebar uses a system material, and settings groups use native GroupBox styling. No sampled screenshot hex palette or decorative shadows.
 
 Labels are 13 pt medium, body 13 pt regular, supporting text 12 pt and captions 11 pt. Changing values use monospaced digits and an adjacent unit. Native controls own their focus, hover, disabled and pressed states. Keep long explanatory text wrapping rather than truncating it.
 

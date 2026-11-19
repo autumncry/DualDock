@@ -22,7 +22,7 @@ struct DockHelpSettingsView: View {
             }
             SettingsGroup(localize("切换与管理窗口", "Switch and manage windows")) {
                 Text(localize("右键应用图标，选择要操作的窗口。普通窗口在前台时，再点图标可最小化；继续点击可还原。后台窗口会先前置。", "Right-click an app to choose a window. Click the icon to bring that window forward, click again to minimize it, and click once more to restore it."))
-                Text(localize("全屏和最大化窗口只激活。悬停可看预览，右上角 × 请求关闭对应窗口；未保存内容由原应用确认。", "Clicking a maximized or full-screen window brings it forward. Hover over an app to preview its windows. Click × on a thumbnail to close that window. The app handles any unsaved changes."))
+                Text(localize("全屏和最大化窗口只激活。悬停可看预览，可关闭的窗口右上角会显示 ×；未保存内容由原应用确认。", "Clicking a maximized or full-screen window brings it forward. Hover over an app to preview its windows. A × appears on windows that support closing. The app handles any unsaved changes."))
                     .foregroundStyle(.secondary)
             }
             SettingsGroup(localize("多屏与全屏", "Multiple displays and full screen")) {

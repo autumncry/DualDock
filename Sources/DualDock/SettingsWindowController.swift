@@ -1,19 +1,28 @@
 import AppKit
+import Combine
 import SwiftUI
+
+extension Notification.Name {
+    static let focusDualDockSettingsSearch = Notification.Name("DualDock.focusSettingsSearch")
+}
 
 /// A reusable regular window, independent of nonactivating Dock panels.
 @MainActor
-final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     var onVisibilityChange: ((Bool) -> Void)?
     private var previousApplication: NSRunningApplication?
     private var hasBeenPresented = false
     private var reportedVisible = false
     private var editingMenu: NSMenu?
     private let store: AppStore
+    private let navigation: SettingsNavigation
+    private var selectionObservation: AnyCancellable?
     var isPresented: Bool { window?.isVisible == true && window?.isMiniaturized == false }
 
-    init(store: AppStore) {
+    init(store: AppStore, navigation supplied: SettingsNavigation? = nil) {
         self.store = store
+        let navigation = supplied ?? SettingsNavigation()
+        self.navigation = navigation
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1060, height: 760),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
@@ -21,16 +30,49 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.minSize = NSSize(width: 820, height: 580)
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
-        window.contentViewController = NSHostingController(rootView: SettingsView(store: store))
+        window.contentViewController = NSHostingController(rootView: SettingsView(store: store, navigation: navigation))
         // Hosting can adopt the view's minimum fitting size during attachment.
         // Keep the intended initial desktop layout; later resizing stays free.
         window.setContentSize(NSSize(width: 1060, height: 760))
         super.init(window: window)
         window.delegate = self
+        window.toolbarStyle = .preference
+        let toolbar = NSToolbar(identifier: "DualDock.Settings.Categories")
+        toolbar.displayMode = .iconAndLabel
+        toolbar.allowsUserCustomization = false
+        toolbar.delegate = self
+        window.toolbar = toolbar
+        toolbar.centeredItemIdentifiers = Set(categoryIdentifiers)
+        selectionObservation = navigation.$selected.sink { [weak toolbar] section in
+            toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(section.category.rawValue)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(updateLanguage),
                                                name: .dualDockLanguageDidChange, object: nil)
     }
     required init?(coder: NSCoder) { nil }
+
+    private var categoryIdentifiers: [NSToolbarItem.Identifier] {
+        SettingsCategory.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { categoryIdentifiers }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { categoryIdentifiers }
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { categoryIdentifiers }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard let category = SettingsCategory(rawValue: identifier.rawValue) else { return nil }
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = category.title
+        item.image = NSImage(systemSymbolName: category.symbol, accessibilityDescription: nil)
+        item.target = self
+        item.action = #selector(selectCategory(_:))
+        return item
+    }
+
+    @objc private func selectCategory(_ sender: NSToolbarItem) {
+        if let category = SettingsCategory(rawValue: sender.itemIdentifier.rawValue) { navigation.show(category) }
+    }
 
     func show() {
         guard let window else { return }
@@ -50,6 +92,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func updateLanguage() {
         window?.title = L("DualDock 设置", "DualDock Settings")
+        for item in window?.toolbar?.items ?? [] {
+            if let category = SettingsCategory(rawValue: item.itemIdentifier.rawValue) { item.label = category.title }
+        }
         if editingMenu != nil { installEditingMenuIfNeeded() }
     }
 
@@ -102,6 +147,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for (title, action, key) in [(L("剪切", "Cut"), "cut:", "x"), (L("拷贝", "Copy"), "copy:", "c"), (L("粘贴", "Paste"), "paste:", "v"), (L("全选", "Select All"), "selectAll:", "a")] {
             editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: L("搜索设置", "Search Settings"), action: #selector(focusSearch),
+                         keyEquivalent: "f").target = self
         editItem.submenu = editMenu
         menu.addItem(editItem)
         editingMenu = menu
@@ -109,4 +157,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func requestSettings(_ sender: Any?) { show() }
+    @objc private func focusSearch() {
+        NotificationCenter.default.post(name: .focusDualDockSettingsSearch, object: nil)
+    }
 }
