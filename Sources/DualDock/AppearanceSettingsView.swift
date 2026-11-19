@@ -21,7 +21,7 @@ struct AppearanceSettingsView: View {
     private var bounds: DockResizeBounds { store.customSizingBounds(for: selectedDisplayID) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             if showsScope {
                 HStack { Spacer(); SettingsDisplayScope(store: store, selectedDisplayID: $selectedDisplayID) }
             }
@@ -29,7 +29,7 @@ struct AppearanceSettingsView: View {
                 Picker(localize("尺寸模式", "Sizing mode"), selection: Binding(get: { adaptive }, set: { store.setAdaptiveSizing($0) })) {
                     Text(localize("自定义", "Custom")).tag(false)
                     Text(localize("跟随系统 Dock", "Follow System Dock")).tag(true)
-                }.labelsHidden().pickerStyle(.segmented).frame(width: 240, alignment: .leading)
+                }.labelsHidden().pickerStyle(.segmented).fixedSize()
                 Spacer(minLength: 8)
                 if !adaptive {
                     HStack(spacing: 7) {
@@ -45,19 +45,18 @@ struct AppearanceSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                SettingsDockPreview(store: store, displayID: selectedDisplayID, focus: focus, compact: adaptive)
-                if adaptive {
-                    SettingsGroup(localize("跟随系统 Dock", "Follow System Dock")) {
-                        Text(localize("大小、间距、留白与悬停放大跟随系统。切回自定义后保留你的配置。", "Size, spacing, padding, and magnification follow the system Dock. Your custom settings are available when you switch back."))
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                        positionRow
-                    }
+                if presentation.edge.isHorizontal {
+                    sample
+                    baseControls
                 } else {
-                    primaryControls
+                    HStack(alignment: .top, spacing: 14) {
+                        sample.frame(width: 120)
+                        baseControls.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                if !adaptive {
                     advancedControls
                     HStack {
-                        Text(store.configuration.synchronizeSizes ? localize("尺寸改动应用到所有屏幕", "Size changes apply to all displays") : localize("尺寸改动仅应用到所选屏幕", "Size changes apply to this display"))
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer(minLength: 8)
                         Button(store.configuration.synchronizeSizes ? localize("恢复所有屏幕尺寸", "Reset Size on All Displays") : localize("恢复此屏幕尺寸", "Reset Size on This Display")) {
                             store.resetCustomSizing(for: selectedDisplayID)
@@ -65,6 +64,23 @@ struct AppearanceSettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var sample: some View {
+        SettingsDockPreview(store: store, displayID: selectedDisplayID, focus: focus)
+    }
+
+    @ViewBuilder private var baseControls: some View {
+        if adaptive {
+            SettingsGroup(localize("跟随系统 Dock", "Follow System Dock")) {
+                Text(localize("大小、间距、留白与悬停放大跟随系统。切回自定义后保留你的配置。", "Size, spacing, padding, and magnification follow the system Dock. Switching back restores your custom settings."))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                positionRow
+            }
+        } else {
+            primaryControls
         }
     }
 
@@ -102,15 +118,13 @@ struct AppearanceSettingsView: View {
     private var advancedControls: some View {
         DisclosureGroup(isExpanded: $advanced) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(localize("精细调整留白与高度；图标间距在上方统一设置。", "Fine-tune padding, height, and overflow."))
-                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.bottom, 12)
                 overrideControl(localize("两端留白", "End padding"), field: .padding, keyPath: \.paddingOverride,
                     actual: presentation.style.leadingPadding, range: 2...max(60, preferences.paddingOverride ?? 0), focus: .density)
                 Divider()
                 overrideControl(localize("Dock 高度", "Dock height"), field: .minimumHeight, keyPath: \.minimumHeightOverride,
                     actual: presentation.style.barThickness, range: bounds.minThickness...bounds.maxThickness, focus: .height)
                 Text(localize("高度会为图标自动留足空间，上限为适用屏幕短边的 12%。", "The Dock grows to fit its icons, up to 12% of the available display’s shorter side."))
-                    .font(.system(size: 11)).foregroundStyle(.secondary).padding(.bottom, 12)
+                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.bottom, 6)
                 Divider()
                 SettingsFormSlider(title: localize("固定长度占比", "Fixed length"), note: localize("按屏幕可用边长", "Share of available edge"), value: Binding(get: { preferences.fixedLengthPercent }, set: { value in
                     store.updateCustomSizing(for: selectedDisplayID) {
@@ -126,7 +140,7 @@ struct AppearanceSettingsView: View {
                         Button(localize("恢复贴合内容", "Reset to Fit Content")) { store.resetCustomSizingOverride(.fixedLength, for: selectedDisplayID) }
                             .controlSize(.small)
                     }
-                }.padding(.bottom, 12)
+                }.padding(.bottom, 6)
                 Divider()
                 SettingsFormRow(localize("内容较少时", "Content alignment")) {
                     Picker(localize("内容较少时", "Content alignment"), selection: binding(\.alignment)) {
@@ -136,12 +150,16 @@ struct AppearanceSettingsView: View {
                     }.labelsHidden().pickerStyle(.segmented).frame(maxWidth: 330, alignment: .leading)
                 }
                 Divider()
-                Toggle(localize("放不下时先缩小图标", "Shrink icons before scrolling"), isOn: binding(\.shrinkBeforeScroll)).padding(.vertical, 12)
-                Text(preferences.spacingPercent == nil
-                    ? localize("优先收紧间距；仍然放不下时可沿 Dock 滚动。", "Spacing tightens first. Scroll along the Dock if content still overflows.")
-                    : localize("保持间距比例，按需缩小图标；仍放不下时可沿 Dock 滚动。", "The spacing ratio is preserved. Icons can shrink to fit, then scroll if needed."))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-            }.padding(.top, 16)
+                Toggle(isOn: binding(\.shrinkBeforeScroll)) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(localize("放不下时先缩小图标", "Shrink icons before scrolling")).fontWeight(.medium)
+                        Text(preferences.spacingPercent == nil
+                            ? localize("优先收紧间距；仍然放不下时可沿 Dock 滚动。", "Spacing tightens first. Scroll along the Dock if content still overflows.")
+                            : localize("保持间距比例；缩小后仍放不下时可滚动。", "Keeps the spacing ratio. Scroll if icons still overflow."))
+                            .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.padding(.top, 8)
+            }.padding(.top, 2)
         } label: {
             HStack {
                 Text(localize("高级设置", "Advanced")).font(.system(size: 13, weight: .medium))
@@ -151,7 +169,7 @@ struct AppearanceSettingsView: View {
             }
         }
         .disclosureGroupStyle(SettingsDisclosureStyle())
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.35), in: RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
     }
@@ -167,7 +185,7 @@ struct AppearanceSettingsView: View {
     }
     private func supportingText(_ text: String) -> some View {
         Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 128).padding(.bottom, 10)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 126).padding(.bottom, 10)
     }
     private func preset(_ title: String, size: Double, spacing: Double) -> some View {
         Button(title) {
@@ -223,7 +241,7 @@ struct SettingsDisplayScope: View {
                 ForEach(store.displays.filter { !$0.isMirrored }) { display in
                     Text(display.name).tag(Optional(display.id))
                 }
-            }.labelsHidden().frame(width: 200).disabled(store.displays.allSatisfy(\.isMirrored))
+            }.labelsHidden().frame(maxWidth: 172).disabled(store.displays.allSatisfy(\.isMirrored))
             Toggle(localize("同步各屏尺寸", "Sync sizes across displays"), isOn: Binding(get: { store.configuration.synchronizeSizes }, set: {
                 store.setSizeSynchronization($0, sourceDisplayID: selectedDisplayID)
             })).disabled(store.configuration.adaptiveSizing)

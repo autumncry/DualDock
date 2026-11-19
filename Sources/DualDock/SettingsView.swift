@@ -29,9 +29,30 @@ extension AppLanguage {
     }
 }
 
+private enum SettingsHeightPart: Hashable {
+    case heading(SettingsSection), body(SettingsSection)
+}
+
+private struct SettingsHeights: PreferenceKey {
+    static let defaultValue: [SettingsHeightPart: CGFloat] = [:]
+    static func reduce(value: inout [SettingsHeightPart: CGFloat],
+                       nextValue: () -> [SettingsHeightPart: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newest in newest })
+    }
+}
+
+private extension View {
+    func measureSettingsHeight(_ part: SettingsHeightPart) -> some View {
+        background(GeometryReader { proxy in
+            Color.clear.preference(key: SettingsHeights.self, value: [part: proxy.size.height])
+        })
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var store: AppStore
     private let launchAtLoginService: LaunchAtLoginService?
+    private let measuredHeight: ((SettingsSection, CGFloat) -> Void)?
     @State private var language = AppLanguage.current
     @StateObject private var navigation: SettingsNavigation
     @State private var selectedDisplayID: String?
@@ -39,9 +60,11 @@ struct SettingsView: View {
     private var selected: SettingsSection { navigation.selected }
 
     init(store: AppStore, initialSection: SettingsSection = .general, displayID: String? = nil,
-         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil) {
+         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil,
+         measuredHeight: ((SettingsSection, CGFloat) -> Void)? = nil) {
         self.store = store
         self.launchAtLoginService = launchAtLoginService
+        self.measuredHeight = measuredHeight
         _navigation = StateObject(wrappedValue: navigation ?? SettingsNavigation(initialSection))
         _selectedDisplayID = State(initialValue: displayID)
     }
@@ -49,9 +72,9 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
                     TextField(language("搜索设置", "Search settings"), text: $navigation.query)
                         .textFieldStyle(.plain).focused($searchFocused)
                         .onSubmit { if let first = navigation.visibleSections.first { navigation.show(first) } }
@@ -65,7 +88,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 9).frame(height: 29)
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
-                .padding(.horizontal, 11).padding(.top, 14)
+                .padding(.horizontal, 10).padding(.top, 10)
                 if navigation.visibleSections.isEmpty {
                     Text(language("没有匹配的设置", "No matching settings"))
                         .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 16)
@@ -80,18 +103,20 @@ struct SettingsView: View {
                                 Image(systemName: section.symbol).font(.system(size: 14))
                                     .foregroundStyle(.secondary).frame(width: 19)
                                 Text(section.sidebarTitle).lineLimit(1)
-                            }.padding(.vertical, 4).tag(section)
+                            }.padding(.vertical, 3).tag(section)
+                                .accessibilityLabel(section.title)
+                                .help(section.title)
                         }
                     }.listStyle(.sidebar)
                         .id(language)
                 }
             }
-            .frame(width: 214).background(.regularMaterial)
+            .frame(width: 184).background(.regularMaterial)
             Divider()
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 16) {
                     Label {
-                        Text(selected.title).font(.system(size: 22, weight: .semibold))
+                        Text(selected.title).font(.system(size: 21, weight: .semibold))
                     } icon: {
                         Image(systemName: selected.symbol).foregroundStyle(Color.accentColor)
                             .font(.system(size: 21, weight: .regular))
@@ -100,9 +125,11 @@ struct SettingsView: View {
                         SettingsDisplayScope(store: store, selectedDisplayID: $selectedDisplayID)
                     }
                 }
-                .padding(.horizontal, 30).padding(.top, 23).padding(.bottom, 20)
+                .padding(.horizontal, 20).padding(.top, 15).padding(.bottom, 12)
+                .fixedSize(horizontal: false, vertical: true)
+                .measureSettingsHeight(.heading(selected))
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 12) {
                         content.environment(\.settingsPageTitle, selected.title)
                         if let message = store.message {
                             HStack(alignment: .top, spacing: 10) {
@@ -117,12 +144,19 @@ struct SettingsView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 30).padding(.bottom, 24)
+                    .padding(.horizontal, 20).padding(.bottom, 14)
+                    .measureSettingsHeight(.body(selected))
                 }
                 .id(selected)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .controlBackgroundColor))
+        }
+        .onPreferenceChange(SettingsHeights.self) { values in
+            if let heading = values[.heading(selected)], let body = values[.body(selected)],
+               heading > 0, body > 0 {
+                measuredHeight?(selected, ceil(heading + body))
+            }
         }
         .environment(\.dualDockLanguage, language)
         .environment(\.locale, Locale(identifier: language.rawValue))
@@ -135,7 +169,7 @@ struct SettingsView: View {
         .font(.system(size: 13))
         .toggleStyle(.switch)
         .controlSize(.regular)
-        .frame(minWidth: 820, minHeight: 540)
+        .frame(minWidth: 740, minHeight: 200)
         .onAppear {
             reconcileDisplaySelection(store.displays)
             store.refreshPermissions()
@@ -175,7 +209,7 @@ struct SettingsGroup<Content: View>: View {
     let title: String
     let content: Content
     let spacing: CGFloat
-    init(_ title: String, spacing: CGFloat = 14, @ViewBuilder content: () -> Content) {
+    init(_ title: String, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) {
         self.title = title
         self.spacing = spacing
         self.content = content()
@@ -193,7 +227,7 @@ struct SettingsGroup<Content: View>: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: spacing) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
+            .padding(.horizontal, 8).padding(.vertical, 5)
     }
 }
 

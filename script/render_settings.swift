@@ -32,7 +32,8 @@ import ScreenCaptureKit
         NSApp.finishLaunching()
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         let output = URL(fileURLWithPath: CommandLine.arguments[2])
-        useWindowServer = CommandLine.arguments.dropFirst(3).contains("--window-server")
+        let nativeOnly = CommandLine.arguments.dropFirst(3).contains("--compact-windows")
+        useWindowServer = nativeOnly || CommandLine.arguments.dropFirst(3).contains("--window-server")
         if useWindowServer && !CGPreflightScreenCaptureAccess() {
             throw NSError(domain:"RenderSettings",code:1,userInfo:[NSLocalizedDescriptionKey:
                 "Window capture requires existing screen-capture permission; no permission prompt was requested."])
@@ -63,6 +64,11 @@ import ScreenCaptureKit
             .init(id:"B",runtimeID:2,name:"Studio Display",frame:CGRect(x:1800,y:0,width:2560,height:1440),visibleFrame:CGRect(x:1800,y:0,width:2560,height:1415))])
         let login = LaunchAtLoginService(environment: .init(status: { .notRegistered },
             register: {}, unregister: {}, openSettings: {}))
+        if nativeOnly {
+            try checkSettingsNavigation(store: store, login: login, output: output)
+            store.stopBackgroundServices()
+            return
+        }
         for dark in [false, true] {
             let theme = dark ? "dark" : "light"
             for section in SettingsSection.allCases {
@@ -113,7 +119,7 @@ import ScreenCaptureKit
         fixturePermissions = (accessibility:true,capture:true)
         store.refreshPermissions()
         try languageMatrix(store: store, login: login, output: output)
-        if useWindowServer { try checkSettingsNavigation(store: store, output: output) }
+        if useWindowServer { try checkSettingsNavigation(store: store, login: login, output: output) }
         store.stopBackgroundServices()
         let metadata: [String:Any] = [
             "captureMode":useWindowServer ? "window-server-owned-fixtures" : "hidden-view-cache",
@@ -131,9 +137,9 @@ import ScreenCaptureKit
     }
 
     /// Exercise the actual preferences toolbar and photograph its window chrome.
-    @MainActor private static func checkSettingsNavigation(store: AppStore, output: URL) throws {
+    @MainActor private static func checkSettingsNavigation(store: AppStore, login: LaunchAtLoginService, output: URL) throws {
         let navigation = SettingsNavigation()
-        let controller = SettingsWindowController(store: store, navigation: navigation)
+        let controller = SettingsWindowController(store: store, navigation: navigation, launchAtLoginService: login)
         defer { controller.stop(); AppLanguage.set(.simplifiedChinese) }
         guard let window = controller.window, let toolbar = window.toolbar else { fatalError("Missing settings toolbar") }
         precondition(toolbar.displayMode == .iconAndLabel)
@@ -156,19 +162,144 @@ import ScreenCaptureKit
         navigation.show(SettingsCategory.general)
         navigation.show(SettingsCategory.interaction)
         precondition(navigation.selected == .notifications)
-        for (lang, theme, page) in [(AppLanguage.simplifiedChinese, "dark", SettingsSection.appearance),
-                                    (.english, "light", .appearance)] {
-            AppLanguage.set(lang)
-            navigation.show(page)
-            let appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)!
-            window.appearance = appearance
-            let size = NSSize(width: 970, height: 700)
-            let bitmap = try windowServerCapture(window: window, size: size, appearance: appearance)
-            guard let data = bitmap.representation(using: .png, properties: [:]) else { fatalError("No window capture") }
-            try data.write(to: output.appendingPathComponent("settings-window-" + lang.rawValue + ".png"))
-            captureCount += 1
+        guard let screen = NSScreen.main else { fatalError("A display is required") }
+        window.setFrameTopLeftPoint(NSPoint(x:screen.visibleFrame.minX + 30, y:screen.visibleFrame.maxY - 20))
+        window.ignoresMouseEvents = true
+        window.hasShadow = false
+        window.collectionBehavior = [.transient, .ignoresCycle]
+        func settle() {
+            window.orderBack(nil)
+            window.contentView?.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.26))
+            window.contentView?.layoutSubtreeIfNeeded()
+            CATransaction.flush()
         }
-        print("Native settings toolbar, bilingual search and remembered sections passed")
+        func demand(_ condition: Bool, _ reason: String) throws {
+            if !condition { throw NSError(domain:"SettingsDensity",code:1,
+                userInfo:[NSLocalizedDescriptionKey:reason]) }
+        }
+        func captureNative(_ name: String) throws -> [String:Any] {
+            settle()
+            let size = window.frame.size
+            let viewport = window.contentLayoutRect.size
+            let bitmap = try windowServerCapture(window:window,size:size,appearance:window.effectiveAppearance,
+                                                 preserveFrame:true)
+            try demand(abs(window.frame.height - size.height) < 1,
+                       "Window had not settled before capture: " + name)
+            guard let data = bitmap.representation(using:.png,properties:[:]) else { fatalError("No window capture") }
+            try data.write(to:output.appendingPathComponent(name + ".png"))
+            captureCount += 1
+            let blank = bottomMargin(bitmap, windowSize: size)
+            print("\(name): frame \(Int(size.width))×\(Int(size.height)), content \(Int(viewport.width))×\(Int(viewport.height)), trailing detail margin ≈\(blank) pt")
+            fflush(stdout)
+            return ["name":name, "width":size.width, "height":size.height,
+                    "contentWidth":viewport.width, "contentHeight":viewport.height,
+                    "trailingBlankPoints":blank]
+        }
+        var samples: [[String:Any]] = []
+        let top = window.frame.maxY
+        let width = window.frame.width
+        for lang in [AppLanguage.simplifiedChinese, .english] {
+            AppLanguage.set(lang)
+            let dark = lang == .simplifiedChinese
+            let appearance = NSAppearance(named:dark ? .darkAqua : .aqua)!
+            NSApp.appearance = appearance
+            window.appearance = appearance
+            var heights: [SettingsSection:CGFloat] = [:]
+            for section in SettingsSection.allCases {
+                navigation.show(section)
+                let name = "compact-" + lang.rawValue + "-" + section.rawValue
+                let sample = try captureNative(name)
+                samples.append(sample)
+                heights[section] = window.contentLayoutRect.height
+                try demand(window.frame.width == width, "Category navigation changed width: " + name)
+                try demand(abs(window.frame.maxY - top) < 1, "Category navigation shifted top edge: " + name)
+                if section == .appearance {
+                    let source = output.appendingPathComponent(name + ".png")
+                    try Data(contentsOf:source).write(to:output.appendingPathComponent("settings-window-" + lang.rawValue + ".png"))
+                }
+            }
+            try demand((heights[.appearance] ?? 0) > (heights[.contents] ?? 0) + 100,
+                       "A brief page and the sizing form were given similar window heights")
+            try demand((heights[.interaction] ?? 1000) < 520, "Windows & Previews retains excessive height")
+        }
+
+        // Test the controller's actual AppKit delegate boundaries without moving
+        // a physical pointer. Width-only resizing must retain automatic height.
+        navigation.show(SettingsSection.contents)
+        settle()
+        var resized = window.frame
+        let minimum = controller.windowWillResize(window, to: NSSize(width: 100, height: 100))
+        try demand(minimum.width == 740 && minimum.height >= 200 + window.frame.height - window.contentLayoutRect.height,
+                   "The interactive resize boundary lost its supported minimum size")
+        resized.size.width = minimum.width
+        try demand(controller.windowWillResize(window, to: resized.size) == resized.size,
+                   "The supported compact width is rejected")
+        controller.windowWillStartLiveResize(Notification(name:NSWindow.willStartLiveResizeNotification,object:window))
+        window.setFrame(resized, display:true)
+        controller.windowDidEndLiveResize(Notification(name:NSWindow.didEndLiveResizeNotification,object:window))
+        settle()
+        let narrowShort = window.contentLayoutRect.height
+        navigation.show(SettingsSection.appearance)
+        samples.append(try captureNative("compact-en-minimum-appearance"))
+        try demand(window.frame.width == resized.width && window.contentLayoutRect.height > narrowShort + 50,
+                   "Width-only resizing stopped vertical fitting or lost the chosen width")
+
+        navigation.show(SettingsSection.contents)
+        settle()
+        let shortFrame = window.frame
+        store.message = String(repeating:"This fixture tests wrapping of an inline settings notice. ",count:12)
+        settle()
+        try demand(window.frame.height > shortFrame.height + 20, "An inline notice was clipped by the page's initial height")
+        store.message = String(repeating:"Long fixture notice. ",count:300)
+        settle()
+        let detailViewport = window.contentLayoutRect.height
+        try demand(detailViewport <= 681, "A long document grew beyond the intended viewport cap")
+        func descendantScrollViews(_ view:NSView?) -> [NSScrollView] {
+            guard let view else { return [] }
+            return (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap { descendantScrollViews($0) }
+        }
+        try demand(descendantScrollViews(window.contentView).contains { scroll in
+            guard let document = scroll.documentView else { return false }
+            return scroll.bounds.width > 300 && document.bounds.height > scroll.contentView.bounds.height + 50
+        }, "Long content was not reachable through the detail scroll view")
+        store.message = nil
+        settle()
+        try demand(abs(window.frame.height - shortFrame.height) < 2, "Dismissed content left stale window height")
+
+        resized = window.frame
+        resized.size.height += 68
+        resized.origin.y -= 68
+        controller.windowWillStartLiveResize(Notification(name:NSWindow.willStartLiveResizeNotification,object:window))
+        window.setFrame(resized, display:true)
+        controller.windowDidEndLiveResize(Notification(name:NSWindow.didEndLiveResizeNotification,object:window))
+        navigation.show(SettingsSection.appearance)
+        settle()
+        try demand(window.frame.size == resized.size, "Switching pages overrode a manual height adjustment")
+
+        try JSONSerialization.data(withJSONObject:samples,options:[.prettyPrinted,.sortedKeys])
+            .write(to:output.appendingPathComponent("compact-window-metrics.json"))
+        print("Verified native settings: 12 pages × 2 languages, search, toolbar, live content changes and user resizing")
+    }
+
+    /// Approximate the empty strip below the last detail row. Ignore sidebar,
+    /// rounded corners and low-contrast antialiasing at the window edges.
+    private static func bottomMargin(_ bitmap:NSBitmapImageRep, windowSize:NSSize) -> Int {
+        let width = bitmap.pixelsWide, height = bitmap.pixelsHigh
+        let scale = CGFloat(height) / windowSize.height
+        func level(_ x:Int, _ y:Int) -> CGFloat {
+            guard let c = bitmap.colorAt(x:x,y:y)?.usingColorSpace(.deviceRGB) else { return 0 }
+            return (c.redComponent+c.greenComponent+c.blueComponent)/3
+        }
+        let bg = level(width-24,height-16)
+        for y in stride(from:height-16, through:16, by:-2) {
+            var count = 0
+            for x in stride(from:Int(CGFloat(width)*0.32), to:width-24, by:12) {
+                if abs(level(x,y)-bg) > 0.012 { count += 1 }
+                if count >= 3 { return Int(CGFloat(height-y)/scale) }
+            }
+        }
+        return Int(windowSize.height)
     }
 
     @MainActor private static func languageMatrix(store: AppStore, login: LaunchAtLoginService, output: URL) throws {
@@ -339,14 +470,14 @@ import ScreenCaptureKit
         if let captureError { throw captureError }
     }
 
-    @MainActor private static func windowServerCapture(window:NSWindow,size:NSSize,appearance:NSAppearance) throws -> NSBitmapImageRep {
+    @MainActor private static func windowServerCapture(window:NSWindow,size:NSSize,appearance:NSAppearance,preserveFrame:Bool = false) throws -> NSBitmapImageRep {
         guard let screen = NSScreen.screens.max(by:{ $0.visibleFrame.height < $1.visibleFrame.height }) else {
             throw NSError(domain:"RenderSettings",code:2,userInfo:[NSLocalizedDescriptionKey:"No display available"])
         }
         let visible = screen.visibleFrame
         // Anchor the top edge inside a display. Tall full-content captures may
         // extend below it; the independent-window API captures the whole surface.
-        let frame = NSRect(x:visible.minX+20,y:visible.maxY-size.height-20,width:size.width,height:size.height)
+        let frame = preserveFrame ? window.frame : NSRect(x:visible.minX+20,y:visible.maxY-size.height-20,width:size.width,height:size.height)
         let backdrop = NSWindow(contentRect:frame,styleMask:.borderless,backing:.buffered,defer:false)
         backdrop.isReleasedWhenClosed = false
         backdrop.appearance = appearance
@@ -358,7 +489,7 @@ import ScreenCaptureKit
         window.ignoresMouseEvents = true
         window.hasShadow = false
         window.collectionBehavior = [.transient,.ignoresCycle]
-        window.setFrame(frame,display:false)
+        if !preserveFrame { window.setFrame(frame,display:false) }
         defer { window.orderOut(nil); backdrop.close() }
         backdrop.orderBack(nil)
         window.order(.above,relativeTo:backdrop.windowNumber)

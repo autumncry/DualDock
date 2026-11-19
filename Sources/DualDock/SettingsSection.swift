@@ -59,7 +59,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 
     var title: String { L(names.0, names.1) }
-    var sidebarTitle: String { title }
+    var sidebarTitle: String {
+        switch self {
+        case .interaction: return L(names.0, "Windows")
+        case .apps: return L(names.0, "Manage Apps")
+        default: return title
+        }
+    }
 
     // Keep compound control labels intact. Chinese names such as “角标大小”
     // and English labels with prepositions should be searchable as displayed.
@@ -81,7 +87,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 
     func matches(_ query: String) -> Bool {
-        let words = (names.0 + " " + names.1 + " " + keywords)
+        let words = (names.0 + " " + names.1 + " " + sidebarTitle + " " + keywords)
             .lowercased().split(whereSeparator: { $0.isWhitespace })
         let terms = query.lowercased().split(whereSeparator: { $0.isWhitespace || $0.isPunctuation })
         return !terms.isEmpty && terms.allSatisfy { term in

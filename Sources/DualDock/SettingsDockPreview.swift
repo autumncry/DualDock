@@ -48,7 +48,6 @@ struct SettingsDockPreview: View {
     @ObservedObject var store: AppStore
     let displayID: String?
     var focus: DockPreviewFocus = .none
-    var compact = false
 
     private var edge: DockEdge { displayID.map { store.edge(for: $0) } ?? .bottom }
     // Fixed per orientation, never auto-fit while a slider is being adjusted.
@@ -62,42 +61,46 @@ struct SettingsDockPreview: View {
 
     var body: some View {
         let g = exampleGeometry
-        VStack(alignment: .leading, spacing: 9) {
+        // Reserve the space the sample needs. Large values can still pan at
+        // the fixed rendering scale; the preview never fits icons by shrinking.
+        let stage: CGFloat = edge.isHorizontal
+            ? min(152, max(80, ceil(g.barThickness * zoom) + 28))
+            : 146
+        GeometryReader { proxy in
+            let viewport = CGSize(width: proxy.size.width, height: stage)
+            let layout = SettingsPreviewLayout(geometry: g, zoom: zoom, viewportSize: viewport)
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text(localize("布局示例", "Sample Dock")).font(.system(size: 12, weight: .medium))
-                    Text(localize("示例图标，随设置变化", "Sample icons follow your settings"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(g.edge.isHorizontal ? localize("布局示例", "Sample Dock") : localize("\(edgeTitle(edge))示例", "\(edgeTitle(edge)) Dock"))
+                        .font(.system(size: 13, weight: .medium))
                     Spacer(minLength: 4)
-                    Text(edgeTitle(edge)).font(.system(size: 11)).foregroundStyle(.secondary)
+                    if layout.maximumScrollOffset.x > 0 {
+                        if g.edge.isHorizontal {
+                            Text(localize("左右滚动", "Scroll horizontally"))
+                            Text("·").accessibilityHidden(true)
+                        } else {
+                            Image(systemName: "arrow.up.and.down")
+                                .accessibilityLabel(localize("上下滚动查看示例", "Scroll vertically to see more"))
+                        }
+                    }
+                    if g.edge.isHorizontal { Text(edgeTitle(edge)) }
                 }
-                .padding(.horizontal, 15).frame(height: 38)
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).frame(height: 28)
                 SettingsPreviewCanvas(geometry: g, zoom: zoom, focus: focus,
                     images: SettingsDockExample.apps.map { store.icon(for: $0) })
-                    .frame(height: 152)
-                    .overlay {
-                        GeometryReader { proxy in
-                            let layout = SettingsPreviewLayout(geometry: g, zoom: zoom, viewportSize: proxy.size)
-                            if layout.maximumScrollOffset.x > 0 {
-                                Text(g.edge.isHorizontal ? localize("左右滚动查看示例", "Scroll horizontally to see more") : localize("上下滚动查看示例", "Scroll vertically to see more"))
-                                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity,
-                                           alignment: g.edge == .top ? .bottom : .top)
-                                    .padding(.vertical, 6)
-                            }
-                        }.allowsHitTesting(false)
-                    }
+                    .frame(height: stage)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(localize("布局示例，\(edgeTitle(edge)) Dock，五个固定示例图标，不反映实际应用列表", "Sample Dock at the \(edgeTitle(edge).lowercased()) edge with five example icons"))
+                    .accessibilityLabel(localize("布局示例，\(edgeTitle(edge)) Dock，五个固定示例图标",
+                                                 "Sample Dock at the \(edgeTitle(edge).lowercased()) edge with five example icons"))
                     .help(localize("滚动查看完整示例；点击示例后也可使用方向键", "Scroll to see the full example, or click it and use the arrow keys"))
             }
-            .background(Color(nsColor: .underPageBackgroundColor).opacity(0.6))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
-            Text(localize("用于说明大小、间距与位置，不代表当前打开的应用。", "Five example apps illustrate icon size, spacing, and position."))
-                .font(.system(size: 11)).foregroundStyle(.secondary)
         }
+        .frame(height: 28 + stage)
+        .background(Color(nsColor: .underPageBackgroundColor).opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9)
+            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.4), lineWidth: 0.5))
     }
 }
 

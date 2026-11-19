@@ -107,22 +107,13 @@
         }
       ],
       "layout": {
-        "defaultWindowContentPoints": {
-          "width": 1060,
-          "height": 760
-        },
-        "minimumWindowFramePoints": {
-          "width": 820,
-          "height": 580
-        },
         "minimumRootViewPoints": {
-          "width": 820,
-          "height": 540
+          "width": 740,
+          "height": 200
         },
-        "sidebarWidthPoints": 214,
+        "sidebarWidthPoints": 184,
         "sidebarRowStyle": "Native macOS source list",
-        "previewCardHeightPoints": 190,
-        "customSizingBehavior": "Five fixed sample apps respond to size, unified spacing, length and position above aligned controls; no live-row mirroring.",
+        "customSizingBehavior": "Five fixed sample apps respond to size, unified spacing, length and position above the controls on horizontal edges or beside them on vertical edges; no live-row mirroring.",
         "exampleScale": {
           "horizontal": 0.75,
           "vertical": 0.45
@@ -131,7 +122,19 @@
           "horizontal": 900,
           "vertical": 600
         },
-        "advancedHeaderMinimumHeightPoints": 44
+        "advancedHeaderMinimumHeightPoints": 44,
+        "defaultWidthPoints": 850,
+        "previewHeightPoints": {
+          "horizontalRange": [
+            108,
+            180
+          ],
+          "vertical": 174
+        },
+        "automaticContentHeightPoints": [
+          200,
+          680
+        ]
       },
       "componentRendering": {
         "mode": "native-only",
@@ -146,11 +149,11 @@
         },
         "Aligned form row": {
           "file": "Sources/DualDock/SettingsControls.swift",
-          "excerpt": ".frame(width: 108, alignment: .leading)"
+          "excerpt": ".frame(width: 112, alignment: .leading)"
         },
         "About": {
           "file": "Sources/DualDock/AboutView.swift",
-          "excerpt": ".frame(width: 72, height: 72)"
+          "excerpt": ".frame(width: 56, height: 56)"
         },
         "Layout example": {
           "file": "Sources/DualDock/SettingsDockPreview.swift",
@@ -223,14 +226,14 @@
     {
       "name": "Aligned sizing form",
       "kind": "custom",
-      "description": "Native size, unified 0–100 artwork spacing, length and position controls; 108 pt label column, 20 pt gap, 81 pt value column.",
+      "description": "Native size, unified 0–100 artwork spacing, length and position controls; 112 pt label column, 14 pt gap, 81 pt value column.",
       "html": "",
       "css": ""
     },
     {
       "name": "Fixed-sample layout example",
       "kind": "custom",
-      "description": "190 pt card with five stable system-app samples, 75% horizontal/45% vertical scale, responsive preferences and scrollable overflow. No live-app list or actual-size claims.",
+      "description": "Compact card with five stable system-app samples, 75% horizontal/45% vertical scale, responsive preferences and scrollable overflow. No live-app list or actual-size claims.",
       "html": "",
       "css": ""
     },

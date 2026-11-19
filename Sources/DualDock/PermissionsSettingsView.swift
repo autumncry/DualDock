@@ -5,29 +5,37 @@ struct PermissionsSettingsView: View {
     @ObservedObject var store: AppStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            permissionRow(localize("屏幕录制", "Screen Recording"), description: localize("为已打开的窗口生成缩略图。预览图只在本机内存中处理。", "Generates thumbnails of open windows. Previews are processed in memory on this Mac."),
+        SettingsGroup(localize("权限", "Permissions"), spacing: 10) {
+            permissionRow(localize("屏幕录制", "Screen Recording"),
+                          description: localize("在本机内存中生成窗口缩略图。", "Generates window thumbnails in memory on this Mac."),
                           granted: store.captureGranted) { store.requestCapture() }
             Divider()
-            permissionRow(localize("辅助功能", "Accessibility"), description: localize("识别、切换和关闭对应窗口，并读取系统 Dock 的布局信息。", "Identifies, activates, and closes individual windows and reads system Dock layout information."),
+            permissionRow(localize("辅助功能", "Accessibility"),
+                          description: localize("切换和关闭指定窗口，读取系统 Dock 布局。", "Activates and closes individual windows and reads the system Dock layout."),
                           granted: store.accessibilityGranted) { store.requestAccessibility() }
-            Button(localize("刷新授权状态", "Refresh Permissions")) { store.refreshPermissions() }
-            Text(localize("修改权限后如未立即生效，请退出并重新打开 DualDock。", "If a permission change has not taken effect, quit and reopen DualDock."))
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Divider()
+            HStack(alignment: .center, spacing: 12) {
+                Text(localize("授权后如未生效，请重新打开 DualDock。", "If changes haven’t taken effect, quit and reopen DualDock."))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button(localize("刷新授权状态", "Refresh Permissions")) { store.refreshPermissions() }
+                    .fixedSize()
+            }
         }
     }
 
     private func permissionRow(_ title: String, description: String, granted: Bool,
                                action: @escaping () -> Void) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: granted ? "checkmark.circle.fill" : "lock.circle")
-                .foregroundStyle(granted ? Color.green : Color.secondary).font(.title2)
-            VStack(alignment: .leading, spacing: 7) {
-                Text(title).font(.system(size: 14, weight: .semibold))
-                Text(description).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        SettingsOptionRow(title, detail: description) {
+            if granted {
+                Label(localize("已授权", "Granted"), systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary, .green)
+            } else {
+                Button(localize("授权", "Grant Access"), action: action)
+                    .accessibilityLabel(localize("允许\(title)", "Grant \(title) access"))
             }
-            Spacer(minLength: 12)
-            Button(granted ? localize("已授权", "Granted") : localize("授权", "Grant Access"), action: action).disabled(granted)
         }
     }
 }

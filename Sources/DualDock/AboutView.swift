@@ -9,44 +9,35 @@ struct AboutView: View {
     private let issuesURL = URL(string: "https://github.com/autumncry/DualDock/issues")!
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .center, spacing: 14) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 72, height: 72)
+                    .resizable().scaledToFit().frame(width: 56, height: 56)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("DualDock")
-                        .font(.system(size: 25, weight: .semibold))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("DualDock").font(.system(size: 22, weight: .semibold))
                     Text(localize("应用有序收纳，Dock 多屏同在。", "Organized apps. A Dock on every display."))
-                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(localize("原生 macOS 多屏 Dock", "A native multi-display Dock for macOS"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
 
             VStack(spacing: 0) {
                 detailRow(localize("版本", "Version")) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 12) {
-                            Text(versionDescription)
-                                .textSelection(.enabled)
-                            Button {
-                                updates.check()
-                            } label: {
-                                Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
-                            }
-                            .controlSize(.small)
-                            .disabled(!updates.canCheck)
-                        }
-                        if let error = updates.startupError {
-                            Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
-                                .font(.callout).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                    HStack(spacing: 8) {
+                        Text(versionDescription).textSelection(.enabled)
+                        Spacer(minLength: 2)
+                        Button {
+                            updates.check()
+                        } label: {
+                            Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
+                        }.controlSize(.small).disabled(!updates.canCheck)
+                    }
+                    if let error = updates.startupError {
+                        Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Divider()
@@ -84,7 +75,7 @@ struct AboutView: View {
                     }
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 12)
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
@@ -112,20 +103,20 @@ struct AboutView: View {
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(alignment: .center, spacing: 18) {
+        HStack(alignment: .center, spacing: 12) {
             Text(title)
                 .foregroundStyle(.secondary)
-                .frame(width: 96, alignment: .leading)
-            content()
+                .frame(width: 106, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) { content() }
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minHeight: 44)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
+        .frame(minHeight: 35)
     }
 
     private var versionDescription: String {
         guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return localize("开发版本", "Development build") }
-        let versionText = localize("版本 ", "Version ") + version
+        let versionText = version
         guard let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return versionText }
         return versionText + localize(" · 构建 ", " · Build ") + build
     }

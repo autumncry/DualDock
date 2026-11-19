@@ -113,13 +113,13 @@ The Dock stays available while you use a group, preview, context menu, or drag o
 
 ### Sidebar settings
 
-Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. The window follows the system appearance. About includes the version, MIT license, and project links.
+Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. The window fits its height to the selected page. Resizing it vertically keeps your chosen height until you close settings. The window follows the system appearance. About includes the version, MIT license, and project links.
 
 To switch the app to English, open **通用 (General) → 显示语言 (Display Language)** and select **English**. The change takes effect immediately and is remembered at the next launch.
 
 Enable **Launch at Login** in General to start DualDock after signing into macOS. The control reflects system registration and provides an approval link when required. Opening Settings does not register the app automatically.
 
-<img src="docs/images/dualdock-settings-en.png" width="1000" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
+<img src="docs/images/dualdock-settings-en.png" width="850" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
 
 <sub>Native settings capture using an isolated example configuration.</sub>
 

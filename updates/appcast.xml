@@ -4,28 +4,28 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.8.0</title>
-            <pubDate>Thu, 19 Nov 2026 10:59:50 +0800</pubDate>
+            <title>2.8.1</title>
+            <pubDate>Thu, 19 Nov 2026 14:22:51 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.0</sparkle:fullReleaseNotesLink>
-            <sparkle:version>32</sparkle:version>
-            <sparkle:shortVersionString>2.8.0</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.1</sparkle:fullReleaseNotesLink>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>2.8.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.0
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.1
 
-- 首次安装时，DMG 中的“首次安装 - First Launch.html”提供中英文离线指南和复制命令按钮。默认路径为 macOS“隐私与安全性”中的“仍要打开”，可选终端命令由用户确认并执行。
-- 打开 **支持 → 关于 DualDock → 检查更新…** 可手动检查新版本，阅读发布说明并确认下载安装。Sparkle 验证签名后替换应用并重新启动。
-- 2.7.0 或更早版本需要从本发行页手动安装一次 2.8.0。应用仍以 ad-hoc 方式签名，首次启动说明随 DMG 分发。
+- 设置窗口会根据所选页面和实际内容调整高度。手动拖动上下边缘调整高度后，本次打开期间使用你选定的高度。
+- “窗口与预览”将开关、用途和点击行为集中在一组。通用、权限、消息提醒等页面将说明与对应控件对齐，减少重复标题和间隔。
+- 外观页的 Dock 示例缩短，多显示器设置改为列表，使用方法与关于页收紧排布。
 
-Open **Support → About DualDock → Check for Updates…** to check on demand. Sparkle authenticates updates and offers to install and relaunch. This is the first release with the updater. Install it manually once when upgrading from 2.7.0 or earlier. The DMG also includes a bilingual offline installation guide with a copy-to-clipboard button.
+The settings window fits the selected page. Short pages open in a smaller window, and longer pages scroll as needed. Resizing vertically keeps your chosen height until settings closes. The layout update covers all four toolbar categories, including window previews, display positioning, and About.
 
-Requires macOS 14 or later on Apple Silicon. [Installation guide](https://github.com/autumncry/DualDock/blob/v2.8.0/README.en.md)
+2.8.0 用户可在 **支持 → 关于 DualDock → 检查更新** 安装本版。The DMG includes the first-launch guide for Apple Silicon Macs running macOS 14 or later.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.0/DualDock-2.8.0-arm64.dmg" length="3368752" type="application/octet-stream" sparkle:edSignature="TVMTlAsuo5i2jZ9qTh3a4I3bE7Iqsk9W/2pXWLtu/OKjNhcT7mc0dM0pQxr8T0g7KRneMenYp78UadJFu8eWDg=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.1/DualDock-2.8.1-arm64.dmg" length="3409814" type="application/octet-stream" sparkle:edSignature="VGiI572MrrJ0M0DVHVx3RG0l+sdyYUwp5zLzHADVgkdAhmBZK+wyRnauSGjbz0BBNCn7d5vHxikSZ4ng66kTBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: YhsygI/DDSpBmpod7zr6MAbcRIgBN0qVJhrjdzIdh8tViqLSQbG8SvPFUfnrTVuvZdNd0XjNFbJFtVLqj9zCDQ==
-length: 2460
+edSignature: mea6zROmCph8hbKD4gFQCIeGSOxSZfF2kOYfaFIh1GMBkrdC8Agy1dbi7B+UxU/EADp6Tr78QczI11IZNcvtDQ==
+length: 2328
 -->

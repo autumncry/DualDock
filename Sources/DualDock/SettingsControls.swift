@@ -20,7 +20,7 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
             .buttonStyle(.plain)
             .accessibilityLabel(localize("高级设置", "Advanced"))
             .accessibilityValue(configuration.isExpanded ? localize("已展开", "Expanded") : localize("已收起", "Collapsed"))
-            if configuration.isExpanded { configuration.content.padding(.bottom, 16) }
+            if configuration.isExpanded { configuration.content.padding(.bottom, 12) }
         }
     }
 }
@@ -36,13 +36,13 @@ struct SettingsFormRow<Content: View>: View {
         self.content = content()
     }
     var body: some View {
-        HStack(alignment: .center, spacing: 20) {
+        HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.system(size: 14, weight: .medium))
                 if let note { Text(note).font(.system(size: 11)).foregroundStyle(.secondary) }
-            }.frame(width: 108, alignment: .leading)
+            }.frame(width: 112, alignment: .leading)
             content.frame(maxWidth: .infinity, alignment: .leading)
-        }.frame(minHeight: 54)
+        }.padding(.vertical, 3).frame(minHeight: 43)
     }
 }
 
@@ -64,7 +64,7 @@ struct SettingsFormSlider: View {
     }
     var body: some View {
         SettingsFormRow(title, note: note) {
-            HStack(spacing: 22) {
+            HStack(spacing: 12) {
                 Slider(value: constrained, in: range.lowerBound...max(range.lowerBound + 0.001, range.upperBound),
                        onEditingChanged: { onEditingChanged($0); onFocus($0) })
                     .disabled(range.lowerBound >= range.upperBound).accessibilityLabel(title)
