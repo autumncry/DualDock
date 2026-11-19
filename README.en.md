@@ -47,7 +47,7 @@ Click a folder icon to expand its members horizontally. Reorder apps within a gr
 
 ### Preview, switch, and close windows
 
-Hover over a running app to see window thumbnails. Click a thumbnail to switch to that window, or use the **×** in its upper-right corner to request closing it. The original app handles any unsaved-changes confirmation. Closing dismisses the current preview; the next hover reads the window list again.
+Hover over a running app to see window thumbnails. Click a thumbnail to switch to that window. A **×** appears in the upper-right corner when DualDock can identify and use the window’s native Close control. The original app handles any unsaved-changes confirmation. Closing dismisses the current preview; the next hover reads the window list again.
 
 Windows without a usable screenshot are omitted. Screenshots are processed in local memory, without being saved to disk or uploaded.
 
@@ -113,7 +113,7 @@ The Dock stays available while you use a group, preview, context menu, or drag o
 
 ### Sidebar settings
 
-Settings use a category sidebar with configuration on the right: **General, Appearance & Size, Displays & Position, Interaction, Permissions, Help, and About**. The window can be resized and minimized. About includes the version, MIT license, and project links. The app interface remains in Simplified Chinese.
+Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. The window follows the system appearance. About includes the version, MIT license, and project links.
 
 To switch the app to English, open **通用 (General) → 显示语言 (Display Language)** and select **English**. The change takes effect immediately and is remembered at the next launch.
 
