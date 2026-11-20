@@ -109,9 +109,9 @@
       "layout": {
         "minimumRootViewPoints": {
           "width": 740,
-          "height": 200
+          "height": 320
         },
-        "sidebarWidthPoints": 184,
+        "sidebarWidthPoints": 190,
         "sidebarRowStyle": "Native macOS source list",
         "customSizingBehavior": "Five fixed sample apps respond to size, unified spacing, length and position above the controls on horizontal edges or beside them on vertical edges; no live-row mirroring.",
         "exampleScale": {
@@ -123,7 +123,7 @@
           "vertical": 600
         },
         "advancedHeaderMinimumHeightPoints": 44,
-        "defaultWidthPoints": 850,
+        "defaultWidthPoints": 820,
         "previewHeightPoints": {
           "horizontalRange": [
             108,
@@ -131,10 +131,7 @@
           ],
           "vertical": 174
         },
-        "automaticContentHeightPoints": [
-          200,
-          680
-        ]
+        "defaultWindowHeightPoints": 560
       },
       "componentRendering": {
         "mode": "native-only",

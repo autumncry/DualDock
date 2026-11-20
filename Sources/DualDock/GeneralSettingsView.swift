@@ -5,13 +5,7 @@ struct GeneralSettingsView: View {
     @Environment(\.dualDockLanguage) private var localize
     let section: SettingsSection
     @ObservedObject var store: AppStore
-    @StateObject private var launchAtLogin: LaunchAtLoginService
-
-    init(store: AppStore, launchAtLogin: LaunchAtLoginService? = nil, section: SettingsSection = .general) {
-        self.section = section
-        self.store = store
-        _launchAtLogin = StateObject(wrappedValue: launchAtLogin ?? LaunchAtLoginService())
-    }
+    @ObservedObject var launchAtLogin: LaunchAtLoginService
 
     var body: some View {
         SettingsGroup(section.title, spacing: 10) {
@@ -23,15 +17,15 @@ struct GeneralSettingsView: View {
             default: EmptyView()
             }
         }
-        .onAppear { launchAtLogin.refresh() }
+        .onAppear { if section == .general { launchAtLogin.refresh() } }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            launchAtLogin.refresh()
+            if section == .general { launchAtLogin.refresh() }
         }
     }
 
     private var languageAndStartup: some View {
         Group {
-            SettingsOptionRow(localize("显示语言", "Display language")) {
+            SettingsOptionRow(localize("显示语言", "Display language"), symbol: "globe") {
                 Picker(localize("显示语言", "Display language"), selection: Binding(
                     get: { localize }, set: { AppLanguage.set($0) })) {
                         Text(verbatim: "简体中文").tag(AppLanguage.simplifiedChinese)
@@ -42,12 +36,12 @@ struct GeneralSettingsView: View {
             }
             Divider()
             SettingsSwitchRow(title: localize("登录时启动", "Launch at login"),
-                              detail: loginDescription,
+                              detail: loginDescription, symbol: "power",
                               isOn: Binding(get: { launchAtLogin.isEnabled }, set: { launchAtLogin.setEnabled($0) }))
                 .disabled(!launchAtLogin.canChangeRegistration || launchAtLogin.status == .requiresApproval)
             if let error = launchAtLogin.errorMessage {
                 Text(error)
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
             if launchAtLogin.status == .requiresApproval || launchAtLogin.errorMessage != nil {
@@ -69,10 +63,10 @@ struct GeneralSettingsView: View {
                 Text(localize("固定应用与分组 + 运行应用", "Pinned apps and groups, plus running apps")).tag(DockMode.standard)
                 Text(localize("仅正在运行的应用", "Running apps only")).tag(DockMode.runningOnly)
             }
-            .labelsHidden().pickerStyle(.radioGroup).font(.system(size: 14))
+            .labelsHidden().pickerStyle(.radioGroup).font(.system(size: 15))
             Text(localize("所有屏幕同步。切回固定应用模式会恢复分组和顺序。",
                           "Applies to all displays. Switching back to pinned apps restores your groups and order."))
-                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -91,17 +85,17 @@ struct GeneralSettingsView: View {
     private var apps: some View {
         Group {
             SettingsOptionRow(localize("固定应用", "Pinned apps"),
-                              detail: localize("在 Dock 上拖动图标即可整理分组。", "Drag icons in the Dock to organize groups.")) {
+                              detail: localize("在 Dock 上拖动图标即可整理分组。", "Drag icons in the Dock to organize groups."), symbol: "pin") {
                 Button(localize("添加应用…", "Add Apps…")) { store.addApplications() }
             }
             Divider()
             SettingsOptionRow(localize("从系统 Dock 导入", "Import from System Dock"),
-                              detail: localize("补入尚未固定的应用，保留分组和顺序。", "Add missing apps and keep your groups and order.")) {
+                              detail: localize("补入尚未固定的应用，保留分组和顺序。", "Add missing apps and keep your groups and order."), symbol: "square.and.arrow.down") {
                 Button(localize("重新导入", "Import Apps")) { store.importPins() }
                     .accessibilityLabel(localize("重新导入系统 Dock", "Import System Dock Apps"))
             }
             Divider()
-            SettingsOptionRow(localize("配置目录", "Configuration folder")) {
+            SettingsOptionRow(localize("配置目录", "Configuration folder"), symbol: "folder") {
                 Button(localize("在访达中打开", "Open in Finder")) { store.revealConfiguration() }
                     .accessibilityLabel(localize("打开配置目录", "Open Configuration Folder"))
             }

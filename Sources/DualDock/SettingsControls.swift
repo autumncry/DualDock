@@ -25,8 +25,20 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
     }
 }
 
+private struct SettingsLabelWidth: EnvironmentKey {
+    static let defaultValue: CGFloat = 112
+}
+
+extension EnvironmentValues {
+    var settingsLabelWidth: CGFloat {
+        get { self[SettingsLabelWidth.self] }
+        set { self[SettingsLabelWidth.self] = newValue }
+    }
+}
+
 /// Shared three-column rhythm: labels, controls, then numeric values.
 struct SettingsFormRow<Content: View>: View {
+    @Environment(\.settingsLabelWidth) private var labelWidth
     let title: String
     var note: String? = nil
     let content: Content
@@ -38,11 +50,11 @@ struct SettingsFormRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 14, weight: .medium))
-                if let note { Text(note).font(.system(size: 11)).foregroundStyle(.secondary) }
-            }.frame(width: 112, alignment: .leading)
+                Text(title).font(.system(size: 15, weight: .medium))
+                if let note { Text(note).font(.system(size: 12)).foregroundStyle(.secondary) }
+            }.frame(width: labelWidth, alignment: .leading)
             content.frame(maxWidth: .infinity, alignment: .leading)
-        }.padding(.vertical, 3).frame(minHeight: 43)
+        }.padding(.vertical, 3).frame(minHeight: 45)
     }
 }
 
@@ -73,7 +85,7 @@ struct SettingsFormSlider: View {
                         .labelsHidden().multilineTextAlignment(.trailing).monospacedDigit()
                         .textFieldStyle(.roundedBorder).frame(width: 56).focused($editingValue)
                         .accessibilityLabel(localize("\(title)数值", "\(title) value")).onSubmit { onEditingChanged(false) }
-                    Text(unit).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 20, alignment: .leading)
+                    Text(unit).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 20, alignment: .leading)
                 }.frame(width: 81)
             }
         }

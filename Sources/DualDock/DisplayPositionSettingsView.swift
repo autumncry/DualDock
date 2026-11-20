@@ -24,7 +24,7 @@ struct DisplayPositionSettingsView: View {
                     }.padding(.horizontal, 5)
                 }
                 Text(localize("位置按屏幕保存；尺寸同步可在“外观与尺寸”中设置。", "Each display has its own position. Manage size synchronization in Appearance & Size."))
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -35,11 +35,11 @@ struct DisplayPositionSettingsView: View {
             positionDiagram(display).frame(width: 110, height: 68)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(display.name).font(.system(size: 14, weight: .semibold))
+                    Text(display.name).font(.system(size: 15, weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Text("\(Int(display.frame.width.rounded())) × \(Int(display.frame.height.rounded())) pt")
-                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
                         .fixedSize()
                 }
                 HStack(spacing: 8) {
@@ -54,7 +54,7 @@ struct DisplayPositionSettingsView: View {
                             onConfigureSize(display.id)
                         }.buttonStyle(.link)
                     }
-                }.font(.system(size: 12))
+                }.font(.system(size: 13))
                 Picker(localize("Dock 位置", "Dock position"), selection: positionBinding(display)) {
                     ForEach([DockEdge.bottom, .left, .right, .top], id: \.self) { edge in Text(edgeTitle(edge)).tag(edge) }
                 }.pickerStyle(.segmented).labelsHidden().disabled(display.isMirrored)

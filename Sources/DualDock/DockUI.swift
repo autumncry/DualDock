@@ -271,7 +271,8 @@ final class DockStripView: NSView {
     }
 
     func populate(entries: [DockEntry], groupID: UUID? = nil, store: AppStore, maxWidth: CGFloat,
-                  presentation supplied: DockPresentation? = nil, configure: (DockTile) -> Void) -> NSSize {
+                  presentation supplied: DockPresentation? = nil, preservingOffset offset: CGFloat = 0,
+                  configure: (DockTile) -> Void) -> NSSize {
         cancelResize()
         stopAnimations()
         document.subviews.forEach { $0.removeFromSuperview() }
@@ -304,7 +305,7 @@ final class DockStripView: NSView {
             label.alignment = .center
             document.addSubview(label); emptyLabel = label
         }
-        return installBaseGeometry(preservingOffset: 0)
+        return installBaseGeometry(preservingOffset: offset)
     }
 
     private var emptyMessage: String {

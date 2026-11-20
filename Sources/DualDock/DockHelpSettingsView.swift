@@ -32,18 +32,18 @@ struct DockHelpSettingsView: View {
                 }
             }
             Text(localize("右键 Dock 空白处或点击菜单栏的 DualDock 图标即可打开设置。", "Open Settings from the menu bar icon or by right-clicking an empty area of the Dock."))
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(.system(size: 13)).foregroundStyle(.secondary)
         }.fixedSize(horizontal: false, vertical: true)
     }
 
     private func guideRow<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Label {
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.system(size: 14, weight: .medium))
             } icon: {
                 Image(systemName: symbol).foregroundStyle(.secondary)
             }.frame(width: 128, alignment: .leading)
-            content().font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            content().font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.vertical, 9)
     }

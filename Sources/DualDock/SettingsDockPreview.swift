@@ -72,7 +72,7 @@ struct SettingsDockPreview: View {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     Text(g.edge.isHorizontal ? localize("布局示例", "Sample Dock") : localize("\(edgeTitle(edge))示例", "\(edgeTitle(edge)) Dock"))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                     Spacer(minLength: 4)
                     if layout.maximumScrollOffset.x > 0 {
                         if g.edge.isHorizontal {
@@ -85,7 +85,7 @@ struct SettingsDockPreview: View {
                     }
                     if g.edge.isHorizontal { Text(edgeTitle(edge)) }
                 }
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(.system(size: 13)).foregroundStyle(.secondary)
                 .padding(.horizontal, 12).frame(height: 28)
                 SettingsPreviewCanvas(geometry: g, zoom: zoom, focus: focus,
                     images: SettingsDockExample.apps.map { store.icon(for: $0) })

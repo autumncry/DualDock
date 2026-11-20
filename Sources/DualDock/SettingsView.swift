@@ -29,30 +29,9 @@ extension AppLanguage {
     }
 }
 
-private enum SettingsHeightPart: Hashable {
-    case heading(SettingsSection), body(SettingsSection)
-}
-
-private struct SettingsHeights: PreferenceKey {
-    static let defaultValue: [SettingsHeightPart: CGFloat] = [:]
-    static func reduce(value: inout [SettingsHeightPart: CGFloat],
-                       nextValue: () -> [SettingsHeightPart: CGFloat]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, newest in newest })
-    }
-}
-
-private extension View {
-    func measureSettingsHeight(_ part: SettingsHeightPart) -> some View {
-        background(GeometryReader { proxy in
-            Color.clear.preference(key: SettingsHeights.self, value: [part: proxy.size.height])
-        })
-    }
-}
-
 struct SettingsView: View {
     @ObservedObject var store: AppStore
-    private let launchAtLoginService: LaunchAtLoginService?
-    private let measuredHeight: ((SettingsSection, CGFloat) -> Void)?
+    @StateObject private var launchAtLoginService: LaunchAtLoginService
     @State private var language = AppLanguage.current
     @StateObject private var navigation: SettingsNavigation
     @State private var selectedDisplayID: String?
@@ -60,15 +39,12 @@ struct SettingsView: View {
     private var selected: SettingsSection { navigation.selected }
 
     init(store: AppStore, initialSection: SettingsSection = .general, displayID: String? = nil,
-         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil,
-         measuredHeight: ((SettingsSection, CGFloat) -> Void)? = nil) {
+         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil) {
         self.store = store
-        self.launchAtLoginService = launchAtLoginService
-        self.measuredHeight = measuredHeight
+        _launchAtLoginService = StateObject(wrappedValue: launchAtLoginService ?? LaunchAtLoginService())
         _navigation = StateObject(wrappedValue: navigation ?? SettingsNavigation(initialSection))
         _selectedDisplayID = State(initialValue: displayID)
     }
-
 
     var body: some View {
         HStack(spacing: 0) {
@@ -76,6 +52,7 @@ struct SettingsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
                     TextField(language("搜索设置", "Search settings"), text: $navigation.query)
+                        .font(.system(size: 14))
                         .textFieldStyle(.plain).focused($searchFocused)
                         .onSubmit { if let first = navigation.visibleSections.first { navigation.show(first) } }
                         .onExitCommand { navigation.query = "" }
@@ -85,10 +62,10 @@ struct SettingsView: View {
                         }.buttonStyle(.plain).accessibilityLabel(language("清除搜索", "Clear search"))
                     }
                 }
-                .padding(.horizontal, 9).frame(height: 29)
+                .padding(.horizontal, 10).frame(height: 30)
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
-                .padding(.horizontal, 10).padding(.top, 10)
+                .padding(.horizontal, 10).padding(.top, 12)
                 if navigation.visibleSections.isEmpty {
                     Text(language("没有匹配的设置", "No matching settings"))
                         .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 16)
@@ -100,10 +77,10 @@ struct SettingsView: View {
                     )) {
                         ForEach(navigation.visibleSections) { section in
                             HStack(spacing: 8) {
-                                Image(systemName: section.symbol).font(.system(size: 14))
+                                Image(systemName: section.symbol).font(.system(size: 15))
                                     .foregroundStyle(.secondary).frame(width: 19)
-                                Text(section.sidebarTitle).lineLimit(1)
-                            }.padding(.vertical, 3).tag(section)
+                                Text(section.sidebarTitle).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                            }.padding(.vertical, 5).tag(section)
                                 .accessibilityLabel(section.title)
                                 .help(section.title)
                         }
@@ -111,52 +88,11 @@ struct SettingsView: View {
                         .id(language)
                 }
             }
-            .frame(width: 184).background(.regularMaterial)
+            .frame(width: 190).background(.regularMaterial)
             Divider()
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 16) {
-                    Label {
-                        Text(selected.title).font(.system(size: 21, weight: .semibold))
-                    } icon: {
-                        Image(systemName: selected.symbol).foregroundStyle(Color.accentColor)
-                            .font(.system(size: 21, weight: .regular))
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    if selected == .appearance {
-                        SettingsDisplayScope(store: store, selectedDisplayID: $selectedDisplayID)
-                    }
-                }
-                .padding(.horizontal, 20).padding(.top, 15).padding(.bottom, 12)
-                .fixedSize(horizontal: false, vertical: true)
-                .measureSettingsHeight(.heading(selected))
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        content.environment(\.settingsPageTitle, selected.title)
-                        if let message = store.message {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: "info.circle").foregroundStyle(.secondary)
-                                Text(message).textSelection(.enabled)
-                                Spacer(minLength: 0)
-                                Button { store.message = nil } label: { Image(systemName: "xmark") }
-                                    .buttonStyle(.plain).help(L("关闭提示", "Dismiss message")).accessibilityLabel(L("关闭提示", "Dismiss message"))
-                            }
-                            .padding(14)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.bottom, 14)
-                    .measureSettingsHeight(.body(selected))
-                }
-                .id(selected)
-            }
+            detailPane
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(Color(nsColor: .controlBackgroundColor))
-        }
-        .onPreferenceChange(SettingsHeights.self) { values in
-            if let heading = values[.heading(selected)], let body = values[.body(selected)],
-               heading > 0, body > 0 {
-                measuredHeight?(selected, ceil(heading + body))
-            }
         }
         .environment(\.dualDockLanguage, language)
         .environment(\.locale, Locale(identifier: language.rawValue))
@@ -166,10 +102,11 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .focusDualDockSettingsSearch)) { _ in
             searchFocused = true
         }
-        .font(.system(size: 13))
+        .font(.system(size: 14))
         .toggleStyle(.switch)
         .controlSize(.regular)
-        .frame(minWidth: 740, minHeight: 200)
+        .frame(minWidth: SettingsWindowController.minimumContentSize.width,
+               minHeight: SettingsWindowController.minimumContentSize.height)
         .onAppear {
             reconcileDisplaySelection(store.displays)
             store.refreshPermissions()
@@ -180,17 +117,92 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder private var content: some View {
-        switch selected {
+    @ViewBuilder private var detailPane: some View {
+        let sections = selected.detailSections
+        if sections.count == 1 {
+            VStack(alignment: .leading, spacing: 0) {
+                heading(selected)
+                    .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 14)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        content(selected).environment(\.settingsPageTitle, selected.title)
+                        notice
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 22).padding(.bottom, 18)
+                }
+            }
+            .id(selected)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        ForEach(sections) { section in
+                            VStack(alignment: .leading, spacing: 12) {
+                                heading(section)
+                                content(section).environment(\.settingsPageTitle, section.title)
+                            }
+                            .id(section)
+                        }
+                    }
+                    .scrollTargetLayout()
+                    notice
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22).padding(.vertical, 18)
+            }
+            .scrollPosition(id: Binding(
+                get: { navigation.selected as SettingsSection? },
+                set: { if let section = $0 { navigation.scrolled(to: section) } }
+            ), anchor: .top)
+            .id(sections[0])
+        }
+    }
+
+    private func heading(_ section: SettingsSection) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            Label {
+                Text(section.title).font(.system(size: 23, weight: .semibold))
+            } icon: {
+                Image(systemName: section.symbol).foregroundStyle(Color.accentColor)
+                    .font(.system(size: 22))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+            if section == .appearance {
+                SettingsDisplayScope(store: store, selectedDisplayID: $selectedDisplayID)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private var notice: some View {
+        if let message = store.message {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "info.circle").foregroundStyle(.secondary)
+                Text(message).textSelection(.enabled)
+                Spacer(minLength: 0)
+                Button { store.message = nil } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain)
+                    .help(L("关闭提示", "Dismiss message"))
+                    .accessibilityLabel(L("关闭提示", "Dismiss message"))
+            }
+            .padding(14)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    @ViewBuilder private func content(_ section: SettingsSection) -> some View {
+        switch section {
         case .general, .contents, .systemDock, .apps:
-            GeneralSettingsView(store: store, launchAtLogin: launchAtLoginService, section: selected)
+            GeneralSettingsView(section: section, store: store, launchAtLogin: launchAtLoginService)
         case .appearance: AppearanceSettingsView(store: store, selectedDisplayID: $selectedDisplayID, showsScope: false)
         case .displays:
             DisplayPositionSettingsView(store: store, selectedDisplayID: $selectedDisplayID) { id in
                 selectedDisplayID = id
                 navigation.show(SettingsSection.appearance)
             }
-        case .interaction, .magnification, .notifications: InteractionSettingsView(store: store, section: selected)
+        case .interaction, .magnification, .notifications: InteractionSettingsView(store: store, section: section)
         case .permissions: PermissionsSettingsView(store: store)
         case .help: DockHelpSettingsView()
         case .about: AboutView()
@@ -219,7 +231,7 @@ struct SettingsGroup<Content: View>: View {
             GroupBox { rows }
         } else {
             GroupBox { rows } label: {
-                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
             }
         }
     }
@@ -227,7 +239,7 @@ struct SettingsGroup<Content: View>: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: spacing) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8).padding(.vertical, 5)
+            .padding(.horizontal, 9).padding(.vertical, 7)
     }
 }
 

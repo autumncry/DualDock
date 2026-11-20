@@ -141,7 +141,16 @@ struct DockCoordinatorRefreshChecks {
             check(zip(edgeTiles, first.strip.tiles).allSatisfy { $0 === $1 }, "\(edge) geometry rebuilt tiles")
             check(abs(first.strip.scrollOffset - 75) < 0.001, "\(edge) geometry reset scroll")
             let display = store.displays.first { $0.id == first.displayID }!
-            let expected = first.strip.layoutGeometry!.panelFrame(in: display.visibleFrame)
+            let fullscreen = coordinator.fixtureIsFullscreen(display.runtimeID)
+            // Fullscreen uses the physical display's safe rectangle. An ordinary
+            // desktop reserves space for the system Dock and menu bar.
+            let safe = first.screen.safeAreaInsets
+            let frame = first.screen.frame
+            let fullscreenRect = CGRect(x: frame.minX + safe.left, y: frame.minY + safe.bottom,
+                                        width: frame.width - safe.left - safe.right,
+                                        height: frame.height - safe.bottom - safe.top)
+            let usable = fullscreen ? fullscreenRect : display.visibleFrame
+            let expected = first.strip.layoutGeometry!.panelFrame(in: usable)
             let actual = first.panel.frame
             check(actual.contains(expected)
                   && expected.minX - actual.minX < 1 && expected.minY - actual.minY < 1
@@ -241,6 +250,7 @@ struct DockCoordinatorRefreshChecks {
         coordinator.dismissPopups()
         store.update { $0.showBadges = true }
         drain()
+        try checkOrganizationMotion(in: directory.appendingPathComponent("organization"), check: check)
         let physicalRows = coordinator.docks.count
         coordinator.ensureTwoBadgeTestRows()
         let earlierWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
@@ -287,6 +297,11 @@ struct DockCoordinatorRefreshChecks {
         check(store.configuration.badgeScale == 2, "Hiding badges reset the chosen scale")
         coordinator.dismissPopups()
         check(coordinator.docks.values.allSatisfy { !$0.panel.isVisible }, "fixture presented a panel")
+        let playback = DisplayCoordinator(store: store, presentsPanels: false)
+        playback.checkLifecycleMotion(check)
+        // Repeated shutdown must not remove an AppKit event monitor twice.
+        playback.stop()
+        try DisplayCoordinator.checkLifecycleNotifications(directory: directory.appendingPathComponent("lifecycle-notifications"), check: check)
         print("Coordinator refresh: \(checks) checks, \(failures.count) failures")
         failures.prefix(12).forEach { print("FAIL: \($0)") }
         if !failures.isEmpty { exit(1) }
@@ -295,6 +310,10 @@ struct DockCoordinatorRefreshChecks {
 
 // Shares a source unit with DisplayCoordinator in this isolated executable.
 private extension DisplayCoordinator {
+    func fixtureIsFullscreen(_ screenID: CGDirectDisplayID) -> Bool {
+        visibilitySnapshot.fullscreen.contains(screenID)
+    }
+
     func ensureTwoBadgeTestRows() {
         guard docks.count == 1, let first = docks.values.first else { return }
         let panel = DockPanel()
@@ -305,5 +324,304 @@ private extension DisplayCoordinator {
         panel.contentView = strip
         let fixtureID = DisplayCoordinator.id(first.screen) ^ 0x8000_0000
         docks[fixtureID] = ScreenDock(screen: first.screen, displayID: first.displayID, panel: panel, strip: strip)
+    }
+}
+
+private extension DockCoordinatorRefreshChecks {
+    @MainActor static func checkOrganizationMotion(in directory: URL, check: (Bool, String) -> Void) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let apps = ["Pinned", "Active One", "Active Two", "Active Three", "Active Four", "Active Five"].map {
+            AppReference(id: "motion." + $0, name: $0, path: "/System/Applications/Notes.app")
+        }
+        var config = DockConfiguration()
+        config.showPreviews = false
+        config.showBadges = false
+        config.hideSystemDock = false
+        config.entries = [DockEntry(name: apps[0].name, apps: [apps[0]])]
+        try JSONEncoder().encode(config).write(to: directory.appendingPathComponent("configuration.json"))
+        let store = AppStore(directory: directory, runningAppsProvider: { Array(apps.dropFirst()) })
+        store.stopBackgroundServices()
+        let coordinator = DisplayCoordinator(store: store, presentsPanels: false)
+        defer { coordinator.stop() }
+        func drain(_ seconds: TimeInterval = 0.025) { RunLoop.main.run(until: Date(timeIntervalSinceNow: seconds)) }
+        drain()
+        guard let dock = coordinator.docks.values.first else { fatalError("No organization fixture dock") }
+        func tile(_ app: AppReference) -> DockTile {
+            dock.strip.tiles.first { $0.entry.apps.contains(app) }!
+        }
+        let moving = tile(apps[2])
+        let initialID = moving.entry.id
+        let oldCenter = moving.presentedIconCenterOnScreen!
+        guard let menu = moving.menuProvider?() else { fatalError("Missing real context menu") }
+        let pin = menu.indexOfItem(withTitle: L("固定到 DualDock", "Pin to DualDock"))
+        guard pin >= 0 else { fatalError("Pin to DualDock is missing from the actual app menu") }
+        menu.performActionForItem(at: pin)
+        drain()
+        let pinned = tile(apps[2])
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        check(store.configuration.allAppIDs.contains(apps[2].id) && initialID != pinned.entry.id,
+              "Pin must persist a new entry identity")
+        let motion = pinned.layer?.animation(forKey: "dock.reflow") as? CAKeyframeAnimation
+        check(reduce ? motion == nil : motion?.duration == 0.42, "Pin feedback does not match motion preference")
+        if !reduce {
+            let modelCenter = dock.panel.convertPoint(toScreen: pinned.convert(
+                NSPoint(x: pinned.visualIconBounds.midX, y: pinned.visualIconBounds.midY), to: nil))
+            let startOffset = (motion?.values?.first as? NSValue)?.pointValue
+            check(abs((startOffset?.x ?? .infinity) - (oldCenter.x - modelCenter.x)) < 0.001,
+                  "Pinned icon did not start at its former running location")
+            let modelFrame = pinned.frame
+            CATransaction.flush()
+            let early = pinned.presentedIconCenterOnScreen!
+            drain(0.19)
+            let middle = pinned.presentedIconCenterOnScreen!
+            drain(0.30)
+            let end = pinned.presentedIconCenterOnScreen!
+            check(abs(early.x - end.x) > abs(middle.x - end.x) + 2 && abs(middle.x - end.x) > 1,
+                  "Pinned artwork did not move smoothly across the divider")
+            check(pinned.frame == modelFrame && end == modelCenter, "Pin motion shifted the settled layout")
+            print("Pin position samples: \(early.x) → \(middle.x) → \(end.x)")
+        }
+
+        for (index, incoming) in [apps[1], apps[3]].enumerated() {
+            let target = tile(apps[0])
+            let release = target.convert(NSPoint(x: target.visualIconBounds.midX, y: target.visualIconBounds.midY), to: nil)
+            let drag = try OrganizationFixtureDrag(window: dock.panel, point: release, tile: tile(incoming))
+            check(target.draggingEntered(drag) == .move, "Dock tile rejected the incoming app")
+            drain(target.entry.isGroup ? 0.19 : 0.66)
+            check(target.performDragOperation(drag), "Dropping after the group dwell failed")
+            drain()
+            let folder = tile(apps[0])
+            check(folder.entry.isGroup && folder.entry.apps.count == index + 2 && folder.entry.apps.contains(incoming),
+                  "Creating or extending a group failed")
+            let arrival = folder.layer?.sublayers?.first { $0.name == "dock.folderIncoming" }
+            check(reduce ? arrival == nil : arrival?.animation(forKey: "dock.folderDrop")?.duration == 0.46,
+                  "Accepted drop missing the incoming artwork or violates Reduce Motion")
+            if !reduce, let arrival {
+                CATransaction.flush()
+                let early = arrival.presentation()?.transform.m11
+                drain(0.17)
+                let middle = arrival.presentation()?.transform.m11
+                print("Folder shrink samples: \(early ?? -1) → \(middle ?? -1)")
+                check((early ?? 0) > (middle ?? 1) + 0.05 && (middle ?? 0) > 0.31,
+                      "Released artwork did not shrink between two compositor frames")
+            }
+            check(!dock.panel.isVisible, "Organization replay showed a test panel")
+            drain(0.54)
+            check(folder.layer?.sublayers?.contains { $0.name == "dock.folderIncoming" } != true,
+                  "Transient artwork lingered after the drop completed")
+        }
+        store.update { $0.showPreviews.toggle() }
+        drain()
+        check(tile(apps[0]).layer?.sublayers?.contains { $0.name == "dock.folderIncoming" } != true,
+              "Unrelated preferences replayed an old operation")
+        tile(apps[0]).onPress?()
+        guard let memberStrip = NSApp.windows.compactMap({ $0.contentView as? DockStripView })
+            .first(where: { $0.tiles.first?.groupID == tile(apps[0]).entry.id }), let memberWindow = memberStrip.window
+        else { fatalError("Missing expanded destination group") }
+        let memberDrop = try OrganizationFixtureDrag(window: memberWindow, point: .zero, tile: tile(apps[5]))
+        check(memberStrip.document.performDragOperation(memberDrop), "Drop into the open group was rejected")
+        drain()
+        check(tile(apps[0]).entry.apps.contains(apps[5]), "Expanded group did not keep the dropped app")
+        let memberGhost = tile(apps[0]).layer?.sublayers?.first { $0.name == "dock.folderIncoming" }
+        check((memberGhost != nil) == !reduce, "Closing the member panel lost the destination feedback")
+        let staleMenu = tile(apps[4]).menuProvider?()
+        let oldEntry = store.configuration.entries.first!
+        store.update { $0.renameGroup(id: oldEntry.id, name: "Renamed group") }
+        drain()
+        if let staleMenu, let item = staleMenu.item(withTitle: L("固定到 DualDock", "Pin to DualDock")) {
+            staleMenu.performActionForItem(at: staleMenu.index(of: item))
+        }
+        check(store.configuration.allAppIDs.contains(apps[4].id),
+              "Refreshing the source tile while its menu is open prevented pinning the app")
+        print("Verified context menu pin, stable app identity, new/existing group drops and transient cleanup")
+    }
+}
+
+private final class OrganizationFixtureDrag: NSObject, NSDraggingInfo {
+    let draggingDestinationWindow: NSWindow?
+    let draggingLocation: NSPoint
+    let draggingPasteboard = NSPasteboard.withUniqueName()
+    @MainActor init(window: NSWindow, point: NSPoint, tile: DockTile) throws {
+        draggingDestinationWindow = window
+        draggingLocation = point
+        super.init()
+        let payload = DockDrag(appID: tile.entry.apps.first!.id, entryID: tile.entry.id, groupID: tile.groupID)
+        draggingPasteboard.declareTypes([DockDrag.pasteboardType], owner: nil)
+        draggingPasteboard.setData(try JSONEncoder().encode(payload), forType: DockDrag.pasteboardType)
+    }
+    deinit { draggingPasteboard.releaseGlobally() }
+    var draggingSourceOperationMask: NSDragOperation { .move }
+    var draggedImageLocation: NSPoint { draggingLocation }
+    var draggedImage: NSImage? { nil }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    var draggingFormation: NSDraggingFormation = .none
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 1
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    func resetSpringLoading() {}
+    func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions, for view: NSView?,
+        classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+        using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+}
+
+private extension DisplayCoordinator {
+    /// Enter through the same workspace notifications as real processes. Only
+    /// the source of running app identities is replaced with an isolated fixture.
+    static func checkLifecycleNotifications(directory: URL, check: (Bool, String) -> Void) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let app = AppReference(id: "fixture.lifecycle.publisher", name: "Pinned", path: "/System/Applications/Notes.app")
+        var config = DockConfiguration()
+        config.showPreviews = false
+        config.showBadges = false
+        config.hideSystemDock = false
+        config.entries = [DockEntry(name: app.name, apps: [app])]
+        try JSONEncoder().encode(config).write(to: directory.appendingPathComponent("configuration.json"))
+        var running: [AppReference] = []
+        let store = AppStore(directory: directory, runningAppsProvider: { running })
+        let coordinator = DisplayCoordinator(store: store, presentsPanels: false)
+        defer { coordinator.stop(); store.stopBackgroundServices() }
+        // This fixture owns the visibility of an offscreen panel; a genuine
+        // fullscreen Space elsewhere should have no influence on that choice.
+        coordinator.visibility?.stop()
+        coordinator.visibility = nil
+        guard let dock = coordinator.docks.values.first, let tile = dock.strip.tiles.first else {
+            fatalError("Missing pinned application in lifecycle notification fixture")
+        }
+        let minX = NSScreen.screens.map(\.frame.minX).min() ?? 0
+        dock.panel.setFrameOrigin(NSPoint(x: minX - dock.panel.frame.width - 80, y: 0))
+        dock.panel.ignoresMouseEvents = true
+        dock.panel.orderFrontRegardless()
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        running = [app]
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.07))
+        check(store.isRunning(app) && dock.strip.tiles.first === tile, "Workspace start rebuilt or lost the pinned tile")
+        check(reduce ? tile.layer?.animation(forKey: "dock.runningState") == nil :
+                tile.layer?.animation(forKey: "dock.runningState")?.duration == 0.46,
+              "Workspace/Combine launch did not reach the existing pinned tile")
+        running = []
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.07))
+        check(!store.isRunning(app) && dock.strip.tiles.first === tile, "Workspace quit removed the persistent pin")
+        check(reduce ? tile.layer?.animation(forKey: "dock.runningState") == nil :
+                tile.layer?.animation(forKey: "dock.runningState")?.duration == 0.34,
+              "Workspace/Combine exit did not replace the in-flight launch animation")
+    }
+
+    /// Exercise the production capture and playback on an offscreen row. The
+    /// system application list, user preferences and physical pointer are untouched.
+    func checkLifecycleMotion(_ check: (Bool, String) -> Void) {
+        guard let saved = docks.first else { fatalError("lifecycle fixture needs one display") }
+        // This isolated coordinator supplies fixture screens. Detach the real Space,
+        // pointer and visibility observers before taking offscreen motion samples.
+        stop()
+        let panel = DockPanel()
+        panel.ignoresMouseEvents = true
+        panel.hasShadow = false
+        let strip = DockStripView()
+        let pinned = AppReference(id: "fixture.lifecycle.pinned", name: "Pinned", path: "/System/Applications/Notes.app")
+        let active = AppReference(id: "fixture.lifecycle.transient", name: "Transient", path: "/System/Applications/Mail.app")
+        let member = AppReference(id: "fixture.lifecycle.member", name: "Member", path: pinned.path)
+        let kept = [DockEntry(name: pinned.name, apps: [pinned]), DockEntry(name: "Group", apps: [member], isGroup: true)]
+        let all = kept + [DockEntry(name: active.name, apps: [active])]
+        func populate(_ entries: [DockEntry]) {
+            let size = strip.populate(entries: entries, store: store, maxWidth: 750) { _ in }
+            let minX = NSScreen.screens.map(\.frame.minX).min() ?? 0
+            panel.setFrame(NSRect(x: minX - size.width - 80, y: 0, width: size.width, height: size.height), display: false)
+            strip.layoutSubtreeIfNeeded()
+        }
+        panel.contentView = strip
+        populate(all)
+        panel.orderFrontRegardless()
+        docks = [saved.key: ScreenDock(screen: saved.value.screen, displayID: saved.value.displayID,
+                                       panel: panel, strip: strip)]
+        defer {
+            panel.close()
+            docks.removeAll()
+        }
+        let popup = DockPanel()
+        popup.ignoresMouseEvents = true
+        let memberStrip = DockStripView()
+        let memberSize = memberStrip.populate(entries: [DockEntry(name: member.name, apps: [member])],
+                                              groupID: kept[1].id, store: store, maxWidth: 200) { _ in }
+        popup.contentView = memberStrip
+        popup.setFrame(NSRect(origin: panel.frame.origin, size: memberSize), display: false)
+        popup.orderFrontRegardless()
+        groupPanel = popup
+        defer { popup.close(); groupPanel = nil }
+        renderedRunningIDs = [pinned.id, member.id, active.id]
+        let ended = captureLifecycle(runningIDs: [], nextEntries: kept, structureChanged: true)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            check(ended == nil, "Reduce Motion scheduled application lifecycle animation")
+            return
+        }
+        guard let ended else { check(false, "Missing quit transition"); return }
+        check(ended.departures[saved.key]?.map(\.appID) == [active.id], "Pinned or grouped artwork was treated as a departed tile")
+        populate(kept)
+        finishLifecycle(ended)
+        guard let ghost = panel.childWindows?.compactMap({ $0 as? DockDeparturePanel }).first else {
+            check(false, "Transient quit did not leave fading artwork"); return
+        }
+        check(ghost.appID == active.id && ghost.ignoresMouseEvents, "Departing image captured input or displayed the wrong app")
+        check(ghost.contentView?.layer?.animation(forKey: "dock.departure")?.duration == 0.34,
+              "Departing icon did not receive the exit duration")
+        check(strip.tiles.allSatisfy { $0.layer?.animation(forKey: "dock.runningState")?.duration == 0.34 },
+              "Pinned/group quit did not keep their slots and show feedback")
+        check(memberStrip.tiles[0].layer?.animation(forKey: "dock.runningState")?.duration == 0.34,
+              "Expanded group member lacked quit feedback")
+        CATransaction.flush()
+        let firstOpacity = ghost.contentView?.layer?.presentation()?.opacity
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.13))
+        let nextOpacity = ghost.contentView?.layer?.presentation()?.opacity
+        check((firstOpacity ?? 0) > (nextOpacity ?? 1) + 0.08 && (nextOpacity ?? 0) > 0.02,
+              "Transient artwork did not visibly fade between compositor frames")
+        print("Exit opacity samples: \(firstOpacity ?? -1) → \(nextOpacity ?? -1)")
+        guard let started = captureLifecycle(runningIDs: [pinned.id, active.id, member.id], nextEntries: all,
+                                             structureChanged: true) else { check(false, "Missing launch transition"); return }
+        populate(all)
+        finishLifecycle(started)
+        check(ghost.parent == nil && !ghost.isVisible, "Rapid relaunch left departing artwork on top of a live icon")
+        let arrivals = strip.tiles.map { $0.layer?.animation(forKey: "dock.runningState") as? CAAnimationGroup }
+        check(memberStrip.tiles[0].layer?.animation(forKey: "dock.runningState")?.duration == 0.46,
+              "Expanded group member lacked launch feedback")
+        check(arrivals.count == 3 && arrivals.allSatisfy { $0?.duration == 0.46 },
+              "Launch lost motion for a pinned app, group member or transient app")
+        check(arrivals[0]?.animations?.count == 1 && arrivals[1]?.animations?.count == 1 &&
+              arrivals[2]?.animations?.count == 2, "Only newly inserted apps should fade in")
+        check(captureLifecycle(runningIDs: [pinned.id, member.id, active.id], nextEntries: all,
+                               structureChanged: true) == nil, "A repeated workspace refresh replayed the animation")
+        guard let lastExit = captureLifecycle(runningIDs: [member.id, pinned.id], nextEntries: kept,
+                                              structureChanged: true) else { check(false, "Missing final transient exit"); return }
+        populate(kept)
+        finishLifecycle(lastExit)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.65))
+        check(panel.childWindows?.contains { $0 is DockDeparturePanel } != true, "Finished exit retained a child panel")
+        populate([])
+        renderedRunningIDs = []
+        guard let firstLaunch = captureLifecycle(runningIDs: [active.id], nextEntries: [all[2]], structureChanged: true) else {
+            check(false, "Empty strip lost first launch"); return
+        }
+        populate([all[2]])
+        finishLifecycle(firstLaunch)
+        let arrival = strip.tiles[0].layer?.animation(forKey: "dock.runningState") as? CAAnimationGroup
+        check(arrival?.animations?.count == 2, "First app entering an empty row should fade in")
+        CATransaction.flush()
+        let early = strip.tiles[0].layer?.presentation()?.opacity
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.14))
+        let mid = strip.tiles[0].layer?.presentation()?.opacity
+        check((mid ?? 0) > (early ?? 1) + 0.06, "Arrival opacity did not increase between compositor frames")
+        print("Arrival opacity samples: \(early ?? -1) → \(mid ?? -1)")
+        guard let quitBeforeHide = captureLifecycle(runningIDs: [], nextEntries: [], structureChanged: true) else {
+            check(false, "Missing exit before Dock hide"); return
+        }
+        populate([])
+        finishLifecycle(quitBeforeHide)
+        applyVisibility(.init(hidden: [saved.key], fullscreen: []))
+        check(!panel.isVisible && panel.childWindows?.contains { $0 is DockDeparturePanel } != true,
+              "Hiding the Dock left a departure image")
+        print("Verified app launch, quit, persistent pins, groups, relaunch, empty row and hidden Dock cleanup")
+
     }
 }

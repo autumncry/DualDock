@@ -196,86 +196,97 @@ import ScreenCaptureKit
                     "contentWidth":viewport.width, "contentHeight":viewport.height,
                     "trailingBlankPoints":blank]
         }
+        func descendantScrollViews(_ view:NSView?) -> [NSScrollView] {
+            guard let view else { return [] }
+            return (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap { descendantScrollViews($0) }
+        }
         var samples: [[String:Any]] = []
-        let top = window.frame.maxY
-        let width = window.frame.width
+        let defaultFrame = window.frame
+        try demand(defaultFrame.size == NSSize(width:820,height:560),
+                   "Settings should open at the common compact size, including its toolbar")
         for lang in [AppLanguage.simplifiedChinese, .english] {
             AppLanguage.set(lang)
             let dark = lang == .simplifiedChinese
             let appearance = NSAppearance(named:dark ? .darkAqua : .aqua)!
             NSApp.appearance = appearance
             window.appearance = appearance
-            var heights: [SettingsSection:CGFloat] = [:]
             for section in SettingsSection.allCases {
                 navigation.show(section)
                 let name = "compact-" + lang.rawValue + "-" + section.rawValue
                 let sample = try captureNative(name)
                 samples.append(sample)
-                heights[section] = window.contentLayoutRect.height
-                try demand(window.frame.width == width, "Category navigation changed width: " + name)
-                try demand(abs(window.frame.maxY - top) < 1, "Category navigation shifted top edge: " + name)
+                try demand(navigation.selected == section, "Selecting a sidebar or search entry lost the target: " + name)
+                try demand(window.frame == defaultFrame, "Settings page moved or resized the window: " + name)
                 if section == .appearance {
                     let source = output.appendingPathComponent(name + ".png")
                     try Data(contentsOf:source).write(to:output.appendingPathComponent("settings-window-" + lang.rawValue + ".png"))
                 }
             }
-            try demand((heights[.appearance] ?? 0) > (heights[.contents] ?? 0) + 100,
-                       "A brief page and the sizing form were given similar window heights")
-            try demand((heights[.interaction] ?? 1000) < 520, "Windows & Previews retains excessive height")
         }
 
-        // Test the controller's actual AppKit delegate boundaries without moving
-        // a physical pointer. Width-only resizing must retain automatic height.
+        // Both sections share one document; programmatic navigation should
+        // reveal the final section without moving the window or losing the target.
+        navigation.show(SettingsSection.general)
+        settle()
+        guard let generalScroll = descendantScrollViews(window.contentView).first(where: { $0.bounds.width > 300 }),
+              let document = generalScroll.documentView else { fatalError("Missing settings detail document") }
+        let firstOffset = generalScroll.contentView.bounds.origin.y
+        navigation.show(SettingsSection.permissions)
+        settle()
+        try demand(generalScroll.documentView === document && generalScroll.contentView.bounds.origin.y > firstOffset + 30
+                   && navigation.selected == .permissions, "The sidebar did not reveal Permissions in the general form")
+        let scrollUp = CGEvent(scrollWheelEvent2Source:nil, units:.pixel,
+                               wheelCount:1, wheel1:240, wheel2:0, wheel3:0)!
+        let wheel = NSEvent(cgEvent:scrollUp)!
+        for _ in 0..<8 { generalScroll.scrollWheel(with:wheel) }
+        settle()
+        try demand(abs(generalScroll.contentView.bounds.origin.y - firstOffset) < 2,
+                   "The fixture's scroll events did not reach the first section")
+        try demand(navigation.selected == .general,
+                   "Scrolling to the first section left the sidebar on " + navigation.selected.rawValue)
+
+        // Exercise live-resize bounds with the native window, without posting
+        // pointer events. Navigation and dynamic content must preserve its frame.
         navigation.show(SettingsSection.contents)
         settle()
         var resized = window.frame
-        let minimum = controller.windowWillResize(window, to: NSSize(width: 100, height: 100))
-        try demand(minimum.width == 740 && minimum.height >= 200 + window.frame.height - window.contentLayoutRect.height,
-                   "The interactive resize boundary lost its supported minimum size")
+        let minimum = controller.windowWillResize(window, to: NSSize(width:100, height:100))
+        try demand(minimum.width == 740 && minimum.height >= 320 + window.frame.height - window.contentLayoutRect.height,
+                   "The supported minimum size was lost")
         resized.size.width = minimum.width
         try demand(controller.windowWillResize(window, to: resized.size) == resized.size,
                    "The supported compact width is rejected")
-        controller.windowWillStartLiveResize(Notification(name:NSWindow.willStartLiveResizeNotification,object:window))
         window.setFrame(resized, display:true)
-        controller.windowDidEndLiveResize(Notification(name:NSWindow.didEndLiveResizeNotification,object:window))
         settle()
-        let narrowShort = window.contentLayoutRect.height
         navigation.show(SettingsSection.appearance)
         samples.append(try captureNative("compact-en-minimum-appearance"))
-        try demand(window.frame.width == resized.width && window.contentLayoutRect.height > narrowShort + 50,
-                   "Width-only resizing stopped vertical fitting or lost the chosen width")
+        try demand(window.frame == resized,
+                   "Category navigation changed the resized window")
 
         navigation.show(SettingsSection.contents)
         settle()
         let shortFrame = window.frame
         store.message = String(repeating:"This fixture tests wrapping of an inline settings notice. ",count:12)
         settle()
-        try demand(window.frame.height > shortFrame.height + 20, "An inline notice was clipped by the page's initial height")
+        try demand(window.frame == shortFrame, "Showing an inline notice resized the window")
         store.message = String(repeating:"Long fixture notice. ",count:300)
         settle()
-        let detailViewport = window.contentLayoutRect.height
-        try demand(detailViewport <= 681, "A long document grew beyond the intended viewport cap")
-        func descendantScrollViews(_ view:NSView?) -> [NSScrollView] {
-            guard let view else { return [] }
-            return (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap { descendantScrollViews($0) }
-        }
+        try demand(window.frame == shortFrame, "Long text resized the window instead of scrolling")
         try demand(descendantScrollViews(window.contentView).contains { scroll in
             guard let document = scroll.documentView else { return false }
             return scroll.bounds.width > 300 && document.bounds.height > scroll.contentView.bounds.height + 50
         }, "Long content was not reachable through the detail scroll view")
         store.message = nil
         settle()
-        try demand(abs(window.frame.height - shortFrame.height) < 2, "Dismissed content left stale window height")
+        try demand(window.frame == shortFrame, "Dismissing an inline notice changed the window frame")
 
         resized = window.frame
         resized.size.height += 68
         resized.origin.y -= 68
-        controller.windowWillStartLiveResize(Notification(name:NSWindow.willStartLiveResizeNotification,object:window))
         window.setFrame(resized, display:true)
-        controller.windowDidEndLiveResize(Notification(name:NSWindow.didEndLiveResizeNotification,object:window))
         navigation.show(SettingsSection.appearance)
         settle()
-        try demand(window.frame.size == resized.size, "Switching pages overrode a manual height adjustment")
+        try demand(window.frame == resized, "Switching pages overrode a manual height adjustment")
 
         try JSONSerialization.data(withJSONObject:samples,options:[.prettyPrinted,.sortedKeys])
             .write(to:output.appendingPathComponent("compact-window-metrics.json"))

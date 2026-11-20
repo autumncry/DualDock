@@ -58,6 +58,17 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         }
     }
 
+    // These short sections share a scrolling detail pane. Sizing, Help, and About
+    // each have enough controls or content to use their own pane.
+    var detailSections: [SettingsSection] {
+        switch self {
+        case .displays, .contents: return [.displays, .contents]
+        case .interaction, .magnification, .notifications: return SettingsCategory.interaction.sections
+        case .general, .systemDock, .apps, .permissions: return SettingsCategory.general.sections
+        case .appearance, .help, .about: return [self]
+        }
+    }
+
     var title: String { L(names.0, names.1) }
     var sidebarTitle: String {
         switch self {
@@ -133,6 +144,12 @@ final class SettingsNavigation: ObservableObject {
         selected = section
         lastSection[section.category] = section
         query = ""
+    }
+
+    func scrolled(to section: SettingsSection) {
+        guard selected != section, !isSearching, selected.detailSections.contains(section) else { return }
+        selected = section
+        lastSection[section.category] = section
     }
 
     func show(_ category: SettingsCategory) {

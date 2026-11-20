@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import DualDockCore
 
 @MainActor
@@ -143,6 +144,109 @@ final class DockTile: NSView, NSDraggingSource {
                                      width: 4 * unitScale, height: 4 * unitScale)
     }
 
+    /// Pinning replaces the transient running entry's UUID with its saved UUID.
+    /// The app identity still describes the same artwork on both sides of the divider.
+    var organizationMotionID: String {
+        if !entry.isGroup, let app = entry.apps.first { return "app:" + app.id }
+        return "group:" + entry.id.uuidString
+    }
+
+    var presentedIconCenterOnScreen: CGPoint? {
+        guard let window, let parent = superview, visibleRect.intersects(visualIconBounds) else { return nil }
+        var point = parent.convert(NSPoint(x: visualIconBounds.midX, y: visualIconBounds.midY), from: self)
+        if let layer, layer.animation(forKey: "dock.reflow") != nil, let moving = layer.presentation() {
+            point.x += moving.position.x - layer.position.x
+            point.y += moving.position.y - layer.position.y
+        }
+        return window.convertPoint(toScreen: parent.convert(point, to: nil))
+    }
+
+    /// Only the backing pixels travel. Hover geometry, manual scrolling and
+    /// accessibility targets already describe the new settled arrangement.
+    func animateReflow(from previousCenterOnScreen: CGPoint, emphasizesPin: Bool = false,
+                       duration: CFTimeInterval = 0.42) {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let window, let layer, let parent = superview, visibleRect.intersects(visualIconBounds) else { return }
+        let old = parent.convert(window.convertPoint(fromScreen: previousCenterOnScreen), from: nil)
+        let destination = parent.convert(NSPoint(x: visualIconBounds.midX, y: visualIconBounds.midY), from: self)
+        let delta = CGPoint(x: old.x - destination.x, y: old.y - destination.y)
+        guard emphasizesPin || hypot(delta.x, delta.y) > 0.75 else { return }
+
+        let translation = CAKeyframeAnimation(keyPath: "position")
+        translation.isAdditive = true
+        let ease = CAMediaTimingFunction(name: .easeOut)
+        if emphasizesPin {
+            // There may only be a divider between the old and new slot, or no
+            // movement at all in Running Only. A small inward lift marks the pin.
+            let lift = min(12, max(4, visualIconBounds.width * 0.16))
+            var midpoint = CGPoint(x: delta.x * 0.42, y: delta.y * 0.42)
+            switch layoutEdge {
+            case .bottom: midpoint.y += lift
+            case .top: midpoint.y -= lift
+            case .left: midpoint.x += lift
+            case .right: midpoint.x -= lift
+            }
+            translation.values = [NSValue(point: delta), NSValue(point: midpoint), NSValue(point: .zero)]
+            translation.keyTimes = [0, 0.42, 1]
+            translation.timingFunctions = [ease, CAMediaTimingFunction(name: .easeInEaseOut)]
+        } else {
+            translation.values = [NSValue(point: delta), NSValue(point: .zero)]
+            translation.timingFunctions = [ease]
+        }
+        translation.duration = duration
+        layer.add(translation, forKey: "dock.reflow")
+        if emphasizesPin {
+            let foremost = CABasicAnimation(keyPath: "zPosition")
+            foremost.fromValue = 4
+            foremost.toValue = 4
+            foremost.duration = duration
+            layer.add(foremost, forKey: "dock.pinForeground")
+        }
+    }
+
+    /// Continue the released drag image briefly at its destination. Keep it on
+    /// the target's layer so replacing/removing a folder also removes its feedback.
+    func animateDropIntoFolder(_ app: AppReference, from releasePoint: CGPoint) {
+        guard entry.isGroup, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let window, let layer, visibleRect.intersects(visualIconBounds) else { return }
+        let icon = visualIconBounds
+        let center = CGPoint(x: icon.midX, y: icon.midY)
+        let release = convert(window.convertPoint(fromScreen: releasePoint), from: nil)
+        // Dropping into the open member panel can originate outside the main Dock.
+        // Keep the visible final portion of the trajectory inside the folder tile.
+        let span = icon.width * 0.48
+        let start = CGPoint(x: center.x + max(-span, min(span, release.x - center.x)),
+                            y: center.y + max(-span, min(span, release.y - center.y)))
+        let target = memberIconFrame(appID: app.id, in: icon)
+        let ghost = CALayer()
+        ghost.name = "dock.folderIncoming"
+        ghost.bounds = CGRect(origin: .zero, size: icon.size)
+        ghost.position = CGPoint(x: target.midX, y: target.midY)
+        ghost.contents = store.icon(for: app).cgImage(forProposedRect: nil, context: nil, hints: nil)
+        ghost.opacity = 0
+        layer.sublayers?.filter { $0.name == ghost.name }.forEach { $0.removeFromSuperlayer() }
+
+        let travel = CABasicAnimation(keyPath: "position")
+        travel.fromValue = NSValue(point: start)
+        travel.toValue = NSValue(point: ghost.position)
+        let shrink = CABasicAnimation(keyPath: "transform.scale")
+        shrink.fromValue = 0.95
+        shrink.toValue = target.width / max(1, icon.width)
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [1, 1, 0]
+        fade.keyTimes = [0, 0.72, 1]
+        let arrival = CAAnimationGroup()
+        arrival.animations = [travel, shrink, fade]
+        arrival.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        arrival.duration = 0.46
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak ghost] in ghost?.removeFromSuperlayer() }
+        layer.addSublayer(ghost)
+        ghost.add(arrival, forKey: "dock.folderDrop")
+        CATransaction.commit()
+    }
+
     func setHovered(_ value: Bool) {
         guard hovered != value else { return }
         hovered = value
@@ -214,15 +318,29 @@ final class DockTile: NSView, NSDraggingSource {
         NSBezierPath(roundedRect: page, xRadius: 0.035 * w, yRadius: 0.035 * w).fill()
         let front = NSBezierPath(roundedRect: NSRect(x: body.minX, y: body.minY, width: body.width, height: 0.52 * w), xRadius: 0.08 * w, yRadius: 0.08 * w)
         NSGradient(starting: .systemCyan, ending: .systemBlue)?.draw(in: front, angle: -90)
-        let apps = Array(entry.apps.prefix(3))
-        let centers: [CGFloat] = apps.count == 1 ? [0.5] : (apps.count == 2 ? [0.37, 0.63] : [0.29, 0.5, 0.71])
-        for (index, app) in apps.enumerated() {
-            let side = 0.31 * w
-            let lift: CGFloat = index % 2 == 0 ? 0 : 0.035 * w
-            let icon = NSRect(x: rect.minX + centers[index] * w - side / 2,
-                              y: rect.minY + 0.18 * w + lift, width: side, height: side)
-            store.icon(for: app).draw(in: icon)
+        for (index, app) in entry.apps.prefix(3).enumerated() {
+            store.icon(for: app).draw(in: memberIconFrame(index: index, in: rect))
         }
+    }
+
+    private func memberIconFrame(appID: String, in rect: CGRect) -> CGRect {
+        // Later members are represented by the folder front, behind its thumbnails.
+        let index = entry.apps.prefix(3).firstIndex { $0.id == appID }
+        return memberIconFrame(index: index, in: rect)
+    }
+
+    private func memberIconFrame(index: Int?, in rect: CGRect) -> CGRect {
+        let centers: [CGFloat]
+        switch entry.apps.count {
+        case 1: centers = [0.5]
+        case 2: centers = [0.37, 0.63]
+        default: centers = [0.29, 0.5, 0.71]
+        }
+        let center = index.map { centers[$0] } ?? 0.5
+        let side = 0.31 * rect.width
+        let lift = index == 1 ? 0.035 * rect.width : 0
+        return CGRect(x: rect.minX + center * rect.width - side / 2,
+                      y: rect.minY + 0.18 * rect.width + lift, width: side, height: side)
     }
 
     override func mouseDown(with event: NSEvent) {

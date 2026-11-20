@@ -45,6 +45,8 @@ Drag apps in from Finder or add them through Settings. Drop near an icon's edge 
 
 Click a folder icon to expand its members horizontally. Reorder apps within a group, move them back to the main Dock, or use the context menu to rename or dissolve a group. The first launch imports pinned apps from the system Dock. DualDock then maintains its own layout; re-importing adds missing apps while preserving existing groups.
 
+Right-click a running app and choose **Pin to DualDock** to see it move into the pinned section. Dropping an app into a folder shows its icon settling into the group. These transitions respect the macOS Reduce Motion setting.
+
 ### Preview, switch, and close windows
 
 Hover over a running app to see window thumbnails. Click a thumbnail to switch to that window. A **×** appears in the upper-right corner when DualDock can identify and use the window’s native Close control. The original app handles any unsaved-changes confirmation. Closing dismisses the current preview; the next hover reads the window list again.
@@ -113,13 +115,13 @@ The Dock stays available while you use a group, preview, context menu, or drag o
 
 ### Sidebar settings
 
-Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. The window fits its height to the selected page. Resizing it vertically keeps your chosen height until you close settings. The window follows the system appearance. About includes the version, MIT license, and project links.
+Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. All pages share one resizable window. Switching pages or languages and expanding advanced settings preserve the window frame. Related sections in Interaction and General share a scrollable form. Select a sidebar entry to jump to that section. The window follows the system appearance. About includes the version, MIT license, and project links.
 
 To switch the app to English, open **通用 (General) → 显示语言 (Display Language)** and select **English**. The change takes effect immediately and is remembered at the next launch.
 
 Enable **Launch at Login** in General to start DualDock after signing into macOS. The control reflects system registration and provides an approval link when required. Opening Settings does not register the app automatically.
 
-<img src="docs/images/dualdock-settings-en.png" width="850" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
+<img src="docs/images/dualdock-settings-en.png" width="820" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
 
 <sub>Native settings capture using an isolated example configuration.</sub>
 

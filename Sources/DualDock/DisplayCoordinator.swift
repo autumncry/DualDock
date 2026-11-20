@@ -40,6 +40,17 @@ final class DisplayCoordinator {
     private var groupEdge: DockEdge = .bottom
     private var previewEdge: DockEdge = .bottom
     private var previewAnchor = NSRect.zero
+    private enum OrganizationChange {
+        case pin(String)
+        case group(UUID, AppReference, CGPoint)
+    }
+
+    private struct OrganizationMotion {
+        let screenID: CGDirectDisplayID
+        let previousCenters: [String: CGPoint]
+        let change: OrganizationChange
+    }
+    private var pendingOrganizationMotion: OrganizationMotion?
     private var geometryRefreshScheduled = false
     private var badgeRedrawScheduled = false
     private var pendingBadgeLabelChange = false
@@ -48,6 +59,7 @@ final class DisplayCoordinator {
     private var renderedMode: DockMode?
     private var renderedShowBadges: Bool?
     private var renderedHideSystemDock: Bool?
+    private var renderedRunningIDs = Set<String>()
     private var tileAppearanceNeedsRefresh = false
     private var stopped = false
     private var latestWindowIntent: UInt64 = 0
@@ -162,8 +174,9 @@ final class DisplayCoordinator {
                 else { self.store.setResizePreview(nil, for: display.id) }
             }
             strip.document.onDropAtEnd = { [weak self] info in self?.handleDrop(info, target: nil, groupID: nil, merge: false, after: false) ?? false }
+            let offset = strip.presentation?.edge == presentation.edge ? strip.scrollOffset : 0
             _ = strip.populate(entries: entries, store: store, maxWidth: presentation.maximumLength,
-                               presentation: presentation) { [weak self] tile in
+                               presentation: presentation, preservingOffset: offset) { [weak self] tile in
                 self?.configure(tile, on: screen, displayID: display.id, edge: presentation.edge)
             }
             panel.contentView = strip
@@ -172,6 +185,7 @@ final class DisplayCoordinator {
             docks[id] = ScreenDock(screen: screen, displayID: display.id, panel: panel, strip: strip)
         }
         renderedEntries = entries
+        renderedRunningIDs = Set(store.runningApps.map(\.id))
         renderedPinnedCount = store.pinnedCount
         renderedMode = store.configuration.mode
         renderedShowBadges = store.configuration.showBadges
@@ -186,6 +200,7 @@ final class DisplayCoordinator {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.stopped else { return }
             self.geometryRefreshScheduled = false
+            defer { self.finishOrganizationMotion() }
             // Configuration publishes before its assignment finishes. Read the
             // final value once on the next main-loop turn, coalescing a burst of
             // slider samples and the resize-preview/configuration handoff.
@@ -198,6 +213,12 @@ final class DisplayCoordinator {
                 || self.docks.contains { id, dock in
                     dock.strip.presentation?.edge != presentations[id]?.edge
                 }
+            // Capture before a rebuild so a departing transient app keeps its
+            // previous screen position even if the content-sized Dock shrinks.
+            let lifecycle = self.tileAppearanceNeedsRefresh
+                ? self.captureLifecycle(runningIDs: Set(self.store.runningApps.map(\.id)),
+                                        nextEntries: entries, structureChanged: structureChanged) : nil
+            defer { if let lifecycle { self.finishLifecycle(lifecycle) } }
             if structureChanged {
                 // Entry identity/order and edge changes require new callbacks;
                 // real display topology changes still call refreshDisplays().
@@ -234,6 +255,101 @@ final class DisplayCoordinator {
         }
     }
 
+    private struct LifecycleChange {
+        let started: Set<String>
+        let stopped: Set<String>
+        var centers: [CGDirectDisplayID: [String: CGPoint]] = [:]
+        var departures: [CGDirectDisplayID: [DockDepartureImage]] = [:]
+    }
+
+    private func captureLifecycle(runningIDs ids: Set<String>, nextEntries: [DockEntry], structureChanged: Bool) -> LifecycleChange? {
+        let started = ids.subtracting(renderedRunningIDs)
+        let ended = renderedRunningIDs.subtracting(ids)
+        renderedRunningIDs = ids
+        guard !started.isEmpty || !ended.isEmpty,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              renderedMode == store.configuration.mode else { return nil }
+        var change = LifecycleChange(started: started, stopped: ended)
+        guard structureChanged else { return change }
+        let remaining = Set(nextEntries.flatMap { $0.apps.map(\.id) })
+        for (id, dock) in docks where dock.panel.isVisible && !dock.panel.isMiniaturized {
+            change.centers[id] = [:]
+            for tile in dock.strip.tiles {
+                guard let center = tile.presentedIconCenterOnScreen else { continue }
+                change.centers[id, default: [:]][tile.organizationMotionID] = center
+                guard !tile.entry.isGroup, let app = tile.entry.apps.first, ended.contains(app.id),
+                      !remaining.contains(app.id), let image = DockDepartureImage(tile: tile, app: app) else { continue }
+                change.departures[id, default: []].append(image)
+            }
+        }
+        return change
+    }
+
+    private func finishLifecycle(_ change: LifecycleChange) {
+        for (id, dock) in docks where dock.panel.isVisible {
+            // A quick relaunch replaces its fading image immediately.
+            for case let exit as DockDeparturePanel in dock.panel.childWindows ?? [] where change.started.contains(exit.appID) {
+                exit.dismiss()
+            }
+            for departure in change.departures[id] ?? [] {
+                DockDeparturePanel(departure).present(above: dock.panel)
+            }
+            for tile in dock.strip.tiles {
+                let previous = change.centers[id]?[tile.organizationMotionID]
+                if let previous, tile.layer?.animation(forKey: "dock.reflow") == nil {
+                    tile.animateReflow(from: previous, duration: 0.36)
+                }
+                animateRunningState(of: tile, change: change, edge: dock.strip.presentation?.edge ?? .bottom,
+                                    inserted: change.centers[id] != nil && previous == nil)
+            }
+        }
+        if let groupPanel, groupPanel.isVisible, let group = groupPanel.contentView as? DockStripView {
+            for tile in group.tiles { animateRunningState(of: tile, change: change, edge: groupEdge, inserted: false) }
+        }
+    }
+
+    private func animateRunningState(of tile: DockTile, change: LifecycleChange, edge: DockEdge, inserted: Bool) {
+        guard let layer = tile.layer, tile.visibleRect.intersects(tile.visualIconBounds) else { return }
+        if tile.entry.apps.contains(where: { change.started.contains($0.id) }) {
+            // A gentle inward lift reads as a launch on every screen edge.
+            let lift = min(8, tile.visualIconBounds.width * 0.14)
+            let vector: CGPoint
+            switch edge {
+            case .bottom: vector = CGPoint(x: 0, y: lift)
+            case .top: vector = CGPoint(x: 0, y: -lift)
+            case .left: vector = CGPoint(x: lift, y: 0)
+            case .right: vector = CGPoint(x: -lift, y: 0)
+            }
+            let movement = CAKeyframeAnimation(keyPath: "position")
+            movement.isAdditive = true
+            movement.values = [NSValue(point: .zero), NSValue(point: vector), NSValue(point: .zero)]
+            movement.keyTimes = [0, 0.42, 1]
+            movement.timingFunctions = [.init(name: .easeOut), .init(name: .easeInEaseOut)]
+            let arrival = CAAnimationGroup()
+            var animations: [CAAnimation] = [movement]
+            movement.duration = 0.46
+            if inserted {
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = 0.25
+                fade.toValue = 1
+                fade.duration = 0.32
+                animations.append(fade)
+            }
+            arrival.animations = animations
+            arrival.duration = movement.duration
+            layer.add(arrival, forKey: "dock.runningState")
+        } else if tile.entry.apps.contains(where: { change.stopped.contains($0.id) }) {
+            // Pinned tiles stay present on quit. The running dot already reflects
+            // the new state; lower the contrast briefly to mark that change.
+            let settle = CAKeyframeAnimation(keyPath: "opacity")
+            settle.values = [1, 0.63, 1]
+            settle.keyTimes = [0, 0.36, 1]
+            settle.timingFunctions = [.init(name: .easeInEaseOut), .init(name: .easeOut)]
+            settle.duration = 0.34
+            layer.add(settle, forKey: "dock.runningState")
+        }
+    }
+
     func resetMagnification() {
         dismissPopups()
         docks.values.forEach { $0.strip.resetMagnification() }
@@ -266,6 +382,7 @@ final class DisplayCoordinator {
     }
 
     func stop() {
+        guard !stopped else { return }
         stopped = true
         previewActivation?.cancel()
         windowInteractions.cancel()
@@ -366,7 +483,18 @@ final class DisplayCoordinator {
         panel.setFrame(popupFrame(size: size, anchor: popupAnchor, screen: screen, edge: edge), display: true)
         strip.updateMousePassthrough()
         groupPanel = panel
-        if presentsPanels { panel.orderFrontRegardless() }
+        if presentsPanels {
+            let fadeIn = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            if fadeIn { panel.alphaValue = 0.35 }
+            panel.orderFrontRegardless()
+            if fadeIn {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.17
+                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    panel.animator().alphaValue = 1
+                }
+            }
+        }
         refreshMousePassthrough()
         pointerOutsideSince = nil
     }
@@ -601,6 +729,7 @@ final class DisplayCoordinator {
         for (id, dock) in docks {
             let fullscreen = snapshot.fullscreen.contains(id)
             if snapshot.hidden.contains(id) {
+                for case let exit as DockDeparturePanel in dock.panel.childWindows ?? [] { exit.dismiss() }
                 if dock.panel.isVisible { dock.strip.resetMagnification() }
                 dock.panel.orderOut(nil)
                 dock.panel.setFullscreenOverlay(false)
@@ -613,6 +742,45 @@ final class DisplayCoordinator {
                 if presentsPanels && !dock.panel.isVisible { dock.panel.orderFrontRegardless() }
                 dock.strip.updateMousePassthrough()
             }
+        }
+    }
+
+    private func organizationSource(window: NSWindow?) -> (CGDirectDisplayID, [String: CGPoint])? {
+        guard let window, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return nil }
+        let screenID = window === groupPanel ? popupScreen : docks.first(where: { $0.value.panel === window })?.key
+        guard let screenID, let dock = docks[screenID] else { return nil }
+        var centers: [String: CGPoint] = [:]
+        for tile in dock.strip.tiles {
+            centers[tile.organizationMotionID] = tile.presentedIconCenterOnScreen
+        }
+        return (screenID, centers)
+    }
+
+    private func finishOrganizationMotion() {
+        guard let motion = pendingOrganizationMotion else { return }
+        pendingOrganizationMotion = nil
+        guard let strip = docks[motion.screenID]?.strip else { return }
+        for tile in strip.tiles {
+            var pin = false
+            switch motion.change {
+            case let .pin(appID):
+                pin = !tile.entry.isGroup && tile.entry.apps.first?.id == appID
+            case let .group(id, app, release) where tile.entry.id == id && tile.entry.apps.contains(where: { $0.id == app.id }):
+                tile.animateDropIntoFolder(app, from: release)
+            default: break
+            }
+            if let old = motion.previousCenters[tile.organizationMotionID] {
+                tile.animateReflow(from: old, emphasizesPin: pin)
+            }
+        }
+    }
+
+    private func pin(_ app: AppReference, from window: NSWindow?) {
+        guard !store.configuration.allAppIDs.contains(app.id) else { return }
+        let source = organizationSource(window: window)
+        store.update { $0.insert([app]) }
+        if let (screenID, centers) = source, store.configuration.allAppIDs.contains(app.id) {
+            pendingOrganizationMotion = .init(screenID: screenID, previousCenters: centers, change: .pin(app.id))
         }
     }
 
@@ -629,6 +797,10 @@ final class DisplayCoordinator {
         let known = store.configuration.entries.flatMap(\.apps) + store.runningApps
         let apps = payload?.appID.flatMap { id in known.first { $0.id == id }.map { [$0] } } ?? external
         guard !apps.isEmpty else { return false }
+        let source = (groupID != nil || merge) ? organizationSource(window: info.draggingDestinationWindow) : nil
+        let release = info.draggingDestinationWindow?.convertPoint(toScreen: info.draggingLocation)
+        let oldEntries = store.configuration.entries
+        var destinationGroup = groupID
         let before = insertionID(target: target, after: after)
         store.update { config in
             config.insert(apps)
@@ -646,12 +818,22 @@ final class DisplayCoordinator {
             } else if merge, let target {
                 if !config.entries.contains(where: { $0.id == target.id }), let targetApp = target.apps.first { config.insert([targetApp]) }
                 let targetID = config.entries.first { $0.id == target.id || (!target.isGroup && $0.apps.first?.id == target.apps.first?.id) }?.id
+                destinationGroup = targetID
                 if let targetID { for app in apps { config.merge(appID: app.id, into: targetID, defaultGroupName: L("应用组", "App Group")) } }
             } else {
                 for app in apps {
                     config.moveAppOut(appID: app.id, before: before)
                     if let entry = config.entries.first(where: { !$0.isGroup && $0.apps.first?.id == app.id }) { config.moveEntry(id: entry.id, before: before) }
                 }
+            }
+        }
+        if let (screenID, centers) = source, let release, let id = destinationGroup,
+           let group = store.configuration.entries.first(where: { $0.id == id && $0.isGroup }) {
+            let previousMembers = Set((oldEntries.first { $0.id == id }?.apps ?? []).map(\.id))
+            let droppedIDs = Set(apps.map(\.id))
+            if let incoming = group.apps.first(where: { droppedIDs.contains($0.id) && !previousMembers.contains($0.id) }) {
+                pendingOrganizationMotion = .init(screenID: screenID, previousCenters: centers,
+                                                  change: .group(id, incoming, release))
             }
         }
         return true
@@ -732,8 +914,12 @@ final class DisplayCoordinator {
             }
             if store.configuration.allAppIDs.contains(app.id) {
                 if tile.groupID != nil { menu.addAction(L("移出应用组", "Move Out of Group")) { [weak self] in self?.store.update { $0.moveAppOut(appID: app.id) } } }
-                menu.addAction(L("从 Dock 移除", "Remove from Dock")) { [weak self] in self?.store.update { $0.removeApp(id: app.id) } }
-            } else { menu.addAction(L("固定到 Dock", "Keep in Dock")) { [weak self] in self?.store.update { $0.insert([app]) } } }
+                menu.addAction(L("从 DualDock 移除", "Remove from DualDock")) { [weak self] in self?.store.update { $0.removeApp(id: app.id) } }
+            } else {
+                menu.addAction(L("固定到 DualDock", "Pin to DualDock")) { [weak self, weak tile] in
+                    self?.pin(app, from: tile?.window)
+                }
+            }
             menu.addAction(L("在 Finder 中显示", "Show in Finder")) { [weak self] in
                 self?.beginWindowIntent(replacingQueuedActions: true)
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)])
@@ -776,4 +962,82 @@ private final class MenuTrackingObserver: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) { opened() }
     func menuDidClose(_ menu: NSMenu) { closed() }
+}
+
+/// An app can occupy just the clipped end of a scrolled Dock. Capture only
+/// that part of its image, using the locally cached icon instead of a screenshot.
+@MainActor
+private struct DockDepartureImage {
+    let appID: String
+    let image: NSImage
+    let screenRect: NSRect
+    let imageFrame: NSRect
+
+    init?(tile: DockTile, app: AppReference) {
+        guard let window = tile.window else { return nil }
+        let icon = tile.visualIconBounds
+        let visible = tile.visibleRect.intersection(icon)
+        guard !visible.isEmpty, !visible.isNull else { return nil }
+        appID = app.id
+        image = tile.store.icon(for: app)
+        screenRect = window.convertToScreen(tile.convert(visible, to: nil))
+        imageFrame = icon.offsetBy(dx: -visible.minX, dy: -visible.minY)
+    }
+}
+
+/// Transient icons can finish outside the shortened bar. A noninteractive
+/// child stays at the old icon location and inherits its parent's visibility.
+@MainActor
+private final class DockDeparturePanel: NSPanel {
+    let appID: String
+    static let duration: CFTimeInterval = 0.34
+
+    init(_ source: DockDepartureImage) {
+        appID = source.appID
+        super.init(contentRect: source.screenRect, styleMask: [.borderless, .nonactivatingPanel],
+                   backing: .buffered, defer: false)
+        isReleasedWhenClosed = false
+        ignoresMouseEvents = true
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        hidesOnDeactivate = false
+        animationBehavior = .none
+        isExcludedFromWindowsMenu = true
+        let clip = NSView(frame: NSRect(origin: .zero, size: source.screenRect.size))
+        clip.wantsLayer = true
+        clip.layer?.masksToBounds = true
+        let icon = NSImageView(frame: source.imageFrame)
+        icon.image = source.image
+        icon.imageScaling = .scaleAxesIndependently
+        icon.setAccessibilityElement(false)
+        clip.addSubview(icon)
+        contentView = clip
+        setAccessibilityElement(false)
+    }
+
+    func present(above dock: NSPanel) {
+        guard dock.isVisible, let layer = contentView?.layer else { return }
+        level = dock.level
+        collectionBehavior = dock.collectionBehavior
+        dock.addChildWindow(self, ordered: .above)
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = Self.duration
+        fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self] in
+            Task { @MainActor in self?.dismiss() }
+        }
+        layer.opacity = 0
+        layer.add(fade, forKey: "dock.departure")
+        CATransaction.commit()
+    }
+
+    func dismiss() {
+        parent?.removeChildWindow(self)
+        close()
+    }
 }

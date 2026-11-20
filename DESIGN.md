@@ -4,7 +4,7 @@ description: Quiet native macOS settings for a multi-display Dock.
 typography:
   page-title:
     fontFamily: "system-ui"
-    fontSize: "21pt"
+    fontSize: "23pt"
     fontWeight: 600
   section-title:
     fontFamily: "system-ui"
@@ -12,19 +12,19 @@ typography:
     fontWeight: 600
   control-label:
     fontFamily: "system-ui"
-    fontSize: "13pt"
+    fontSize: "15pt"
     fontWeight: 500
   body:
     fontFamily: "system-ui"
-    fontSize: "13pt"
+    fontSize: "14pt"
     fontWeight: 400
   supporting:
     fontFamily: "system-ui"
-    fontSize: "12pt"
+    fontSize: "13pt"
     fontWeight: 400
   caption:
     fontFamily: "system-ui"
-    fontSize: "11pt"
+    fontSize: "12pt"
     fontWeight: 400
   metric:
     fontFamily: "system-ui"
@@ -37,10 +37,10 @@ rounded:
 spacing:
   label-control: "8pt"
   inline: "16pt"
-  group-padding: "5pt 8pt"
+  group-padding: "7pt 9pt"
   columns: "20pt"
   detail-sections: "12pt"
-  page-inset: "20pt"
+  page-inset: "22pt"
 components:
   page-heading:
     typography: "{typography.page-title}"
@@ -48,7 +48,7 @@ components:
     rounded: "{rounded.group}"
     padding: "{spacing.group-padding}"
   sidebar:
-    width: "184pt"
+    width: "190pt"
     typography: "{typography.body}"
   numeric-field:
     width: "56pt"
@@ -56,7 +56,7 @@ components:
     labelColumn: "112pt"
     columnGap: "14pt"
     valueColumn: "81pt"
-    minimumRowHeight: "43pt"
+    minimumRowHeight: "45pt"
   dock-preview:
     horizontalHeight: "108–180pt"
     verticalHeight: "174pt"
@@ -73,14 +73,14 @@ Approved direction: quiet native macOS settings, based on the 2026-11-17 HTML dr
 
 ## Navigation and hierarchy
 
-Settings opens 850 pt wide. Its height follows the measured page heading and scroll document (200–680 pt of content, capped by the usable screen). Keep the top edge steady when possible. A vertical manual resize or zoom sets the height for that open session; manual widths are retained as pages change. An AppKit preferences toolbar shows Dock, Interaction, General, and Support with native icons and labels. Each category remembers its last selected page during the session. A 184 pt sidebar uses a native source list and a search field. Return opens the first matching page, Escape clears the search, and Command-F focuses it. Search includes both interface languages. The detail pane uses an accent-colored symbol, a 21 pt semibold heading and grouped native controls. Display scope stays next to the sizing page heading.
+Settings opens at 820 × 560 pt including its toolbar. The frame is independent of page selection, language, and disclosure states. Keep the user’s chosen frame across navigation. Related sections in Interaction, General, and the Dock display options flow down one scrollable form. Sidebar selections scroll to a section. Appearance, Help, and About each have their own detail view. An AppKit preferences toolbar shows Dock, Interaction, General, and Support with native icons and labels. Each category remembers its last selected page during the session. A 190 pt sidebar uses a native source list and a search field. Return opens the first matching page, Escape clears the search, and Command-F focuses it. Search includes both interface languages. The detail pane uses an accent-colored symbol, a 23 pt semibold heading and grouped native controls. Display scope stays next to the sizing page heading.
 
 
 ## Surfaces and typography
 
 `Font.system` and SF Symbols are authoritative. Do not substitute the Figma draft's Noto fallback in the native app. Primary/secondary semantic text adapts to Light/Dark. The main surface is `controlBackgroundColor`, sidebar uses a system material, and settings groups use native GroupBox styling. No sampled screenshot hex palette or decorative shadows.
 
-Option labels are 14 pt medium, body 13 pt regular, supporting text 12 pt and captions 11 pt. Changing values use monospaced digits and an adjacent unit. Native controls own their focus, hover, disabled and pressed states. Keep long explanatory text wrapping rather than truncating it.
+Option labels are 15 pt medium, body text is 14 pt and supporting text is 13 pt. Changing values use monospaced digits and an adjacent unit. Native controls own their focus, hover, disabled and pressed states. Keep long explanatory text wrapping rather than truncating it.
 
 ## Appearance and sizing
 

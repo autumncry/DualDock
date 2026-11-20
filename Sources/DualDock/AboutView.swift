@@ -15,11 +15,11 @@ struct AboutView: View {
                     .resizable().scaledToFit().frame(width: 56, height: 56)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("DualDock").font(.system(size: 22, weight: .semibold))
+                    Text("DualDock").font(.system(size: 24, weight: .semibold))
                     Text(localize("应用有序收纳，Dock 多屏同在。", "Organized apps. A Dock on every display."))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(localize("原生 macOS 多屏 Dock", "A native multi-display Dock for macOS"))
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                 }
             }
 
@@ -56,7 +56,7 @@ struct AboutView: View {
                             Label(localize("GitHub 项目主页", "GitHub repository"), systemImage: "arrow.up.right.square")
                         }
                         Text(projectURL.absoluteString)
-                            .font(.system(size: 12))
+                            .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -83,7 +83,7 @@ struct AboutView: View {
 
             HStack(alignment: .center, spacing: 16) {
                 Text(localize("如果喜欢 DualDock，欢迎在 GitHub 点 Star 支持。", "If you enjoy DualDock, give the project a star on GitHub."))
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
@@ -95,7 +95,7 @@ struct AboutView: View {
                     .fixedSize()
             }
         }
-        .font(.system(size: 13))
+        .font(.system(size: 14))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -111,7 +111,7 @@ struct AboutView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 5)
-        .frame(minHeight: 35)
+        .frame(minHeight: 37)
     }
 
     private var versionDescription: String {

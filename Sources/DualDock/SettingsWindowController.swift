@@ -19,29 +19,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private var selectionObservation: AnyCancellable?
     var isPresented: Bool { window?.isVisible == true && window?.isMiniaturized == false }
 
-    private var pendingFit: DispatchWorkItem?
-    private var measured: (section: SettingsSection, height: CGFloat)?
-    private var liveResizeStart: NSSize?
-    private var manualHeight = false
+    static let initialFrameSize = NSSize(width: 820, height: 560)
+    static let minimumContentSize = NSSize(width: 740, height: 320)
 
     init(store: AppStore, navigation supplied: SettingsNavigation? = nil,
          launchAtLoginService: LaunchAtLoginService? = nil) {
         self.store = store
         let navigation = supplied ?? SettingsNavigation()
         self.navigation = navigation
-        let initial = NSSize(width: 850, height: 320)
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: initial),
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.initialFrameSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = L("DualDock 设置", "DualDock Settings")
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         super.init(window: window)
-        let content = NSHostingController(rootView: SettingsView(store: store, launchAtLoginService: launchAtLoginService,
-            navigation: navigation, measuredHeight: { [weak self] section, height in
-                self?.measured = (section, height)
-                self?.scheduleFit()
-            }))
+        let content = NSHostingController(rootView: SettingsView(store: store,
+            launchAtLoginService: launchAtLoginService, navigation: navigation))
+        // The window owns its frame. Controls and translations reflow inside the detail scroll view.
         content.sizingOptions = []
         window.contentViewController = content
         window.delegate = self
@@ -51,8 +46,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         toolbar.allowsUserCustomization = false
         toolbar.delegate = self
         window.toolbar = toolbar
-        window.contentMinSize = NSSize(width: 740, height: 200)
-        window.setContentSize(initial)
+        window.contentMinSize = Self.minimumContentSize
+        window.setFrame(NSRect(origin: window.frame.origin, size: Self.initialFrameSize), display: false)
         toolbar.centeredItemIdentifiers = Set(categoryIdentifiers)
         selectionObservation = navigation.$selected.sink { [weak toolbar] section in
             toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(section.category.rawValue)
@@ -62,61 +57,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
     required init?(coder: NSCoder) { nil }
 
-    private func scheduleFit() {
-        guard pendingFit == nil, !manualHeight, liveResizeStart == nil else { return }
-        let work = DispatchWorkItem { [weak self] in
-            self?.pendingFit = nil
-            self?.fitToContent()
-        }
-        pendingFit = work
-        DispatchQueue.main.async(execute: work)
-    }
-
-    /// Resize vertically around the existing top edge. The scroll view reports
-    /// its document height, which stays independent of the current viewport.
-    private func fitToContent() {
-        guard !manualHeight, liveResizeStart == nil, let window, !window.isMiniaturized,
-              !window.styleMask.contains(.fullScreen),
-              let measured, measured.section == navigation.selected else { return }
-        let current = window.frame
-        let viewport = window.contentLayoutRect
-        guard viewport.height > 0 else { return }
-        let chrome = current.height - viewport.height
-        let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-        let limit = min(680, (screen?.height ?? 800) - chrome - 12)
-        let desired = max(200, min(limit, measured.height))
-        guard abs(desired - viewport.height) >= 1 else { return }
-        let height = ceil(desired + chrome)
-        var y = current.maxY - height
-        if let screen { y = max(screen.minY, min(y, screen.maxY - height)) }
-        window.setFrame(NSRect(x: current.minX, y: y, width: current.width, height: height), display: true)
-    }
-
-    func windowWillStartLiveResize(_ notification: Notification) {
-        liveResizeStart = window?.frame.size
-        pendingFit?.cancel()
-        pendingFit = nil
-    }
-
     func windowWillResize(_ sender: NSWindow, to proposed: NSSize) -> NSSize {
-        let chrome = sender.frame.height - sender.contentLayoutRect.height
-        return NSSize(width: max(740, proposed.width), height: max(200 + chrome, proposed.height))
+        let chromeHeight = sender.frame.height - sender.contentLayoutRect.height
+        return NSSize(width: max(Self.minimumContentSize.width, proposed.width),
+                      height: max(Self.minimumContentSize.height + chromeHeight, proposed.height))
     }
-
-    func windowDidEndLiveResize(_ notification: Notification) {
-        if let start = liveResizeStart, let window, abs(window.frame.height - start.height) >= 1 {
-            manualHeight = true
-        }
-        liveResizeStart = nil
-        scheduleFit()
-    }
-
-    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
-        manualHeight = true
-        return true
-    }
-
-    func windowDidExitFullScreen(_ notification: Notification) { scheduleFit() }
 
     private var categoryIdentifiers: [NSToolbarItem.Identifier] {
         SettingsCategory.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
@@ -149,14 +94,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         }
         installEditingMenuIfNeeded()
         window.contentView?.layoutSubtreeIfNeeded()
-        fitToContent()
         if !hasBeenPresented { window.center(); hasBeenPresented = true }
         if window.isMiniaturized { window.deminiaturize(nil) }
         if let screen = NSScreen.main { window.setFrame(window.constrainFrameRect(window.frame, to: screen), display: false) }
         store.refreshPermissions()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
-        scheduleFit()
         publishVisibility()
     }
 
@@ -169,8 +112,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func stop() {
-        pendingFit?.cancel()
-        pendingFit = nil
         NotificationCenter.default.removeObserver(self, name: .dualDockLanguageDidChange, object: nil)
         previousApplication = nil
         window?.close()
@@ -179,9 +120,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func windowWillClose(_ notification: Notification) {
-        pendingFit?.cancel()
-        pendingFit = nil
-        manualHeight = false
         publishVisibility(false)
         if NSApp.isActive, let previousApplication, !previousApplication.isTerminated {
             previousApplication.activate(options: [])
@@ -191,7 +129,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     func windowDidMiniaturize(_ notification: Notification) { publishVisibility(false) }
     func windowDidDeminiaturize(_ notification: Notification) {
         publishVisibility()
-        scheduleFit()
     }
 
     private func publishVisibility(_ value: Bool? = nil) {

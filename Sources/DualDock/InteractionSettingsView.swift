@@ -23,20 +23,21 @@ struct InteractionSettingsView: View {
                 title: localize("最大化窗口时隐藏 Dock", "Hide the Dock for maximized windows"),
                 detail: localize("窗口铺满或全屏时，停留在屏幕边缘可唤出 Dock。使用分组、预览或菜单时保持显示。",
                                  "Hold the pointer at the screen edge to reveal the Dock. It stays visible while you use a group, preview, or menu."),
-                isOn: binding(\.autoHideWhenMaximized))
+                symbol: "rectangle.expand.vertical", isOn: binding(\.autoHideWhenMaximized))
             Divider()
             SettingsSwitchRow(
                 title: localize("悬停显示窗口预览", "Show window previews on hover"),
                 detail: localize("点缩略图切换窗口，点 × 关闭对应窗口。未保存内容由原应用确认。",
                                  "Click a thumbnail to switch windows. Use × to close a window. The app confirms unsaved changes."),
-                isOn: binding(\.showPreviews))
+                symbol: "macwindow.on.rectangle", isOn: binding(\.showPreviews))
                 .help(localize("仅显示取得有效截图的窗口。可关闭的窗口显示 ×。",
                                "Only windows with valid thumbnails appear. Windows that support closing show ×."))
             Divider()
             SettingsOptionLabel(
                 title: localize("点击应用图标", "Clicking app icons"),
                 detail: localize("点击依次前置、最小化和还原同一窗口。右键可选窗口。最大化或全屏的窗口只前置。",
-                                 "Click to bring the selected window forward, then click again to minimize or restore it. Right-click to choose a window. Maximized and full-screen windows stay open."))
+                                 "Click to bring the selected window forward, then click again to minimize or restore it. Right-click to choose a window. Maximized and full-screen windows stay open."),
+                symbol: "cursorarrow.click")
                 .help(localize("窗口动画跟随 macOS 和原应用。", "Window animations follow macOS and the app."))
         }
     }

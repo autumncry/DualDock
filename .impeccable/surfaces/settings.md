@@ -3,7 +3,7 @@
 Platform: native macOS 14+, SwiftUI/AppKit. Retain the approved quiet, aligned design: compact sidebar and one shallow layout example above the controls on horizontal edges or beside them on vertical edges. The HTML draft is a layout reference, not an embedded web view.
 
 Four native toolbar categories organize the settings. The left sidebar searches page titles and control names in either language. Enter opens a result, Escape clears the query, and Command-F focuses the search.
-Use system fonts, native toolbar items, semantic colors and a 184 pt source list. Show a 21 pt heading with an accent symbol above the detail. Group related options with native GroupBox. Support the 740 pt minimum window width.
+Use system fonts, native toolbar items, semantic colors and a 190 pt source list. Show a 23 pt heading with an accent symbol above the detail. Group related options with native GroupBox. Support the 740 pt minimum window width.
 
 The screen selector and synchronization appear only in appearance's header. Common choices: size, unified 0–100 icon spacing, length and position. Spacing replaces density and the advanced duplicate. Zero joins visible artwork bounding boxes; 100 is a gap equal to the mean adjacent visible dimension along the ordering axis. Keep original bitmap scale/aspect; cache artwork metrics and give overlapping transparent canvases independent hit ownership. A new visual-spacing setting must not be silently reduced by overflow or overridden by distribution. Legacy layouts remain intact until an explicit spacing/preset/reset choice.
 
@@ -15,4 +15,4 @@ General adds opt-in “登录时启动” using SMAppService.mainApp. Read syste
 
 About retains full version, license, author, project/download/feedback/support information in the restrained layout. All settings across the four toolbar categories remain. Verify Light/Dark, compact windows, no-display, advanced, native mode, independent/synchronized displays, four edges and stable sample identity. Distinguish owned fixture/event and injected service tests from fresh-desktop, VoiceOver and actual-login validation; do not claim the latter from the former.
 
-Window width begins at 850 pt. Measure wrapping and content at the current width, fit short pages vertically and scroll longer ones. Preserve an explicit vertical resize until the settings window closes.
+The default window frame is 820 × 560 pt including toolbar. Preserve its position and size across every page and language, including after manual resizing. Related settings share a scrollable form with sidebar anchors. Appearance, Help and About retain dedicated detail pages.
