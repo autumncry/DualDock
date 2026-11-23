@@ -8,7 +8,7 @@ struct DockHelpSettingsView: View {
             GroupBox {
                 VStack(alignment: .leading, spacing: 0) {
                     guideRow(localize("整理应用", "Organize apps"), symbol: "folder") {
-                        Text(localize("从 Finder 拖入应用，也可在“通用”中添加。将图标拖到另一个图标中央，稍作停留再松开即可成组。点击展开分组，右键重命名或拆分。", "Drag apps from Finder or add them in General. Hold an icon over another, then release to make a group. Click to expand the group or right-click to rename or ungroup it."))
+                        Text(localize("从 Finder 拖入应用，也可在“通用”中添加。将图标拖到另一个图标中央，稍作停留再松开即可成组。右键点按活动应用，选“加入应用组”可直接收入已有分组。点击分组可展开，右键可重命名或拆分。", "Drag apps from Finder or add them in General. Hold an icon over another, then release to make a group. To add a running app to an existing group, right-click it and choose Add to App Group. Click a group to expand it or right-click to rename or ungroup it."))
                     }
                     Divider()
                     guideRow(localize("点击应用图标", "Clicking app icons"), symbol: "macwindow") {

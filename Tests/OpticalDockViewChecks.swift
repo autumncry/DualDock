@@ -245,9 +245,16 @@ struct OpticalDockViewChecks {
         }
 
         // Shared resizing captures one preference from the source screen, then
-        // resolves that same preference for each destination orientation. Folder
-        // artwork is nonsquare, so recomputing padding with the destination edge
-        // produces a visible release jump even though uniform icon tests pass.
+        // resolves that same preference for each destination orientation. Include
+        // deliberately nonsquare artwork: the square folder tray alone cannot
+        // catch a length jump caused by using the destination's axis for padding.
+        let wideFile = root.appendingPathComponent("wide-artwork")
+        try Data().write(to: wideFile)
+        check(NSWorkspace.shared.setIcon(drawing(asymmetric), forFile: wideFile.path, options: []),
+              "Could not install the isolated nonsquare icon fixture")
+        let wideApp = AppReference(id: "fixture.wide-artwork", name: "Wide", path: wideFile.path)
+        let wideBounds = IconArtworkBounds.measure(NSWorkspace.shared.icon(forFile: wideFile.path))
+        check(wideBounds.width > 1.5 * wideBounds.height, "Fixture artwork must differ between axes")
         for source in ["A", "B"] {
             for percent in [0.0, 50, 100] {
                 for gesture in ["length", "height", "corner"] {
@@ -256,7 +263,8 @@ struct OpticalDockViewChecks {
                     var config = DockConfiguration()
                     config.hideSystemDock = false; config.showBadges = false; config.showPreviews = false
                     config.synchronizeSizes = true
-                    config.entries = (0..<3).map { DockEntry(name: "Group \($0)", apps: groupApps, isGroup: true) }
+                    config.entries = [DockEntry(name: "Group", apps: groupApps, isGroup: true),
+                                      DockEntry(name: wideApp.name, apps: [wideApp])]
                     var sizing = DockCustomSizing.visualDefault
                     sizing.spacingPercent = percent; sizing.paddingOverride = 14
                     sizing.minimumHeightOverride = 72; sizing.shrinkBeforeScroll = false
@@ -303,6 +311,31 @@ struct OpticalDockViewChecks {
 
         let legacy = try fixture("legacy", edge: .bottom, percent: nil, fixed: false)
         defer { legacy.stopBackgroundServices() }
+        // Verify that the fourth thumbnail is visible and the grid does not
+        // shift or change when further members are added to the same group.
+        let members = entries.filter { !$0.isGroup }.compactMap { $0.apps.first }
+        func renderFolder(_ count: Int) -> NSImage {
+            let group = DockEntry(name: "Grid", apps: Array(members.prefix(count)), isGroup: true)
+            let tile = DockTile(entry: group, groupID: nil, store: legacy, size: 128)
+            let canvas = NSRect(x: 0, y: 0, width: 128, height: 128)
+            tile.applyGeometry(frame: canvas, iconFrame: canvas, dotFrame: .zero,
+                               baseIconSize: 128, edge: .bottom)
+            return NSImage(size: canvas.size, flipped: false) { _ in
+                tile.draw(canvas)
+                return true
+            }
+        }
+        let three = renderFolder(3), four = renderFolder(4), five = renderFolder(5)
+        for group in [three, four, five] {
+            let artwork = IconArtworkBounds.measure(group)
+            check(abs(artwork.minX - IconArtworkBounds.folder.minX) < 0.01
+                  && abs(artwork.minY - IconArtworkBounds.folder.minY) < 0.01
+                  && abs(artwork.maxX - IconArtworkBounds.folder.maxX) < 0.01
+                  && abs(artwork.maxY - IconArtworkBounds.folder.maxY) < 0.01,
+                  "Group pixels drifted from the optical spacing and badge anchor")
+        }
+        check(three.tiffRepresentation != four.tiffRepresentation, "Fourth member did not change the group icon")
+        check(four.tiffRepresentation == five.tiffRepresentation, "Fifth member displaced a visible thumbnail")
         // Deliberately asymmetric, offset artwork inside a much larger draw
         // canvas catches a regression back to using the whole tile as its drop zone.
         for edge in DockEdge.allCases {

@@ -305,42 +305,69 @@ final class DockTile: NSView, NSDraggingSource {
         }
     }
 
-    private func drawFolder(in rect: NSRect) {
-        let w = rect.width
-        let body = NSRect(x: rect.minX + 0.04 * w, y: rect.minY + 0.10 * w, width: 0.92 * w, height: 0.66 * w)
-        let tab = NSBezierPath(roundedRect: NSRect(x: body.minX, y: rect.minY + 0.58 * w,
-                                                  width: 0.42 * w, height: 0.25 * w), xRadius: 0.08 * w, yRadius: 0.08 * w)
-        NSColor.systemBlue.withAlphaComponent(0.8).setFill()
-        tab.fill()
-        NSBezierPath(roundedRect: body.offsetBy(dx: 0, dy: 0.04 * w), xRadius: 0.09 * w, yRadius: 0.09 * w).fill()
-        let page = NSRect(x: rect.minX + 0.14 * w, y: rect.minY + 0.31 * w, width: 0.72 * w, height: 0.41 * w)
-        NSColor.white.withAlphaComponent(0.88).setFill()
-        NSBezierPath(roundedRect: page, xRadius: 0.035 * w, yRadius: 0.035 * w).fill()
-        let front = NSBezierPath(roundedRect: NSRect(x: body.minX, y: body.minY, width: body.width, height: 0.52 * w), xRadius: 0.08 * w, yRadius: 0.08 * w)
-        NSGradient(starting: .systemCyan, ending: .systemBlue)?.draw(in: front, angle: -90)
-        for (index, app) in entry.apps.prefix(3).enumerated() {
-            store.icon(for: app).draw(in: memberIconFrame(index: index, in: rect))
+    private static let folderFinish = NSGradient(
+        starting: NSColor(srgbRed: 0.975, green: 0.982, blue: 0.991, alpha: 1),
+        ending: NSColor(srgbRed: 0.806, green: 0.832, blue: 0.864, alpha: 1)
+    )!
+
+    private func folderTray(in icon: CGRect) -> CGRect {
+        let body = IconArtworkBounds.folder
+        return CGRect(x: icon.minX + icon.width * body.minX, y: icon.minY + icon.height * body.minY,
+                      width: icon.width * body.width, height: icon.height * body.height)
+    }
+
+    private func drawFolder(in icon: CGRect) {
+        let tray = folderTray(in: icon)
+        let side = tray.width
+        let radius = side * 0.225
+        let face = NSBezierPath(roundedRect: tray, xRadius: radius, yRadius: radius)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.20)
+        shadow.shadowBlurRadius = side * 0.028
+        shadow.shadowOffset = NSSize(width: 0, height: -side * 0.020)
+        shadow.set()
+        NSColor(white: 0.78, alpha: 1).setFill()
+        face.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        Self.folderFinish.draw(in: face, angle: -90)
+
+        let line = side * 0.018
+        let rim = NSBezierPath(roundedRect: tray.insetBy(dx: line / 2, dy: line / 2),
+                               xRadius: radius - line / 2, yRadius: radius - line / 2)
+        NSColor.white.withAlphaComponent(0.72).setStroke()
+        rim.lineWidth = line
+        rim.stroke()
+
+        for index in 0..<4 {
+            let frame = memberIconFrame(index: index, in: tray)
+            if index < entry.apps.count {
+                store.icon(for: entry.apps[index]).draw(in: frame)
+            } else {
+                // Empty slots keep a one-member group recognizable. They follow
+                // the visible app bodies, inside the transparent icon canvases.
+                let well = frame.insetBy(dx: frame.width * 0.12, dy: frame.height * 0.12)
+                let rounding = well.width * 0.24
+                NSColor(white: 0.26, alpha: 0.085).setFill()
+                NSBezierPath(roundedRect: well, xRadius: rounding, yRadius: rounding).fill()
+            }
         }
     }
 
-    private func memberIconFrame(appID: String, in rect: CGRect) -> CGRect {
-        // Later members are represented by the folder front, behind its thumbnails.
-        let index = entry.apps.prefix(3).firstIndex { $0.id == appID }
-        return memberIconFrame(index: index, in: rect)
+    private func memberIconFrame(appID: String, in icon: CGRect) -> CGRect {
+        let tray = folderTray(in: icon)
+        if let index = entry.apps.prefix(4).firstIndex(where: { $0.id == appID }) {
+            return memberIconFrame(index: index, in: tray)
+        }
+        // Later members disappear into the tray between its four visible apps.
+        return tray.insetBy(dx: tray.width * 0.40, dy: tray.height * 0.40)
     }
 
-    private func memberIconFrame(index: Int?, in rect: CGRect) -> CGRect {
-        let centers: [CGFloat]
-        switch entry.apps.count {
-        case 1: centers = [0.5]
-        case 2: centers = [0.37, 0.63]
-        default: centers = [0.29, 0.5, 0.71]
-        }
-        let center = index.map { centers[$0] } ?? 0.5
-        let side = 0.31 * rect.width
-        let lift = index == 1 ? 0.035 * rect.width : 0
-        return CGRect(x: rect.minX + center * rect.width - side / 2,
-                      y: rect.minY + 0.18 * rect.width + lift, width: side, height: side)
+    private func memberIconFrame(index: Int, in tray: CGRect) -> CGRect {
+        let side = tray.width * 0.365
+        let x = tray.minX + tray.width * (index.isMultiple(of: 2) ? 0.30 : 0.70)
+        let y = tray.minY + tray.height * (index < 2 ? 0.70 : 0.30)
+        return CGRect(x: x - side / 2, y: y - side / 2, width: side, height: side)
     }
 
     override func mouseDown(with event: NSEvent) {

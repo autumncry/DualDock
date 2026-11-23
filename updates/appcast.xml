@@ -4,26 +4,28 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.8.6</title>
-            <pubDate>Mon, 23 Nov 2026 17:59:29 +0800</pubDate>
+            <title>2.8.7</title>
+            <pubDate>Mon, 23 Nov 2026 18:23:01 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.6</sparkle:fullReleaseNotesLink>
-            <sparkle:version>38</sparkle:version>
-            <sparkle:shortVersionString>2.8.6</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.7</sparkle:fullReleaseNotesLink>
+            <sparkle:version>39</sparkle:version>
+            <sparkle:shortVersionString>2.8.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.6
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.7
 
-Dock 设置侧栏将“屏幕与位置”和“显示内容”合并为 **多屏和显示内容**。右侧仍可分别设置各屏幕的位置和 Dock 显示的应用。搜索原名称会定位到对应分区。
+- 右键点按尚未固定的活动应用，选择 **加入应用组 → 组名**，即可将它固定到该组末尾。子菜单按 Dock 中的顺序列出已有分组。
+- 应用组图标改用浅银灰圆角托盘。前四个成员的真实图标按 2×2 排列，展开后可查看全部成员。有未读消息时，组图标继续显示红色叹号。
 
 ## English
 
-The Dock settings sidebar now has one **Displays & Content** entry. Display placement and the apps shown in the Dock keep their own sections. Searching for either original name takes you to that section.
+- Right-click an unpinned running app and choose **Add to App Group**, then pick an existing group. The app is pinned at the end of that group.
+- Group icons now show the first four members on a softly rounded silver tray. Click a group to see all its apps. The red exclamation badge still indicates unread items.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.6/DualDock-2.8.6-arm64.dmg" length="3473772" type="application/octet-stream" sparkle:edSignature="lKgqbiMLxxvMTofXHdCbtNQOvid70szs/gLzDIchoL/iZ0c+j84UKYCMsgRwixTnkXzpxeRYMS4Qzy3KJKvNAQ=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.7/DualDock-2.8.7-arm64.dmg" length="3469916" type="application/octet-stream" sparkle:edSignature="+lHdmSdOxG2Us5acG6lLxRWc9GDdu2RkVxVgFd+j/nipNCX1im5GYVtGU7iH01rZJvuqIuCo9UYFFGqnakXWCA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: sQOOxRujMnLmtscCNmuOMnHH4DWxEh89FGiUiryCmC4XlmKV5/1VO55RhsFCB3leyHVTNL2DjXVuLAEiooQFDA==
-length: 1847
+edSignature: Grx8/WSXNscByHbsUKlsFN2WnlVsbVxFiByNNDU9do4UCNEyXZ5pevfZsb0lNUUZ63GxVZea+b032BJf3QWHAg==
+length: 2103
 -->

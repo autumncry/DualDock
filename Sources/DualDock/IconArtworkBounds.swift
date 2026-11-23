@@ -4,7 +4,7 @@ import AppKit
 /// Soft shadows may overlap at zero spacing; solid icon bodies may not.
 enum IconArtworkBounds {
     static let full = CGRect(x: 0, y: 0, width: 1, height: 1)
-    static let folder = CGRect(x: 0.04, y: 0.10, width: 0.92, height: 0.73)
+    static let folder = CGRect(x: 0.08, y: 0.08, width: 0.84, height: 0.84)
 
     @MainActor static func measure(_ image: NSImage) -> CGRect {
         let side = 256

@@ -330,7 +330,7 @@ private extension DisplayCoordinator {
 private extension DockCoordinatorRefreshChecks {
     @MainActor static func checkOrganizationMotion(in directory: URL, check: (Bool, String) -> Void) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let apps = ["Pinned", "Active One", "Active Two", "Active Three", "Active Four", "Active Five"].map {
+        let apps = ["Pinned", "Active One", "Active Two", "Active Three", "Active Four", "Active Five", "Active Six", "Active Seven"].map {
             AppReference(id: "motion." + $0, name: $0, path: "/System/Applications/Notes.app")
         }
         var config = DockConfiguration()
@@ -353,6 +353,8 @@ private extension DockCoordinatorRefreshChecks {
         let initialID = moving.entry.id
         let oldCenter = moving.presentedIconCenterOnScreen!
         guard let menu = moving.menuProvider?() else { fatalError("Missing real context menu") }
+        let groupTitle = L("加入应用组", "Add to App Group")
+        check(menu.item(withTitle: groupTitle) == nil, "An empty group submenu was offered")
         let pin = menu.indexOfItem(withTitle: L("固定到 DualDock", "Pin to DualDock"))
         guard pin >= 0 else { fatalError("Pin to DualDock is missing from the actual app menu") }
         menu.performActionForItem(at: pin)
@@ -433,6 +435,54 @@ private extension DockCoordinatorRefreshChecks {
         }
         check(store.configuration.allAppIDs.contains(apps[4].id),
               "Refreshing the source tile while its menu is open prevented pinning the app")
+        // Two identically named groups must remain selectable by their stable IDs,
+        // even if their names/order change while the native menu is open.
+        let sibling = DockEntry(name: oldEntry.name, apps: [], isGroup: true)
+        store.update {
+            $0.renameGroup(id: oldEntry.id, name: sibling.name)
+            $0.entries.append(sibling)
+        }
+        drain()
+        guard let choices = tile(apps[6]).menuProvider?()?.item(withTitle: groupTitle)?.submenu,
+              choices.items.count == 2 else {
+            check(false, "Unpinned running app did not list both destination groups")
+            return
+        }
+        check(Set(choices.items.map(\.title)).count == 2, "Identically named groups were indistinguishable")
+        store.update {
+            $0.renameGroup(id: sibling.id, name: "Renamed destination")
+            $0.moveEntry(id: sibling.id, before: oldEntry.id)
+        }
+        drain()
+        choices.performActionForItem(at: 1)
+        check(store.configuration.entries.first?.id == sibling.id && store.configuration.entries.first?.apps == [apps[6]],
+              "A stale group index or name selected the wrong destination")
+        check(!store.displayedEntries.contains { !$0.isGroup && $0.apps.contains(apps[6]) },
+              "New member remained duplicated as an active or standalone pin")
+        choices.performActionForItem(at: 0)
+        check(store.configuration.entries.first?.apps == [apps[6]], "Stale menu moved an already pinned member")
+        let saved = try JSONDecoder().decode(DockConfiguration.self,
+            from: Data(contentsOf: directory.appendingPathComponent("configuration.json")))
+        check(saved.entries == store.configuration.entries, "Group choice was not persisted atomically")
+        store.update { $0.mode = .runningOnly }
+        drain()
+        let runningOrder = store.displayedEntries
+        guard let runningChoices = tile(apps[7]).menuProvider?()?.item(withTitle: groupTitle)?.submenu,
+              runningChoices.items.count == 2 else {
+            check(false, "Running-only display lost its saved destination groups")
+            return
+        }
+        store.update { $0.removeEntry(id: sibling.id) }
+        let afterRemoval = store.configuration.entries
+        runningChoices.performActionForItem(at: 0)
+        check(store.configuration.entries == afterRemoval, "Choosing a deleted group created an orphaned pin")
+        let previousMembers = store.configuration.entries.first { $0.id == oldEntry.id }!.apps
+        runningChoices.performActionForItem(at: 1)
+        check(store.displayedEntries == runningOrder, "Group selection changed the running-only layout")
+        store.update { $0.mode = .standard }
+        check(store.displayedEntries.first { $0.id == oldEntry.id }?.apps == previousMembers + [apps[7]],
+              "Switching back to standard mode lost the appended member or reordered its peers")
+        print("Verified native add-to-group menu, target identity, persistence, and running-only display")
         print("Verified context menu pin, stable app identity, new/existing group drops and transient cleanup")
     }
 }

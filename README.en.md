@@ -45,7 +45,9 @@ Drag apps in from Finder or add them through Settings. Drop near an icon's edge 
 
 Click a folder icon to expand its members horizontally. Reorder apps within a group, move them back to the main Dock, or use the context menu to rename or dissolve a group. The first launch imports pinned apps from the system Dock. DualDock then maintains its own layout; re-importing adds missing apps while preserving existing groups.
 
-Right-click a running app and choose **Pin to DualDock** to see it move into the pinned section. Dropping an app into a folder shows its icon settling into the group. These transitions respect the macOS Reduce Motion setting.
+Right-click an unpinned running app, choose **Add to App Group**, then pick a group to pin it at the end of that group. Choose **Pin to DualDock** to pin it as a separate icon. Dropping an app into a folder shows its icon settling into the group. These transitions respect the macOS Reduce Motion setting.
+
+<img src="docs/images/app-group-icons.png" width="264" alt="DualDock group icons with two, three and four members. The last group has an unread badge.">
 
 ### Preview, switch, and close windows
 

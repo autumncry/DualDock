@@ -775,13 +775,42 @@ final class DisplayCoordinator {
         }
     }
 
-    private func pin(_ app: AppReference, from window: NSWindow?) {
-        guard !store.configuration.allAppIDs.contains(app.id) else { return }
-        let source = organizationSource(window: window)
-        store.update { $0.insert([app]) }
-        if let (screenID, centers) = source, store.configuration.allAppIDs.contains(app.id) {
-            pendingOrganizationMotion = .init(screenID: screenID, previousCenters: centers, change: .pin(app.id))
+    private func pin(_ app: AppReference, into groupID: UUID? = nil, from tile: DockTile?) {
+        guard !stopped, !store.configuration.allAppIDs.contains(app.id) else { return }
+        let source = organizationSource(window: tile?.window)
+        let change: OrganizationChange?
+        if let groupID {
+            guard store.isRunning(app),
+                  let index = store.configuration.entries.firstIndex(where: { $0.isGroup && $0.id == groupID })
+            else { return }
+            let origin = tile?.presentedIconCenterOnScreen
+            store.update { $0.entries[index].apps.append(app) }
+            change = origin.map { .group(groupID, app, $0) }
+        } else {
+            store.update { $0.insert([app]) }
+            change = .pin(app.id)
         }
+        if let (screenID, centers) = source, let change, store.configuration.allAppIDs.contains(app.id) {
+            pendingOrganizationMotion = .init(screenID: screenID, previousCenters: centers, change: change)
+        }
+    }
+
+    private func addGroupChoices(to menu: NSMenu, app: AppReference, tile: DockTile) {
+        let groups = store.configuration.entries.filter(\.isGroup)
+        guard !groups.isEmpty else { return }
+        let title = L("加入应用组", "Add to App Group")
+        let submenu = NSMenu(title: title)
+        let names = Dictionary(grouping: groups, by: \.name)
+        for (index, group) in groups.enumerated() {
+            // Freshly created groups often share the same default name.
+            let duplicateName = (names[group.name]?.count ?? 0) > 1
+            let label = duplicateName ? "\(group.name) (\(index + 1))" : group.name
+            let id = group.id
+            submenu.addAction(label) { [weak self, weak tile] in self?.pin(app, into: id, from: tile) }
+            if duplicateName { submenu.items.last?.toolTip = group.apps.map(\.name).joined(separator: ", ") }
+        }
+        let item = menu.addItem(withTitle: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
     }
 
     private func handleDrop(_ info: NSDraggingInfo, target: DockEntry?, groupID: UUID?, merge: Bool, after: Bool) -> Bool {
@@ -917,8 +946,9 @@ final class DisplayCoordinator {
                 menu.addAction(L("从 DualDock 移除", "Remove from DualDock")) { [weak self] in self?.store.update { $0.removeApp(id: app.id) } }
             } else {
                 menu.addAction(L("固定到 DualDock", "Pin to DualDock")) { [weak self, weak tile] in
-                    self?.pin(app, from: tile?.window)
+                    self?.pin(app, from: tile)
                 }
+                addGroupChoices(to: menu, app: app, tile: tile)
             }
             menu.addAction(L("在 Finder 中显示", "Show in Finder")) { [weak self] in
                 self?.beginWindowIntent(replacingQueuedActions: true)

@@ -101,7 +101,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .systemDock: return "隐藏系统Dock 恢复系统Dock 自动隐藏 原生 hide the system Dock restore system Dock"
         case .apps: return "添加应用 重新导入系统Dock 打开配置目录 add apps import system Dock apps open configuration folder"
         case .permissions: return "屏幕录制 辅助功能 刷新授权状态 screen recording accessibility privacy refresh permissions grant access"
-        case .help: return "帮助 教程 拖拽 整理 点击应用图标 切换窗口 前置 最小化 还原 右键选择窗口 help guide organize drag clicking app icons switch windows minimize restore right click"
+        case .help: return "帮助 教程 拖拽 整理 加入应用组 add to app group 点击应用图标 切换窗口 前置 最小化 还原 右键选择窗口 help guide organize drag clicking app icons switch windows minimize restore right click"
         case .about: return "关于 版本 开源协议 项目主页 查看发布版本 提交问题与建议 下载 检查更新 软件更新 升级 反馈 支持 version check for updates software update install upgrade license github releases download support feedback"
         }
     }
