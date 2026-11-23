@@ -85,14 +85,14 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: return "大小 预设 图标间距 长度 Dock高度 两端留白 高级设置 尺寸模式 跟随系统Dock 恢复自动 同步各屏尺寸 放不下时先缩小图标 size preset icon spacing length Dock height end padding sizing mode advanced reset sync sizes across displays shrink icons before scrolling"
         case .displays: return "多屏 外接显示器 方向 Dock位置 底部 顶部 左侧 右侧 调整所有屏幕尺寸 调整此屏幕尺寸 screen monitor display Dock position left right top bottom adjust size for all displays"
         case .contents: return "显示模式 固定应用与分组 运行应用 仅正在运行的应用 pinned apps and groups running apps only display mode"
-        case .interaction: return "全屏 最大化窗口时隐藏Dock 自动隐藏 点击应用图标 悬停显示窗口预览 关闭窗口 缩略图 最小化 click minimize close thumbnail fullscreen maximize auto-hide hide the dock for maximized windows show window previews on hover"
+        case .interaction: return "全屏 最大化窗口时隐藏Dock 自动隐藏 悬停显示窗口预览 关闭窗口 缩略图 close thumbnail fullscreen maximize auto-hide hide the dock for maximized windows show window previews on hover"
         case .magnification: return "鼠标悬停放大 动画 放大峰值 联动范围 曲线预览 hover animation magnify icons on hover peak magnification magnification range curve"
         case .notifications: return "显示消息数量角标 角标大小 未读 红点 叹号 message count show notification badges display badge badge size scale unread"
         case .general: return "显示语言 英文 中文 开机自启动 登录时启动 打开系统登录项 取消启动申请 display language english chinese launch at login open login items settings cancel request startup"
         case .systemDock: return "隐藏系统Dock 恢复系统Dock 自动隐藏 原生 hide the system Dock restore system Dock"
         case .apps: return "添加应用 重新导入系统Dock 打开配置目录 add apps import system Dock apps open configuration folder"
         case .permissions: return "屏幕录制 辅助功能 刷新授权状态 screen recording accessibility privacy refresh permissions grant access"
-        case .help: return "帮助 教程 拖拽 整理 help guide organize drag"
+        case .help: return "帮助 教程 拖拽 整理 点击应用图标 切换窗口 前置 最小化 还原 右键选择窗口 help guide organize drag clicking app icons switch windows minimize restore right click"
         case .about: return "关于 版本 开源协议 项目主页 查看发布版本 提交问题与建议 下载 检查更新 软件更新 升级 反馈 支持 version check for updates software update install upgrade license github releases download support feedback"
         }
     }

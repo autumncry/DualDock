@@ -11,9 +11,10 @@ struct DockHelpSettingsView: View {
                         Text(localize("从 Finder 拖入应用，也可在“通用”中添加。将图标拖到另一个图标中央，稍作停留再松开即可成组。点击展开分组，右键重命名或拆分。", "Drag apps from Finder or add them in General. Hold an icon over another, then release to make a group. Click to expand the group or right-click to rename or ungroup it."))
                     }
                     Divider()
-                    guideRow(localize("切换窗口", "Switch windows"), symbol: "macwindow") {
-                        Text(localize("点击图标前置窗口，再点最小化，继续点还原。右键可指定窗口。最大化或全屏窗口只前置。悬停可查看预览，可关闭的窗口会显示 ×，未保存内容由原应用确认。", "Click an icon to bring its window forward, click again to minimize, and again to restore. Right-click to choose a window. Full-screen and maximized windows stay open. Hover to preview a window. The × closes supported windows with the app’s usual save confirmation."))
+                    guideRow(localize("点击应用图标", "Clicking app icons"), symbol: "macwindow") {
+                        Text(localize("点击图标可将选中的后台窗口带到前台。普通窗口已在前台时，点击可最小化，再点可还原。右键图标可选择窗口。最大化或全屏的窗口只前置。悬停可查看预览，可关闭的窗口会显示 ×，未保存内容由原应用确认。", "Click an app icon to bring the selected window forward. If it’s already in front, click to minimize it and click again to restore it. Right-click to choose a window. Clicking a maximized or full-screen window’s app icon only brings it forward. Hover to preview a window. The × closes supported windows with the app’s usual save confirmation."))
                     }
+                    .help(localize("窗口动画跟随 macOS 和原应用。", "Window animations follow macOS and the app."))
                     Divider()
                     guideRow(localize("多屏与全屏", "Displays & full screen"), symbol: "display") {
                         Text(localize("每块屏幕可单独设定位置，尺寸可选择同步。镜像屏幕跟随源屏幕。全屏时，指针在 Dock 所在边缘停留即可唤出，移开后收起。", "Set a position for each display and optionally sync their sizes. Mirrored displays follow their source. In full screen, hold the pointer at the Dock edge to reveal it and move away to hide it."))

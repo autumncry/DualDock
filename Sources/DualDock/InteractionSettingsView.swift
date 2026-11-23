@@ -32,13 +32,6 @@ struct InteractionSettingsView: View {
                 symbol: "macwindow.on.rectangle", isOn: binding(\.showPreviews))
                 .help(localize("仅显示取得有效截图的窗口。可关闭的窗口显示 ×。",
                                "Only windows with valid thumbnails appear. Windows that support closing show ×."))
-            Divider()
-            SettingsOptionLabel(
-                title: localize("点击应用图标", "Clicking app icons"),
-                detail: localize("点击依次前置、最小化和还原同一窗口。右键可选窗口。最大化或全屏的窗口只前置。",
-                                 "Click to bring the selected window forward, then click again to minimize or restore it. Right-click to choose a window. Maximized and full-screen windows stay open."),
-                symbol: "cursorarrow.click")
-                .help(localize("窗口动画跟随 macOS 和原应用。", "Window animations follow macOS and the app."))
         }
     }
 
