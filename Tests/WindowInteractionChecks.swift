@@ -25,6 +25,8 @@ struct WindowInteractionChecks {
         var actionDelay: UInt64 = 0
         var reads = 0
         var readIssue: DockWindowInventory?
+        var recoveries: [DockWindowIdentity] = []
+        var recovered = false
         let environment = WindowInteractionService.Environment(read: { _ in
             reads += 1
             if readDelay > 0 { try? await Task.sleep(nanoseconds: readDelay) }
@@ -42,6 +44,10 @@ struct WindowInteractionChecks {
                     isFocused: target && action != .minimize, isMain: current.isMain)
             }
             return .performed
+        }, recover: { identity, target in
+            check(target == app, "Recovery lost the requested application")
+            recoveries.append(identity)
+            return recovered
         })
         var service = WindowInteractionService(environment: environment)
 
@@ -151,6 +157,11 @@ struct WindowInteractionChecks {
         check(await service.toggle(for: app) == .targetUnavailable,
               "incomplete selected-window snapshot was not quietly rejected")
         check(calls.count == beforeIncomplete, "incomplete snapshot mutated another window")
+        check(recoveries == [completeWindows[1].id], "incomplete snapshot did not retry the exact remembered window")
+        recovered = true
+        check(handled(await service.toggle(for: app)) && recoveries == Array(repeating:completeWindows[1].id, count:2),
+              "a visible remembered window remained unreachable after a partial AX read")
+        check(calls.count == beforeIncomplete, "recovering B from the window server acted on A")
         windows = completeWindows
         readIssue = nil
         check((await service.list(for: app)).selectedID?.windowID == 2, "incomplete snapshot lost remembered B")

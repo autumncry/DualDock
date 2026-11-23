@@ -53,6 +53,39 @@ struct WindowMinimizedTransitionChecks {
             }
         }
 
+        // App activation and a readable AX focus are both possible while
+        // another process still covers this content window.
+        let targetFrame = CGRect(x: 100, y: 80, width: 800, height: 600)
+        func row(_ id: UInt32, _ pid: Int32, _ frame: CGRect = CGRect(x: 100, y: 80, width: 800, height: 600), layer: Int = 0,
+                 alpha: Double = 1, visible: Bool = true) -> [String: Any] {
+            [kCGWindowNumber as String: id, kCGWindowOwnerPID as String: pid, kCGWindowLayer as String: layer,
+             kCGWindowIsOnscreen as String: visible, kCGWindowAlpha as String: alpha,
+             kCGWindowBounds as String: frame.dictionaryRepresentation]
+        }
+        let target = row(310, 40)
+        let covering = row(312, 50)
+        let sibling = row(311, 40)
+        let separateDisplay = row(313, 50, targetFrame.offsetBy(dx: 2000, dy: 0))
+        let utility = row(314, 40, layer: 3)
+        let transparent = row(315, 50, alpha: 0)
+        let tiny = row(316, 50, CGRect(x: 150, y: 150, width: 20, height: 10))
+        let orderedOut = row(317, 40, visible: false)
+        func exposed(_ rows: [[String: Any]]) -> Bool {
+            VerifiedWindowActivation.isExposed(windowID:310, pid:40, in:rows)
+        }
+        check(!exposed([covering,target]), "An overlapping foreign window above the target was accepted")
+        check(exposed([target,covering]), "A window below the target incorrectly counted as covering it")
+        check(exposed([separateDisplay,utility,transparent,tiny,orderedOut,target]),
+              "Another display or a non-content surface suppressed a valid target")
+        check(!exposed([sibling,target]), "A different active document of the same app was mistaken for the requested window")
+        check(!exposed([row(310, 50)]) && !exposed([row(310, 40, alpha: 0)]) &&
+              !exposed([row(310, 40, visible: false)]), "Wrong owner, transparent or ordered-out target returned success")
+        check(VerifiedWindowActivation.isSoleVisibleContent(windowID:310,pid:40,in:[covering,utility,target,orderedOut]),
+              "Helper or ordered-out window prevented safe single-content recovery")
+        check(!VerifiedWindowActivation.isSoleVisibleContent(windowID:310,pid:40,in:[target,sibling]) &&
+              !VerifiedWindowActivation.isSoleVisibleContent(windowID:310,pid:40,in:[covering]),
+              "Reopen was permitted for an ambiguous or absent target")
+
         let knownLayers: [CGWindowID: Int] = [69: 0, 113: 3, 115: 0]
         check(!WindowInteractionBackend.eligibleContentWindow(id: 113, knownLayers: knownLayers),
               "A floating AXStandardWindow displaced the app's ordered-out content")

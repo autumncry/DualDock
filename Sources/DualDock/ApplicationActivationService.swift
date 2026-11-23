@@ -330,7 +330,7 @@ enum ActivationWindowIdentity {
 /// also have ordered that window out, which requires its native reopen event.
 @MainActor
 enum VerifiedWindowActivation {
-    private enum Exposure { case orderedOut, background, front }
+    private enum Exposure { case notListed, orderedOut, background, front }
 
     /// A targeted optionIncludingWindow query can return no rows for a window
     /// that the app has ordered out. The all-windows snapshot retains its ID.
@@ -351,64 +351,121 @@ enum VerifiedWindowActivation {
         }
     }
 
+    nonisolated static func orderedOnscreenRows() -> [[String: Any]] {
+        CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+    }
+
+    nonisolated private static func contentFrame(_ row: [String: Any]) -> CGRect? {
+        guard (row[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+              (row[kCGWindowIsOnscreen as String] as? Bool) != false,
+              ((row[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1) > 0.05,
+              let bounds = row[kCGWindowBounds as String] as? [String: Any],
+              let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+              !frame.isInfinite, !frame.isNull, frame.minX.isFinite, frame.minY.isFinite,
+              frame.width.isFinite, frame.height.isFinite, frame.width >= 80, frame.height >= 50 else { return nil }
+        return frame
+    }
+
+    /// App reopen has no window-ID argument. For a covered window we can
+    /// use it only if this exact document is the app's sole visible content.
+    nonisolated static func isSoleVisibleContent(windowID: CGWindowID, pid: pid_t, in ordered: [[String: Any]]) -> Bool {
+        let own = ordered.filter { ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid && contentFrame($0) != nil }
+        return own.count == 1 && (own[0][kCGWindowNumber as String] as? NSNumber)?.uint32Value == windowID
+    }
+
+    /// Window ordering is front to back. A document on a different display
+    /// can lead the global list without obscuring the target. Within one app,
+    /// selecting a different document must still bring that exact document forward.
+    nonisolated static func isExposed(windowID: CGWindowID, pid: pid_t, in ordered: [[String: Any]]) -> Bool {
+        guard let index = ordered.firstIndex(where: {
+            ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == windowID &&
+            ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
+        }), let target = contentFrame(ordered[index]) else { return false }
+        return !ordered[..<index].contains { row in
+            guard let other = contentFrame(row) else { return false }
+            if (row[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid { return true }
+            let overlap = other.intersection(target)
+            return overlap.width > 1 && overlap.height > 1
+        }
+    }
+
     static func raise(windowID: CGWindowID, pid: pid_t, launchDate: Date?,
                       applicationPath: String?, expectedApp: AppReference, reopenOrderedOut: Bool = true,
-                      didReopen: (() -> Void)? = nil) async -> Bool {
+                      didReopen: (() -> Void)? = nil, nativeTargetConfirmed: Bool = false,
+                      isCurrent: @escaping @Sendable () -> Bool = { true }) async -> Bool {
         guard windowID != 0, let launchDate, let applicationPath,
               let app = NSRunningApplication(processIdentifier: pid),
               let url = app.bundleURL, !Task.isCancelled else { return false }
         func live() -> Bool {
-            !app.isTerminated && app.launchDate == launchDate
+            !Task.isCancelled && isCurrent() && !app.isTerminated && app.launchDate == launchDate
                 && WindowCloseTargetPolicy.matchesApplication(expected: expectedApp,
                     capturedPath: applicationPath, capturedLaunchDate: launchDate,
                     liveBundleID: app.bundleIdentifier, livePath: app.bundleURL?.path, liveLaunchDate: app.launchDate)
         }
         func exposure() -> Exposure? {
-            guard !Task.isCancelled, live(),
-                  let rows = Self.rows(),
-                  let row = sourceRow(in: rows, windowID: windowID, pid: pid) else { return nil }
+            guard live() else { return nil }
+            guard let row = sourceRow(windowID: windowID, pid: pid) else { return .notListed }
             guard (row[kCGWindowIsOnscreen as String] as? Bool) == true else { return .orderedOut }
-            // The all-windows inventory includes ordered-out windows, but
-            // only the onscreen query provides the visible front-to-back order.
-            guard app.isActive, let ordered = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
-                kCGNullWindowID) as? [[String: Any]] else { return .background }
-            let foremost = ordered.first { candidate in
-                (candidate[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
-                    && (candidate[kCGWindowLayer as String] as? NSNumber)?.intValue == 0
-                    && ((candidate[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1) > 0.05
-                    && (candidate[kCGWindowBounds as String] as? [String: Any])
-                        .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
-                        .map { $0.width >= 80 && $0.height >= 50 } == true
-            }
-            return (foremost?[kCGWindowNumber as String] as? NSNumber)?.uint32Value == windowID ? .front : .background
+            guard app.isActive, NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return .background }
+            return isExposed(windowID: windowID, pid: pid, in: orderedOnscreenRows()) ? .front : .background
         }
-        guard let initial = exposure() else { return false }
-        if initial == .front { return true }
-        if initial == .orderedOut && reopenOrderedOut {
-            // A path-based reopen is ambiguous if multiple live instances
-            // share this application path. Keep an explicitly selected target exact.
+        let previousFront = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        func focusStillBelongsToRequest() -> Bool {
+            let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            return front == previousFront || front == pid
+        }
+        func reopen() async -> Bool {
+            // A path-based reopen is ambiguous if several instances own that path.
+            let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+            guard app.activationPolicy == .regular,
+                  !canonical.deletingLastPathComponent().pathComponents.contains(where: { $0.lowercased().hasSuffix(".app") }) else { return false }
             let instances = NSWorkspace.shared.runningApplications.filter {
-                !$0.isTerminated && $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath()
-                    == url.standardizedFileURL.resolvingSymlinksInPath()
+                !$0.isTerminated && $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == canonical
             }
-            guard instances.count == 1, instances.first?.processIdentifier == pid else { return false }
+            guard instances.count == 1, instances.first?.processIdentifier == pid, live(), focusStillBelongsToRequest() else { return false }
             let options = NSWorkspace.OpenConfiguration()
             options.activates = true
-            guard let opened = try? await NSWorkspace.shared.openApplication(at: url, configuration: options),
-                  opened.processIdentifier == pid, opened.launchDate == launchDate, !Task.isCancelled else { return false }
+            options.allowsRunningApplicationSubstitution = false
+            guard let opened = try? await NSWorkspace.shared.openApplication(at: canonical, configuration: options),
+                  opened.processIdentifier == pid, opened.launchDate == launchDate, live() else { return false }
             didReopen?()
-        } else if initial == .background {
+            return true
+        }
+        // Only a freshly matched AX object can bridge a missing CG record
+        // during a Space transition; a cached or preview ID alone cannot.
+        guard let initial = exposure(), initial != .notListed || nativeTargetConfirmed else { return false }
+        if initial == .front { return true }
+        var didRequestReopen = false
+        if initial == .orderedOut && reopenOrderedOut {
+            didRequestReopen = true
+            guard await reopen() else { return false }
+        } else {
+            guard live() else { return false }
             _ = app.unhide()
             _ = app.activate(options: [])
         }
         // A successful application activation alone cannot confirm which of
         // its windows came forward. Recheck the original window after reopen.
-        var raised = false
-        for _ in 0..<12 {
-            guard let current = exposure() else { return false }
+        let start = ProcessInfo.processInfo.systemUptime
+        let deadline = start + 0.8
+        var attempts = 0
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            guard let current = exposure(), current != .notListed || nativeTargetConfirmed else { return false }
             if current == .front { return true }
-            if current == .background && !raised && AXIsProcessTrusted() {
-                raised = await raiseAccessibleWindow(id: windowID, pid: pid, launchDate: launchDate)
+            guard focusStillBelongsToRequest() else { return false }
+            if !didRequestReopen, current == .background, ProcessInfo.processInfo.systemUptime >= start + 0.3,
+               isSoleVisibleContent(windowID: windowID, pid: pid, in: orderedOnscreenRows()) {
+                didRequestReopen = true
+                _ = await reopen()
+                continue
+            }
+            // An accepted AX action can be ignored while activation or a Space
+            // switch is in flight. Allow one later retry for the same window.
+            if attempts < 2, ProcessInfo.processInfo.systemUptime >= start + Double(attempts) * 0.20,
+               AXIsProcessTrusted() {
+                attempts += 1
+                await raiseAccessibleWindow(id: windowID, pid: pid, launchDate: launchDate, isCurrent: isCurrent)
             }
             do { try await Task.sleep(nanoseconds: 40_000_000) }
             catch { return false }
@@ -416,30 +473,30 @@ enum VerifiedWindowActivation {
         return exposure() == .front
     }
 
-    private static func raiseAccessibleWindow(id: CGWindowID, pid: pid_t, launchDate: Date) async -> Bool {
+    private static func raiseAccessibleWindow(id: CGWindowID, pid: pid_t, launchDate: Date,
+                                              isCurrent: @escaping @Sendable () -> Bool) async {
         let cancellation = ActivationRecoveryCancellation()
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    defer { continuation.resume() }
                     let deadline = ProcessInfo.processInfo.systemUptime + 0.10
                     func current() -> Bool {
-                        !cancellation.isCancelled && ProcessInfo.processInfo.systemUptime < deadline
+                        !cancellation.isCancelled && isCurrent() && ProcessInfo.processInfo.systemUptime < deadline
                             && NSRunningApplication(processIdentifier: pid)?.launchDate == launchDate
                     }
                     let app = AXUIElementCreateApplication(pid)
                     AXUIElementSetMessagingTimeout(app, 0.04)
                     var value: CFTypeRef?
                     guard current(), AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
-                          let windows = value as? [AXUIElement] else { continuation.resume(returning: false); return }
+                          let windows = value as? [AXUIElement] else { return }
                     for window in windows {
                         guard current() else { break }
                         AXUIElementSetMessagingTimeout(window, 0.03)
                         guard ActivationWindowIdentity.windowID(window) == id, current() else { continue }
-                        let result = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-                        continuation.resume(returning: result == .success || result == .cannotComplete)
+                        _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                         return
                     }
-                    continuation.resume(returning: false)
                 }
             }
         } onCancel: { cancellation.cancel() }

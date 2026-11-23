@@ -51,12 +51,14 @@ final class WindowInteractionService {
     @MainActor struct Environment {
         var read: (AppReference) async -> DockWindowInventory
         var perform: (DockWindowItem, DockWindowAction, AppReference) async -> DockWindowActionOutcome
+        var recover: (DockWindowIdentity, AppReference) async -> Bool = { _, _ in false }
         var invalidate: () -> Void = {}
 
         static func system() -> Environment {
             let backend = WindowInteractionBackend()
             return Environment(read: { app in await backend.read(for: app) },
                                perform: { item, action, app in await backend.perform(item, action: action, for: app) },
+                               recover: { identity, app in await backend.recover(identity, for: app) },
                                invalidate: { backend.cancel() })
         }
     }
@@ -115,8 +117,11 @@ final class WindowInteractionService {
             case .available(let available): items = available
             case .permissionDenied: return .fallbackToApplication
             case .unavailable:
-                return self.selected[self.key(app)] == nil ? .fallbackToApplication
-                    : .targetUnavailable
+                guard let retained = self.selected[self.key(app)] else { return .fallbackToApplication }
+                beforePerform()
+                let recovered = await self.environment.recover(retained, app)
+                guard request == self.generation, !Task.isCancelled else { return .handled }
+                return recovered ? .handled : .targetUnavailable
             }
             guard let target = self.preferred(in: items, for: app) else { return .fallbackToApplication }
             let action: DockWindowAction

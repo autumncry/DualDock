@@ -110,10 +110,12 @@ final class WindowInteractionBackend {
     func read(for app: AppReference) async -> DockWindowInventory {
         guard !Task.isCancelled else { return .unavailable }
         let path = Self.canonical(app.path)
+        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let processes = NSWorkspace.shared.runningApplications.compactMap { running -> ProcessSnapshot? in
             guard !running.isTerminated, let url = running.bundleURL, let date = running.launchDate,
                   running.bundleIdentifier == app.id || Self.canonical(url.path) == path else { return nil }
-            return .init(pid: running.processIdentifier, path: Self.canonical(url.path), launchDate: date, active: running.isActive)
+            return .init(pid: running.processIdentifier, path: Self.canonical(url.path), launchDate: date,
+                         active: running.isActive && running.processIdentifier == frontPID)
         }
         guard !processes.isEmpty else { return .available([]) }
         guard AXIsProcessTrusted() else { return .permissionDenied }
@@ -134,16 +136,30 @@ final class WindowInteractionBackend {
         let result: DockWindowActionOutcome = await withCheckedContinuation { continuation in
             queue.async { continuation.resume(returning: Self.apply(item, action: action, expected: app, displays: displays, allowed: allowed)) }
         }
-        guard result == .performed, action != .minimize else { return result }
-        guard allowed() else { return .superseded }
-        guard let running = Self.liveApplication(item.id, expected: app) else { return .missing }
-        running.unhide()
-        _ = running.activate(options: [])
-        // Activation is asynchronous and can initially select another document.
-        // Re-raise the same validated identity, without reopening the bundle.
-        return await withCheckedContinuation { continuation in
-            queue.async { continuation.resume(returning: Self.apply(item, action: .activate, expected: app, displays: displays, allowed: allowed)) }
-        }
+        if action == .minimize || result == .superseded { return result }
+        // A stale AX object cannot identify a replacement document. The
+        // WindowServer identity may still be valid even when AX has lost it.
+        guard result == .performed || (action == .activate && result == .missing) else { return result }
+        let visible = await recover(item.id, for: app, nativeTargetConfirmed: result == .performed, isCurrent: allowed)
+        guard allowed(), !Task.isCancelled else { return .superseded }
+        if visible { return .performed }
+        guard result != .missing, Self.liveApplication(item.id, expected: app) != nil,
+              VerifiedWindowActivation.sourceRow(windowID: item.id.windowID, pid: item.id.pid) != nil
+        else { return .missing }
+        return .failed
+    }
+
+    func recover(_ id: DockWindowIdentity, for app: AppReference) async -> Bool {
+        let epoch = actionEpoch
+        let request = epoch.current()
+        return await recover(id, for: app, nativeTargetConfirmed: false, isCurrent: { epoch.current() == request })
+    }
+
+    private func recover(_ id: DockWindowIdentity, for app: AppReference, nativeTargetConfirmed: Bool,
+                         isCurrent: @escaping @Sendable () -> Bool) async -> Bool {
+        await VerifiedWindowActivation.raise(windowID: id.windowID, pid: id.pid, launchDate: id.processLaunchDate,
+            applicationPath: id.applicationPath, expectedApp: app, reopenOrderedOut: false,
+            nativeTargetConfirmed: nativeTargetConfirmed, isCurrent: isCurrent)
     }
 
     nonisolated private static func canonical(_ path: String) -> String {
@@ -257,8 +273,7 @@ final class WindowInteractionBackend {
                 layers[id] = layer
             }
         }
-        let onscreen = Set(rows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }
-            .compactMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value })
+        let ordered = VerifiedWindowActivation.orderedOnscreenRows()
         var result: [DockWindowItem] = []
         for process in processes {
             let processIdentity = DockWindowIdentity(pid: process.pid, processLaunchDate: process.launchDate,
@@ -298,7 +313,8 @@ final class WindowInteractionBackend {
                     isMinimized: minimized, isFullscreen: fullscreen,
                     isMaximized: displays.contains { DockVisibilityPolicy.isMaximizedWindow(frame, in: $0.workarea)
                         || DockVisibilityPolicy.isMaximizedWindow(frame, in: $0.frame) },
-                    isFrontmost: process.active && isFocused && !minimized && onscreen.contains(id),
+                    isFrontmost: process.active && isFocused && !minimized
+                        && VerifiedWindowActivation.isExposed(windowID: id, pid: process.pid, in: ordered),
                     isFocused: isFocused, isMain: main.map { CFEqual($0, window) } ?? false))
             }
         }
@@ -349,6 +365,8 @@ final class WindowInteractionBackend {
             // click. Never minimize a different/newly focused document.
             guard reader.value(application, kAXFrontmostAttribute) as? Bool == true,
                   let focused = reader.element(application, kAXFocusedWindowAttribute), CFEqual(focused, target),
+                  VerifiedWindowActivation.isExposed(windowID: item.id.windowID, pid: item.id.pid,
+                      in: VerifiedWindowActivation.orderedOnscreenRows()),
                   reader.value(target, "AXFullScreen") as? Bool != true,
                   let frame = reader.frame(target),
                   !displays.contains(where: { DockVisibilityPolicy.isMaximizedWindow(frame, in: $0.workarea)
@@ -382,7 +400,10 @@ final class WindowInteractionBackend {
         guard allowed() else { return .superseded }
         _ = AXUIElementSetAttributeValue(application, kAXFocusedWindowAttribute as CFString, target)
         guard allowed() else { return .superseded }
-        return AXUIElementPerformAction(target, kAXRaiseAction as CFString) == .success ? .performed : .failed
+        // Some apps refuse AXRaise until activated. perform() verifies the
+        // exact window after activation before reporting success to the caller.
+        _ = AXUIElementPerformAction(target, kAXRaiseAction as CFString)
+        return .performed
     }
 
     nonisolated private static func awaitState(_ minimized: Bool, window: AXUIElement,

@@ -4,30 +4,28 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.8.2</title>
-            <pubDate>Fri, 20 Nov 2026 11:25:53 +0800</pubDate>
+            <title>2.8.3</title>
+            <pubDate>Mon, 23 Nov 2026 09:56:55 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.2</sparkle:fullReleaseNotesLink>
-            <sparkle:version>34</sparkle:version>
-            <sparkle:shortVersionString>2.8.2</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.3</sparkle:fullReleaseNotesLink>
+            <sparkle:version>35</sparkle:version>
+            <sparkle:shortVersionString>2.8.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.2
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.3
 
-- 设置窗口默认 820 × 560 pt。切换分类、切换语言或展开高级设置时保持原位。正文和选项字号放大，交互和通用设置按主题连续排列，可从侧栏跳到对应位置。
-- 活动应用的右键菜单改为“固定到 DualDock”。固定时可看到图标移入固定区，拖入应用夹时图标会缩进文件夹。打开应用夹时有轻微淡入。
-- 应用启动时，图标朝屏幕内侧轻轻抬起再落下。应用退出时，活动区图标淡出，已固定的图标留在原位。开启 macOS 的“减少动态效果”后直接显示操作结果。
+- 修复从主栏或应用夹点击 Muse 时，主窗口可能仍被 ChatGPT 等应用挡住的问题。DualDock 现在会检查所选窗口在桌面上的实际前后顺序，已被其他普通窗口盖住的窗口会优先前置。
+- 从预览选择窗口时使用相同的检查。若辅助功能清单暂时不可用，后续点击图标会尝试找回先前选择的同一扇窗口。
 
 ## English
 
-- Settings opens at 820 × 560 pt. The window stays in place as you switch sections or languages and expand advanced options. Larger text and continuous forms make related settings easier to read together.
-- Choose **Pin to DualDock** to move a running app into the pinned area. Dropping an app into a group shows its icon settling into the folder. Groups fade in when opened.
-- Launching an app gently lifts its icon. Quitting fades running-only icons out and keeps pinned icons in place. The transitions respect the macOS Reduce Motion setting.
+- Fixed an issue where clicking Muse in the Dock or an app group could leave its window behind another app. DualDock now checks the order of overlapping windows before choosing to minimize and after requesting activation.
+- Preview selections use the same foreground check. If the accessibility window list is temporarily unavailable, clicking the app icon can recover the previously selected window by its original identity.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.2/DualDock-2.8.2-arm64.dmg" length="3446970" type="application/octet-stream" sparkle:edSignature="3w6uqb7QJKDsautjVJquYAa0633F2CIBhI1ZJYJ2KCDFBJhR9mdD1+UOEWmW+eBaYue+2rKZHuYoRADH5t3CCQ=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.3/DualDock-2.8.3-arm64.dmg" length="3472291" type="application/octet-stream" sparkle:edSignature="0pLPnjqk0EM5BoxgYzfxt+o1q3OvInVq9kp6hziuxZ73oEOGrPIZ7uQMYHdiQzfbf9AZlsWW/Ki9tBjYwKJJBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: cSR6REBZtS2w1Sh+wNIzIAxv9Mqd6AHyRYqL9iiJymSEwlzv07c5fOU3UG5J/uj+b4COsXUlYtXw13Z4euIjDA==
-length: 2587
+edSignature: 0BcMX0OYLezK+3zWLc857p6frZpJP5X549vWWjg3toMVvrtNtE/HSsBeAx5ugtpzySgxVD2xMZpnxK2lHWKlCw==
+length: 2247
 -->
