@@ -16,9 +16,9 @@ struct SettingsOptionLabel: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 15, weight: .medium))
+                Text(title).font(.system(size: 13, weight: .medium))
                 if let detail {
-                    Text(detail).font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)

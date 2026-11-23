@@ -16,7 +16,7 @@ struct PermissionsSettingsView: View {
             Divider()
             HStack(alignment: .center, spacing: 12) {
                 Text(localize("授权后如未生效，请重新打开 DualDock。", "If changes haven’t taken effect, quit and reopen DualDock."))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Button(localize("刷新授权状态", "Refresh Permissions")) { store.refreshPermissions() }

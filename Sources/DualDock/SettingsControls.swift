@@ -50,7 +50,7 @@ struct SettingsFormRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 15, weight: .medium))
+                Text(title).font(.system(size: 13, weight: .medium))
                 if let note { Text(note).font(.system(size: 12)).foregroundStyle(.secondary) }
             }.frame(width: labelWidth, alignment: .leading)
             content.frame(maxWidth: .infinity, alignment: .leading)

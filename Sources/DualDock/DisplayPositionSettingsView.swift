@@ -24,7 +24,7 @@ struct DisplayPositionSettingsView: View {
                     }.padding(.horizontal, 5)
                 }
                 Text(localize("位置按屏幕保存；尺寸同步可在“外观与尺寸”中设置。", "Each display has its own position. Manage size synchronization in Appearance & Size."))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -35,7 +35,7 @@ struct DisplayPositionSettingsView: View {
             positionDiagram(display).frame(width: 110, height: 68)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(display.name).font(.system(size: 15, weight: .semibold))
+                    Text(display.name).font(.system(size: 13, weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     Text("\(Int(display.frame.width.rounded())) × \(Int(display.frame.height.rounded())) pt")

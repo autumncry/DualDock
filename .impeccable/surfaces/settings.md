@@ -3,7 +3,7 @@
 Platform: native macOS 14+, SwiftUI/AppKit. Retain the approved quiet, aligned design: compact sidebar and one shallow layout example above the controls on horizontal edges or beside them on vertical edges. The HTML draft is a layout reference, not an embedded web view.
 
 Four native toolbar categories organize the settings. The left sidebar searches page titles and control names in either language. Enter opens a result, Escape clears the query, and Command-F focuses the search.
-Use system fonts, native toolbar items, semantic colors and a 190 pt source list. Show a 23 pt heading with an accent symbol above the detail. Group related options with native GroupBox. Support the 740 pt minimum window width.
+Use system fonts, native toolbar items, semantic colors and a 190 pt source list. Show an 18 pt heading with an accent symbol above the detail. Group related options with native GroupBox. Support the 740 pt minimum window width.
 
 The screen selector and synchronization appear only in appearance's header. Common choices: size, unified 0–100 icon spacing, length and position. Spacing replaces density and the advanced duplicate. Zero joins visible artwork bounding boxes; 100 is a gap equal to the mean adjacent visible dimension along the ordering axis. Keep original bitmap scale/aspect; cache artwork metrics and give overlapping transparent canvases independent hit ownership. A new visual-spacing setting must not be silently reduced by overflow or overridden by distribution. Legacy layouts remain intact until an explicit spacing/preset/reset choice.
 

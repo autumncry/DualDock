@@ -76,7 +76,7 @@ struct AppearanceSettingsView: View {
         if adaptive {
             VStack(alignment: .leading, spacing: 10) {
                 Text(localize("大小、间距、留白与悬停放大跟随系统。切回自定义后保留你的配置。", "Size, spacing, padding, and magnification follow the system Dock. Switching back restores your custom settings."))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Divider()
                 positionRow
@@ -126,7 +126,7 @@ struct AppearanceSettingsView: View {
                 overrideControl(localize("Dock 高度", "Dock height"), field: .minimumHeight, keyPath: \.minimumHeightOverride,
                     actual: presentation.style.barThickness, range: bounds.minThickness...bounds.maxThickness, focus: .height)
                 Text(localize("高度会为图标自动留足空间，上限为适用屏幕短边的 12%。", "The Dock grows to fit its icons, up to 12% of the available display’s shorter side."))
-                    .font(.system(size: 13)).foregroundStyle(.secondary).padding(.bottom, 6)
+                    .font(.system(size: 12)).foregroundStyle(.secondary).padding(.bottom, 6)
                 Divider()
                 SettingsFormSlider(title: localize("固定长度占比", "Fixed length"), note: localize("按屏幕可用边长", "Share of available edge"), value: Binding(get: { preferences.fixedLengthPercent }, set: { value in
                     store.updateCustomSizing(for: selectedDisplayID) {
@@ -158,13 +158,13 @@ struct AppearanceSettingsView: View {
                         Text(preferences.spacingPercent == nil
                             ? localize("优先收紧间距；仍然放不下时可沿 Dock 滚动。", "Spacing tightens first. Scroll along the Dock if content still overflows.")
                             : localize("保持间距比例；缩小后仍放不下时可滚动。", "Keeps the spacing ratio. Scroll if icons still overflow."))
-                            .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.padding(.top, 8)
             }.padding(.top, 2)
         } label: {
             HStack {
-                Text(localize("高级设置", "Advanced")).font(.system(size: 14, weight: .medium))
+                Text(localize("高级设置", "Advanced")).font(.system(size: 13, weight: .medium))
                 Spacer()
                 Text(overrideCount > 0 ? localize("\(overrideCount) 项自定", "\(overrideCount) custom") : localize("留白、高度与溢出", "Padding, height, and overflow"))
                     .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -247,7 +247,7 @@ struct SettingsDisplayScope: View {
             Toggle(localize("同步各屏尺寸", "Sync sizes across displays"), isOn: Binding(get: { store.configuration.synchronizeSizes }, set: {
                 store.setSizeSynchronization($0, sourceDisplayID: selectedDisplayID)
             })).disabled(store.configuration.adaptiveSizing)
-                .font(.system(size: 12)).controlSize(.small).fixedSize()
+                .font(.system(size: 13)).controlSize(.small).fixedSize()
         }
     }
 }

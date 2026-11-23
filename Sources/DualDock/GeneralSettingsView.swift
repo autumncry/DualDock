@@ -41,7 +41,7 @@ struct GeneralSettingsView: View {
                 .disabled(!launchAtLogin.canChangeRegistration || launchAtLogin.status == .requiresApproval)
             if let error = launchAtLogin.errorMessage {
                 Text(error)
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
             if launchAtLogin.status == .requiresApproval || launchAtLogin.errorMessage != nil {
@@ -63,10 +63,10 @@ struct GeneralSettingsView: View {
                 Text(localize("固定应用与分组 + 运行应用", "Pinned apps and groups, plus running apps")).tag(DockMode.standard)
                 Text(localize("仅正在运行的应用", "Running apps only")).tag(DockMode.runningOnly)
             }
-            .labelsHidden().pickerStyle(.radioGroup).font(.system(size: 15))
+            .labelsHidden().pickerStyle(.radioGroup).font(.system(size: 13))
             Text(localize("所有屏幕同步。切回固定应用模式会恢复分组和顺序。",
                           "Applies to all displays. Switching back to pinned apps restores your groups and order."))
-                .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 

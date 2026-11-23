@@ -52,7 +52,7 @@ struct SettingsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
                     TextField(language("搜索设置", "Search settings"), text: $navigation.query)
-                        .font(.system(size: 14))
+                        .font(.system(size: 13))
                         .textFieldStyle(.plain).focused($searchFocused)
                         .onSubmit { if let first = navigation.visibleSections.first { navigation.show(first) } }
                         .onExitCommand { navigation.query = "" }
@@ -79,7 +79,7 @@ struct SettingsView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: section.symbol).font(.system(size: 15))
                                     .foregroundStyle(.secondary).frame(width: 19)
-                                Text(section.sidebarTitle).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                Text(section.sidebarTitle).font(.system(size: 13, weight: .medium)).lineLimit(1)
                             }.padding(.vertical, 5).tag(section)
                                 .accessibilityLabel(section.title)
                                 .help(section.title)
@@ -102,7 +102,7 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .focusDualDockSettingsSearch)) { _ in
             searchFocused = true
         }
-        .font(.system(size: 14))
+        .font(.system(size: 13))
         .toggleStyle(.switch)
         .controlSize(.regular)
         .frame(minWidth: SettingsWindowController.minimumContentSize.width,
@@ -162,7 +162,7 @@ struct SettingsView: View {
     private func heading(_ section: SettingsSection) -> some View {
         HStack(alignment: .top, spacing: 16) {
             Label {
-                Text(section.title).font(.system(size: 23, weight: .semibold))
+                Text(section.title).font(.system(size: 18, weight: .semibold))
             } icon: {
                 Image(systemName: section.symbol).foregroundStyle(Color.accentColor)
                     .font(.system(size: 22))

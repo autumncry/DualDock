@@ -4,28 +4,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.8.3</title>
-            <pubDate>Mon, 23 Nov 2026 09:56:55 +0800</pubDate>
+            <title>2.8.4</title>
+            <pubDate>Mon, 23 Nov 2026 10:04:19 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.3</sparkle:fullReleaseNotesLink>
-            <sparkle:version>35</sparkle:version>
-            <sparkle:shortVersionString>2.8.3</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.4</sparkle:fullReleaseNotesLink>
+            <sparkle:version>36</sparkle:version>
+            <sparkle:shortVersionString>2.8.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.3
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.4
 
-- 修复从主栏或应用夹点击 Muse 时，主窗口可能仍被 ChatGPT 等应用挡住的问题。DualDock 现在会检查所选窗口在桌面上的实际前后顺序，已被其他普通窗口盖住的窗口会优先前置。
-- 从预览选择窗口时使用相同的检查。若辅助功能清单暂时不可用，后续点击图标会尝试找回先前选择的同一扇窗口。
+设置页的文字改为接近 ChatGPT Mac 桌面界面的字号。调整覆盖中英文的导航、标题、选项和辅助说明。
 
 ## English
 
-- Fixed an issue where clicking Muse in the Dock or an app group could leave its window behind another app. DualDock now checks the order of overlapping windows before choosing to minimize and after requesting activation.
-- Preview selections use the same foreground check. If the accessibility window list is temporarily unavailable, clicking the app icon can recover the previously selected window by its original identity.
+Settings now uses a text scale based on the ChatGPT Mac desktop interface for navigation, headings, options, and supporting text in both languages.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.3/DualDock-2.8.3-arm64.dmg" length="3472291" type="application/octet-stream" sparkle:edSignature="0pLPnjqk0EM5BoxgYzfxt+o1q3OvInVq9kp6hziuxZ73oEOGrPIZ7uQMYHdiQzfbf9AZlsWW/Ki9tBjYwKJJBg=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.4/DualDock-2.8.4-arm64.dmg" length="3472316" type="application/octet-stream" sparkle:edSignature="yVIjOZW3gCYjUXa4l70bEvCX/Yl/aFxbUJzJiNEPqRvgZZzY2F2xfxgJoo+/6KjhrLPGK1Z9cvsXDdHT7/rSAQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: 0BcMX0OYLezK+3zWLc857p6frZpJP5X549vWWjg3toMVvrtNtE/HSsBeAx5ugtpzySgxVD2xMZpnxK2lHWKlCw==
-length: 2247
+edSignature: JUxnAEwd2NSdsR3ncqghfPZG6rdcnGt+M/2yYLV6w3Q7fJC3s/yaACKj/R3Ob/sjnykrAGSFQ/EsnP8122wwCA==
+length: 1713
 -->

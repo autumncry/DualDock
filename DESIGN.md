@@ -4,7 +4,7 @@ description: Quiet native macOS settings for a multi-display Dock.
 typography:
   page-title:
     fontFamily: "system-ui"
-    fontSize: "23pt"
+    fontSize: "18pt"
     fontWeight: 600
   section-title:
     fontFamily: "system-ui"
@@ -12,15 +12,15 @@ typography:
     fontWeight: 600
   control-label:
     fontFamily: "system-ui"
-    fontSize: "15pt"
+    fontSize: "13pt"
     fontWeight: 500
   body:
     fontFamily: "system-ui"
-    fontSize: "14pt"
+    fontSize: "13pt"
     fontWeight: 400
   supporting:
     fontFamily: "system-ui"
-    fontSize: "13pt"
+    fontSize: "12pt"
     fontWeight: 400
   caption:
     fontFamily: "system-ui"
@@ -73,14 +73,14 @@ Approved direction: quiet native macOS settings, based on the 2026-11-17 HTML dr
 
 ## Navigation and hierarchy
 
-Settings opens at 820 × 560 pt including its toolbar. The frame is independent of page selection, language, and disclosure states. Keep the user’s chosen frame across navigation. Related sections in Interaction, General, and the Dock display options flow down one scrollable form. Sidebar selections scroll to a section. Appearance, Help, and About each have their own detail view. An AppKit preferences toolbar shows Dock, Interaction, General, and Support with native icons and labels. Each category remembers its last selected page during the session. A 190 pt sidebar uses a native source list and a search field. Return opens the first matching page, Escape clears the search, and Command-F focuses it. Search includes both interface languages. The detail pane uses an accent-colored symbol, a 23 pt semibold heading and grouped native controls. Display scope stays next to the sizing page heading.
+Settings opens at 820 × 560 pt including its toolbar. The frame is independent of page selection, language, and disclosure states. Keep the user’s chosen frame across navigation. Related sections in Interaction, General, and the Dock display options flow down one scrollable form. Sidebar selections scroll to a section. Appearance, Help, and About each have their own detail view. An AppKit preferences toolbar shows Dock, Interaction, General, and Support with native icons and labels. Each category remembers its last selected page during the session. A 190 pt sidebar uses a native source list and a search field. Return opens the first matching page, Escape clears the search, and Command-F focuses it. Search includes both interface languages. The detail pane uses an accent-colored symbol, an 18 pt semibold heading and grouped native controls. Display scope stays next to the sizing page heading.
 
 
 ## Surfaces and typography
 
 `Font.system` and SF Symbols are authoritative. Do not substitute the Figma draft's Noto fallback in the native app. Primary/secondary semantic text adapts to Light/Dark. The main surface is `controlBackgroundColor`, sidebar uses a system material, and settings groups use native GroupBox styling. No sampled screenshot hex palette or decorative shadows.
 
-Option labels are 15 pt medium, body text is 14 pt and supporting text is 13 pt. Changing values use monospaced digits and an adjacent unit. Native controls own their focus, hover, disabled and pressed states. Keep long explanatory text wrapping rather than truncating it.
+Option labels are 13 pt medium, body text is 13 pt and supporting text is 12 pt. Changing values use monospaced digits and an adjacent unit. Native controls own their focus, hover, disabled and pressed states. Keep long explanatory text wrapping rather than truncating it.
 
 ## Appearance and sizing
 
