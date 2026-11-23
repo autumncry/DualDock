@@ -54,7 +54,7 @@ struct SettingsView: View {
                     TextField(language("搜索设置", "Search settings"), text: $navigation.query)
                         .font(.system(size: 13))
                         .textFieldStyle(.plain).focused($searchFocused)
-                        .onSubmit { if let first = navigation.visibleSections.first { navigation.show(first) } }
+                        .onSubmit { if let first = navigation.visibleSections.first { navigation.selectSidebarEntry(first) } }
                         .onExitCommand { navigation.query = "" }
                     if navigation.isSearching {
                         Button { navigation.query = ""; searchFocused = true } label: {
@@ -72,8 +72,8 @@ struct SettingsView: View {
                     Spacer()
                 } else {
                     List(selection: Binding<SettingsSection?>(
-                        get: { selected },
-                        set: { if let section = $0 { navigation.show(section) } }
+                        get: { navigation.isSearching ? nil : selected.sidebarEntry },
+                        set: { if let section = $0 { navigation.selectSidebarEntry(section) } }
                     )) {
                         ForEach(navigation.visibleSections) { section in
                             HStack(spacing: 8) {
@@ -81,8 +81,8 @@ struct SettingsView: View {
                                     .foregroundStyle(.secondary).frame(width: 19)
                                 Text(section.sidebarTitle).font(.system(size: 13, weight: .medium)).lineLimit(1)
                             }.padding(.vertical, 5).tag(section)
-                                .accessibilityLabel(section.title)
-                                .help(section.title)
+                                .accessibilityLabel(section.navigationTitle)
+                                .help(section.navigationTitle)
                         }
                     }.listStyle(.sidebar)
                         .id(language)

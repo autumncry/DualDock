@@ -22,7 +22,7 @@ enum SettingsCategory: String, CaseIterable {
         }
     }
 
-    var sections: [SettingsSection] { SettingsSection.allCases.filter { $0.category == self } }
+    var sections: [SettingsSection] { SettingsSection.sidebarEntries.filter { $0.category == self } }
 }
 
 enum SettingsSection: String, CaseIterable, Identifiable {
@@ -70,11 +70,20 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 
     var title: String { L(names.0, names.1) }
+
+    // Contents remains a scroll target and a searchable heading on the displays page.
+    var sidebarEntry: Self { self == .contents ? .displays : self }
+    static let sidebarEntries = allCases.filter { $0.sidebarEntry == $0 }
+
+    var navigationTitle: String {
+        self == .displays ? L("多屏和显示内容", "Displays & Content") : title
+    }
+
     var sidebarTitle: String {
         switch self {
         case .interaction: return L(names.0, "Windows")
         case .apps: return L(names.0, "Manage Apps")
-        default: return title
+        default: return navigationTitle
         }
     }
 
@@ -83,7 +92,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     private var keywords: String {
         switch self {
         case .appearance: return "大小 预设 图标间距 长度 Dock高度 两端留白 高级设置 尺寸模式 跟随系统Dock 恢复自动 同步各屏尺寸 放不下时先缩小图标 size preset icon spacing length Dock height end padding sizing mode advanced reset sync sizes across displays shrink icons before scrolling"
-        case .displays: return "多屏 外接显示器 方向 Dock位置 底部 顶部 左侧 右侧 调整所有屏幕尺寸 调整此屏幕尺寸 screen monitor display Dock position left right top bottom adjust size for all displays"
+        case .displays: return "多屏和显示内容 外接显示器 方向 Dock位置 底部 顶部 左侧 右侧 调整所有屏幕尺寸 调整此屏幕尺寸 displays and content screen monitor display Dock position left right top bottom adjust size for all displays"
         case .contents: return "显示模式 固定应用与分组 运行应用 仅正在运行的应用 pinned apps and groups running apps only display mode"
         case .interaction: return "全屏 最大化窗口时隐藏Dock 自动隐藏 悬停显示窗口预览 关闭窗口 缩略图 close thumbnail fullscreen maximize auto-hide hide the dock for maximized windows show window previews on hover"
         case .magnification: return "鼠标悬停放大 动画 放大峰值 联动范围 曲线预览 hover animation magnify icons on hover peak magnification magnification range curve"
@@ -135,10 +144,21 @@ final class SettingsNavigation: ObservableObject {
     init(_ section: SettingsSection = .general) { selected = section }
 
     var visibleSections: [SettingsSection] {
-        isSearching ? SettingsSection.allCases.filter { $0.matches(query) } : selected.category.sections
+        guard isSearching else { return selected.category.sections }
+        return SettingsSection.sidebarEntries.filter { entry in
+            entry.matches(query) || (entry == .displays && SettingsSection.contents.matches(query))
+        }
     }
 
     var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    func selectSidebarEntry(_ entry: SettingsSection) {
+        if entry == .displays, isSearching, SettingsSection.contents.matches(query) {
+            show(SettingsSection.contents)
+        } else {
+            show(entry)
+        }
+    }
 
     func show(_ section: SettingsSection) {
         selected = section

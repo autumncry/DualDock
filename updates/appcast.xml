@@ -4,26 +4,26 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.8.5</title>
-            <pubDate>Mon, 23 Nov 2026 11:03:31 +0800</pubDate>
+            <title>2.8.6</title>
+            <pubDate>Mon, 23 Nov 2026 17:59:29 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.5</sparkle:fullReleaseNotesLink>
-            <sparkle:version>37</sparkle:version>
-            <sparkle:shortVersionString>2.8.5</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.6</sparkle:fullReleaseNotesLink>
+            <sparkle:version>38</sparkle:version>
+            <sparkle:shortVersionString>2.8.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.5
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.6
 
-“点击应用图标”的说明已移至 **支持 → 使用方法**。现在搜索“点击应用图标”或“最小化”可直接找到这段说明。
+Dock 设置侧栏将“屏幕与位置”和“显示内容”合并为 **多屏和显示内容**。右侧仍可分别设置各屏幕的位置和 Dock 显示的应用。搜索原名称会定位到对应分区。
 
 ## English
 
-The guide to clicking app icons now lives in **Support → User Guide**. Search for “clicking app icons” or “minimize” to find it.
+The Dock settings sidebar now has one **Displays & Content** entry. Display placement and the apps shown in the Dock keep their own sections. Searching for either original name takes you to that section.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.5/DualDock-2.8.5-arm64.dmg" length="3473197" type="application/octet-stream" sparkle:edSignature="11lVM2FaEoGGPhaSXi6ZDsiwtpqN0A7hJgJrEypcxPOzdAwEwMMKd3BLHJ7aBs6WY50k4GkCMzBzQXJUiO84Bw=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.6/DualDock-2.8.6-arm64.dmg" length="3473772" type="application/octet-stream" sparkle:edSignature="lKgqbiMLxxvMTofXHdCbtNQOvid70szs/gLzDIchoL/iZ0c+j84UKYCMsgRwixTnkXzpxeRYMS4Qzy3KJKvNAQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: HQLJQUqGU2AHakt0RHAF5LgUtFx2N9MSdIckLKPJuchfnDGupK+Nqyort9WEOAHZ6urg5TcX8dxXqE+OSpQ7Bw==
-length: 1728
+edSignature: sQOOxRujMnLmtscCNmuOMnHH4DWxEh89FGiUiryCmC4XlmKV5/1VO55RhsFCB3leyHVTNL2DjXVuLAEiooQFDA==
+length: 1847
 -->

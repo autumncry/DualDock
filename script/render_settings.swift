@@ -156,6 +156,15 @@ import ScreenCaptureKit
             navigation.show(expected)
             precondition(toolbar.selectedItemIdentifier?.rawValue == expected.category.rawValue && navigation.query.isEmpty)
         }
+        precondition(SettingsCategory.dock.sections == [.appearance, .displays])
+        for (query, target) in [("多屏和显示内容", SettingsSection.displays), ("Displays & Content", .displays),
+                                ("屏幕与位置", .displays), ("Dock position", .displays),
+                                ("显示内容", .contents), ("running apps only", .contents)] {
+            navigation.query = query
+            precondition(navigation.visibleSections == [.displays])
+            navigation.selectSidebarEntry(.displays)
+            precondition(navigation.selected == target && navigation.selected.sidebarEntry == .displays)
+        }
         navigation.query = "unmatched-98e1"
         precondition(navigation.visibleSections.isEmpty)
         navigation.show(SettingsSection.notifications)
@@ -290,7 +299,7 @@ import ScreenCaptureKit
 
         try JSONSerialization.data(withJSONObject:samples,options:[.prettyPrinted,.sortedKeys])
             .write(to:output.appendingPathComponent("compact-window-metrics.json"))
-        print("Verified native settings: 12 pages × 2 languages, search, toolbar, live content changes and user resizing")
+        print("Verified native settings: \(SettingsSection.sidebarEntries.count) sidebar entries, \(SettingsSection.allCases.count) sections × 2 languages, search, toolbar, live content changes and user resizing")
     }
 
     /// Approximate the empty strip below the last detail row. Ignore sidebar,
