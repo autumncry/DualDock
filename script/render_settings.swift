@@ -156,7 +156,11 @@ import ScreenCaptureKit
             navigation.show(expected)
             precondition(toolbar.selectedItemIdentifier?.rawValue == expected.category.rawValue && navigation.query.isEmpty)
         }
-        precondition(SettingsCategory.dock.sections == [.appearance, .displays])
+        precondition(SettingsCategory.dock.sections == [.appearance, .displays, .groupAppearance])
+        for query in ["文件夹外观", "背景颜色", "背景透明度", "folder style", "background opacity"] {
+            navigation.query = query
+            precondition(navigation.visibleSections.contains(.groupAppearance))
+        }
         for (query, target) in [("多屏和显示内容", SettingsSection.displays), ("Displays & Content", .displays),
                                 ("屏幕与位置", .displays), ("Dock position", .displays),
                                 ("显示内容", .contents), ("running apps only", .contents)] {
@@ -269,6 +273,16 @@ import ScreenCaptureKit
         settle()
         navigation.show(SettingsSection.appearance)
         samples.append(try captureNative("compact-en-minimum-appearance"))
+        let originalFolder = store.configuration.folderAppearance
+        navigation.show(SettingsSection.groupAppearance)
+        store.update {
+            $0.folderAppearance = DockFolderAppearance(style: .glass,
+                backgroundColor: DockFolderColor(red: 0.2, green: 0.55, blue: 0.65), backgroundOpacity: 0.6)
+        }
+        samples.append(try captureNative("compact-en-minimum-groupAppearance-tinted"))
+        store.update { $0.folderAppearance.backgroundOpacity = 0 }
+        samples.append(try captureNative("compact-en-minimum-groupAppearance-clear"))
+        store.update { $0.folderAppearance = originalFolder }
         try demand(window.frame == resized,
                    "Category navigation changed the resized window")
 

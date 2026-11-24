@@ -43,6 +43,7 @@ struct DockVisibilityControllerChecks {
         var secondaryInteracting = false
         var applied: [(TimeInterval, DockVisibilityController.Snapshot)] = []
         var pointer = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+        var autoHideDock = false
         var pointerInside = false
         var interacting = false
         var targetFrame = screen.visibleFrame
@@ -58,7 +59,7 @@ struct DockVisibilityControllerChecks {
                     pointerInside: false, interacting: secondaryInteracting))
             }
             return targets
-        }, autoHide: { false }, pointer: { pointer }, apply: { applied.append((ProcessInfo.processInfo.systemUptime, $0)) })
+        }, autoHideWhenMaximized: { false }, autoHideDock: { autoHideDock }, pointer: { pointer }, apply: { applied.append((ProcessInfo.processInfo.systemUptime, $0)) })
         var checks = 0
         var failures: [String] = []
         func check(_ value: Bool, _ message: String) {
@@ -217,6 +218,44 @@ struct DockVisibilityControllerChecks {
         activeTarget = true
         controller.refresh()
         check(applied.last?.1.hidden == [id], "Reconnected target did not use current fullscreen state")
+
+        // Enable the ordinary desktop option while fullscreen is already
+        // revealed. This must retain that display's active interaction.
+        pointer = NSPoint(x: physical.midX, y: physical.minY + 1)
+        controller.refresh()
+        _ = pump(for: 0.26) { applied.last?.1.hidden.isEmpty == true }
+        interacting = true
+        pointer = NSPoint(x: physical.midX, y: physical.midY)
+        autoHideDock = true
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden.isEmpty == true && applied.last?.1.fullscreen == [id],
+              "Turning on ordinary auto-hide interrupted an open fullscreen interaction")
+        autoHideDock = false
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden.isEmpty == true, "Turning off ordinary auto-hide interrupted fullscreen")
+        interacting = false
+        windows.fullscreen = []
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden.isEmpty == true, "Returning to ordinary desktop with both settings off")
+        autoHideDock = true
+        targetFrame = CGRect(x: physical.minX, y: physical.minY + 80, width: physical.width, height: physical.height - 80)
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden == [id] && applied.last?.1.fullscreen.isEmpty == true, "Ordinary desktop did not hide")
+        pointer = NSPoint(x: physical.midX, y: physical.minY + 1)
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden == [id], "A hidden Dock needs a deliberate edge dwell")
+        _ = pump(for: 0.34) { applied.last?.1.hidden.isEmpty == true }
+        check(applied.last?.1.hidden.isEmpty == true, "Physical bottom edge failed with reserved system Dock space")
+        pointer = NSPoint(x: physical.midX, y: physical.midY)
+        interacting = true
+        _ = pump(.eventTracking, for: 0.34)
+        check(applied.last?.1.hidden.isEmpty == true, "Tracking a desktop menu/resize lost the Dock")
+        interacting = false
+        _ = pump(for: 0.45) { applied.last?.1.hidden == [id] }
+        check(applied.last?.1.hidden == [id], "Desktop did not hide after interaction ended")
+        autoHideDock = false
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden.isEmpty == true, "Turning desktop auto-hide off did not show the ordinary Dock")
 
         // Stop immediately after posting an event, before its MainActor task can
         // execute. A previously retained provider callback must also be harmless.

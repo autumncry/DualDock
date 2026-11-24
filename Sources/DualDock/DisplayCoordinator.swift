@@ -60,13 +60,15 @@ final class DisplayCoordinator {
     private var renderedShowBadges: Bool?
     private var renderedHideSystemDock: Bool?
     private var renderedRunningIDs = Set<String>()
+    private var folderRedrawScheduled = false
     private var tileAppearanceNeedsRefresh = false
     private var stopped = false
     private var latestWindowIntent: UInt64 = 0
     private var previewActivation: Task<Void, Never>?
     private var replacingWindowIntent: UInt64 = 0
     private var pointerOutsideSince: Date?
-    private var contextMenuTracking = false
+    private var contextMenuScreen: CGDirectDisplayID?
+    private var contextMenuTracking: Bool { contextMenuScreen != nil }
     private var menuTrackingObserver: MenuTrackingObserver?
 
     /// Hidden coordinators exercise the real update pipeline without presenting UI.
@@ -82,7 +84,8 @@ final class DisplayCoordinator {
             // @Published emits the incoming value while the store still holds the old one.
             let previous = self.store.configuration
             if next.badgeScale != previous.badgeScale, next.showBadges { self.scheduleBadgeRedraw(labelsChanged: false) }
-            if !next.matchesExceptBadgeScale(previous) { self.scheduleGeometryRefresh() }
+            if next.folderAppearance != previous.folderAppearance { self.scheduleFolderRedraw() }
+            if !next.matchesExceptTileArtwork(previous) { self.scheduleGeometryRefresh() }
         }.store(in: &subscriptions)
         store.$runningApps.dropFirst().sink { [weak self] _ in
             self?.tileAppearanceNeedsRefresh = true
@@ -124,7 +127,8 @@ final class DisplayCoordinator {
         self.poll = poll
         visibility = DockVisibilityController(windows: store.windows,
             targets: { [weak self] in self?.visibilityTargets() ?? [] },
-            autoHide: { [weak self] in self?.store.configuration.autoHideWhenMaximized ?? false },
+            autoHideWhenMaximized: { [weak self] in self?.store.configuration.autoHideWhenMaximized ?? false },
+            autoHideDock: { [weak self] in self?.store.configuration.autoHideDock ?? false },
             apply: { [weak self] snapshot in self?.applyVisibility(snapshot) })
         refreshDisplays()
     }
@@ -355,6 +359,38 @@ final class DisplayCoordinator {
         docks.values.forEach { $0.strip.resetMagnification() }
     }
 
+    private func scheduleFolderRedraw() {
+        guard !stopped, !folderRedrawScheduled else { return }
+        folderRedrawScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            self.folderRedrawScheduled = false
+            let bounds = DockFolderArtwork.contentBounds(for: self.store.configuration.folderAppearance.style)
+            for (id, dock) in self.docks where dock.strip.refreshFolderArtwork(contentBounds: bounds) {
+                let presentation = self.store.presentation(for: dock.displayID)
+                _ = dock.strip.updatePresentation(presentation)
+                dock.panel.placeDock(dock.strip, in: self.placementBounds(for: dock.screen), display: false)
+                if self.popupScreen == id { self.reanchorPopups(on: dock) }
+            }
+        }
+    }
+
+    private func reanchorPopups(on dock: ScreenDock) {
+        if let groupPanel, let members = groupPanel.contentView as? DockStripView,
+           let id = members.tiles.first?.groupID,
+           let source = dock.strip.tiles.first(where: { $0.entry.id == id }) {
+            popupAnchor = tileRect(source)
+            groupPanel.setFrame(popupFrame(size: groupPanel.frame.size, anchor: popupAnchor,
+                                           screen: dock.screen, edge: groupEdge), display: false)
+        }
+        if let previewPanel, let previewSource {
+            if groupPanel == nil { popupAnchor = interactionRect(previewSource) }
+            previewAnchor = tileRect(previewSource)
+            previewPanel.setFrame(popupFrame(size: previewPanel.frame.size, anchor: previewAnchor,
+                                             screen: dock.screen, edge: previewEdge), display: false)
+        }
+    }
+
     private func scheduleBadgeRedraw(labelsChanged: Bool) {
         guard !stopped else { return }
         pendingBadgeLabelChange = pendingBadgeLabelChange || labelsChanged
@@ -432,7 +468,7 @@ final class DisplayCoordinator {
         tile.menuProvider = { [weak self, weak tile] in
             guard let self, let tile else { return NSMenu() }
             self.dismissPreview()
-            return self.menu(for: tile)
+            return self.menu(for: tile, on: Self.id(screen))
         }
         if !tile.entry.isGroup, let app = tile.entry.apps.first {
             tile.prepareMenu = { [weak self, weak tile] in
@@ -440,7 +476,7 @@ final class DisplayCoordinator {
                 self.dismissPreview()
                 let snapshot = await self.windowInteractions.list(for: app)
                 guard !Task.isCancelled, !self.stopped else { return nil }
-                return self.menu(for: tile, windows: snapshot)
+                return self.menu(for: tile, on: Self.id(screen), windows: snapshot)
             }
         }
         tile.onDrop = { [weak self, weak tile] info, merge, after in
@@ -716,7 +752,7 @@ final class DisplayCoordinator {
                 edge: dock.strip.layoutGeometry?.edge ?? .bottom,
                 backdrop: dock.panel.convertToScreen(dock.strip.convert(dock.strip.backdropFrame, to: nil)),
                 pointerInside: dock.panel.isVisible && dock.strip.containsInteractivePoint(local),
-                interacting: dock.strip.isInteracting || popupOpen)
+                interacting: dock.strip.isInteracting || popupOpen || contextMenuScreen == id)
         }
     }
 
@@ -898,11 +934,11 @@ final class DisplayCoordinator {
         }
     }
 
-    private func menu(for tile: DockTile, windows: DockWindowListSnapshot? = nil) -> NSMenu {
+    private func menu(for tile: DockTile, on screen: CGDirectDisplayID, windows: DockWindowListSnapshot? = nil) -> NSMenu {
         let menu = NSMenu()
         let observer = MenuTrackingObserver(
-            opened: { [weak self] in self?.contextMenuTracking = true },
-            closed: { [weak self] in self?.contextMenuTracking = false }
+            opened: { [weak self] in self?.contextMenuScreen = screen },
+            closed: { [weak self] in self?.contextMenuScreen = nil }
         )
         menuTrackingObserver = observer
         menu.delegate = observer

@@ -336,6 +336,7 @@ struct OpticalDockViewChecks {
         }
         check(three.tiffRepresentation != four.tiffRepresentation, "Fourth member did not change the group icon")
         check(four.tiffRepresentation == five.tiffRepresentation, "Fifth member displaced a visible thumbnail")
+        checkFolderStyles(check)
         // Deliberately asymmetric, offset artwork inside a much larger draw
         // canvas catches a regression back to using the whole tile as its drop zone.
         for edge in DockEdge.allCases {
@@ -380,6 +381,7 @@ struct OpticalDockViewChecks {
         if CommandLine.arguments.count > 2, !CommandLine.arguments[2].isEmpty {
             let output = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
             try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            try exportFolderStyles(to: output)
             let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1800, pixelsHigh: 880,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
@@ -427,5 +429,83 @@ struct OpticalDockViewChecks {
         if failures.count > 60 { print("Additional failures: \(failures.count - 60)") }
         print("Optical Dock AppKit checks: \(checks), failures: \(failures.count); isolated preferences, hidden windows, no desktop input")
         exit(failures.isEmpty ? 0 : 1)
+    }
+
+    @MainActor private static func bitmap(_ size: CGSize, scale: Int = 1, draw: () -> Void) -> NSBitmapImageRep {
+        let pixels = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * scale,
+            pixelsHigh: Int(size.height) * scale, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+            isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 32)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: pixels)
+        NSGraphicsContext.current!.cgContext.scaleBy(x: CGFloat(scale), y: CGFloat(scale))
+        draw()
+        NSGraphicsContext.restoreGraphicsState()
+        return pixels
+    }
+
+    @MainActor private static func checkFolderStyles(_ check: (Bool, String) -> Void) {
+        let side = 128
+        let canvas = CGRect(x: 0, y: 0, width: side, height: side)
+        let tint = DockFolderColor(red: 0.82, green: 0.12, blue: 0.40)
+        let chip = NSImage(size: CGSize(width: 16, height: 16), flipped: false) { r in
+            NSColor.green.setFill()
+            r.fill()
+            return true
+        }
+        var rendered: Set<Data> = []
+        for style in DockFolderStyle.allCases {
+            func raster(_ alpha: Double, color: DockFolderColor? = nil, icons: [NSImage] = []) -> Data {
+                let pixels = bitmap(canvas.size) {
+                    DockFolderArtwork.draw(in: canvas, appearance: .init(style: style,
+                        backgroundColor: color, backgroundOpacity: alpha), icons: icons)
+                }
+                return Data(bytes: pixels.bitmapData!, count: pixels.bytesPerRow * pixels.pixelsHigh)
+            }
+            let full = raster(1)
+            check(rendered.insert(full).inserted, "\(style) duplicated another folder design")
+            check(raster(1, color: tint) != full, "\(style) ignored a custom tint")
+            let hidden = raster(0, color: tint)
+            check(!hidden.contains(where: { $0 != 0 }), "\(style) left background pixels at zero opacity")
+            let half = raster(0.5)
+            let alphas = stride(from: 3, to: full.count, by: 4)
+            check(alphas.allSatisfy { abs(Double(full[$0]) * 0.5 - Double(half[$0])) < 2 },
+                  "\(style) did not composite the entire material at half opacity")
+            let members = [chip, chip, chip, chip]
+            let isolated = raster(0, icons: members)
+            let tinted = raster(0, color: tint, icons: members)
+            check(isolated == tinted && isolated.contains(255), "\(style) tinted or hid its members at zero opacity")
+            let count = DockFolderArtwork.visibleMemberCount(for: style)
+            for index in 0..<count {
+                let slot = DockFolderArtwork.memberFrame(index: index, count: count, in: canvas, style: style)
+                let x = Int(slot.midX), y = side - 1 - Int(slot.midY)
+                check(isolated[(y * side + x) * 4 + 3] == 255, "\(style) drop target missed member \(index)")
+            }
+            let image = NSImage(size: canvas.size, flipped: false) { r in
+                DockFolderArtwork.draw(in: r, appearance: .init(style: style), icons: [])
+                return true
+            }
+            let actual = IconArtworkBounds.measure(image)
+            let expected = DockFolderArtwork.contentBounds(for: style)
+            check(abs(actual.minX - expected.minX) < 0.01 && abs(actual.minY - expected.minY) < 0.01
+                  && abs(actual.maxX - expected.maxX) < 0.01 && abs(actual.maxY - expected.maxY) < 0.01,
+                  "\(style) optical bounds differ from its material: \(actual) vs \(expected)")
+        }
+    }
+
+    @MainActor private static func exportFolderStyles(to directory: URL) throws {
+        let size = CGSize(width: 480, height: 100)
+        let icons = ["Mail", "Calendar", "Notes", "Music"].map {
+            NSWorkspace.shared.icon(forFile: "/System/Applications/\($0).app")
+        }
+        let pixels = bitmap(size, scale: 2) {
+            NSColor(white: 0.13, alpha: 1).setFill()
+            CGRect(origin: .zero, size: size).fill()
+            for (column, style) in DockFolderStyle.allCases.enumerated() {
+                let r = CGRect(x: 12 + column * 96, y: 14, width: 72, height: 72)
+                DockFolderArtwork.draw(in: r, appearance: .init(style: style), icons: icons)
+            }
+        }
+        try pixels.representation(using: .png, properties: [:])!
+            .write(to: directory.appendingPathComponent("folder-styles.png"))
     }
 }

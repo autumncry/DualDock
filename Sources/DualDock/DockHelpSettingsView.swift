@@ -17,7 +17,7 @@ struct DockHelpSettingsView: View {
                     .help(localize("窗口动画跟随 macOS 和原应用。", "Window animations follow macOS and the app."))
                     Divider()
                     guideRow(localize("多屏与全屏", "Displays & full screen"), symbol: "display") {
-                        Text(localize("每块屏幕可单独设定位置，尺寸可选择同步。镜像屏幕跟随源屏幕。全屏时，指针在 Dock 所在边缘停留即可唤出，移开后收起。", "Set a position for each display and optionally sync their sizes. Mirrored displays follow their source. In full screen, hold the pointer at the Dock edge to reveal it and move away to hide it."))
+                        Text(localize("每块屏幕可单独设定位置，尺寸可选择同步。镜像屏幕跟随源屏幕。开启“自动隐藏 Dock”后，指针在对应屏幕边缘停留可唤出，移开后收起。全屏时也可这样唤出 Dock。", "Set a position for each display and optionally sync their sizes. Mirrored displays follow their source. With auto-hide on or an app in full screen, pause at the Dock edge to reveal it and move away to hide it."))
                     }
                 }.padding(.horizontal, 6)
             }

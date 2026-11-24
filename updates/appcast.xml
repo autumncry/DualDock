@@ -4,28 +4,38 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.8.7</title>
-            <pubDate>Mon, 23 Nov 2026 18:23:01 +0800</pubDate>
+            <title>2.9.0</title>
+            <pubDate>Tue, 24 Nov 2026 15:14:57 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.8.7</sparkle:fullReleaseNotesLink>
-            <sparkle:version>39</sparkle:version>
-            <sparkle:shortVersionString>2.8.7</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.9.0</sparkle:fullReleaseNotesLink>
+            <sparkle:version>40</sparkle:version>
+            <sparkle:shortVersionString>2.9.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.8.7
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.9.0
 
-- 右键点按尚未固定的活动应用，选择 **加入应用组 → 组名**，即可将它固定到该组末尾。子菜单按 Dock 中的顺序列出已有分组。
-- 应用组图标改用浅银灰圆角托盘。前四个成员的真实图标按 2×2 排列，展开后可查看全部成员。有未读消息时，组图标继续显示红色叹号。
+### 应用组外观
+
+在 **设置 → Dock → 应用组外观** 中为所有屏幕的应用组选择图标。
+
+- **银灰**沿用四格应用托盘，**经典**还原旧版蓝色文件夹和叠放的成员图标。新加入的三款分别是**扁平、皮革和玻璃**。
+- 每款风格都支持自定义背景色与 0–100% 背景不透明度。0% 时只隐藏文件夹底板，成员图标、运行状态和消息提醒仍可见。
+- 升级后默认使用银灰风格。可随时恢复风格原色或默认外观。
+
+### 自动隐藏 Dock
+
+在 **设置 → 交互 → 窗口与预览** 开启 **自动隐藏 Dock** 后，指针停在某块屏幕的 Dock 边缘即可唤出，离开后自动收起。使用菜单、分组、预览或拖拽时保持显示。该选项默认关闭。全屏应用仍然独立支持边缘唤出。
 
 ## English
 
-- Right-click an unpinned running app and choose **Add to App Group**, then pick an existing group. The app is pinned at the end of that group.
-- Group icons now show the first four members on a softly rounded silver tray. Click a group to see all its apps. The red exclamation badge still indicates unread items.
+Open **Settings → Dock → Group Appearance** to choose a style for app groups across your displays. Silver keeps the four-icon tray, Classic brings back the blue folder, and Flat, Leather and Glass offer three new looks. Set a custom background color and adjust background opacity from 0 to 100%. At 0%, member icons, running indicators and notification badges remain visible.
+
+In **Settings → Interaction → Windows & Previews**, enable **Automatically hide the Dock** to reveal DualDock at the configured edge and hide it after the pointer leaves. It stays open while you use a group, menu or preview, or drag an item. The option is off by default. Full-screen Spaces continue to support edge reveal independently.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.8.7/DualDock-2.8.7-arm64.dmg" length="3469916" type="application/octet-stream" sparkle:edSignature="+lHdmSdOxG2Us5acG6lLxRWc9GDdu2RkVxVgFd+j/nipNCX1im5GYVtGU7iH01rZJvuqIuCo9UYFFGqnakXWCA=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.9.0/DualDock-2.9.0-arm64.dmg" length="3521176" type="application/octet-stream" sparkle:edSignature="G6P2KufgmtAgIF0Tj53mN2+YBAD+22o3hRAfLJUpe6i8pjZRpREEtsTKVyw5z9hbj3kdZdNNW3lw8LPn2xinDA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: Grx8/WSXNscByHbsUKlsFN2WnlVsbVxFiByNNDU9do4UCNEyXZ5pevfZsb0lNUUZ63GxVZea+b032BJf3QWHAg==
-length: 2103
+edSignature: y9vhmxcPORq3wSMDuvTcwSWPpPCTg4D7/iLBb6RusgKTLJT6t5E4MtuHcknde2Hm7LVfSkNbuNzw8zl4JyntBw==
+length: 2985
 -->

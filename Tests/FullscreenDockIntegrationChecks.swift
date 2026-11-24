@@ -7,6 +7,9 @@ import DualDockCore
 extension DisplayCoordinator {
     fileprivate func applySnapshotForChecks(_ value: DockVisibilityController.Snapshot) { applyVisibility(value) }
     fileprivate var groupForChecks: DockPanel? { groupPanel }
+    fileprivate var interactingDisplays: Set<CGDirectDisplayID> {
+        Set(visibilityTargets().filter(\.interacting).map(\.id))
+    }
     fileprivate var previewForChecks: DockPanel? { previewPanel }
     fileprivate func showPreviewForChecks(app: AppReference, tile: DockTile, screen: NSScreen, edge: DockEdge) {
         let item = WindowPreview(windowID: 424242, pid: 0, title: "Fixture",
@@ -58,6 +61,15 @@ struct FullscreenDockIntegrationChecks {
             let actual = dock.panel.convertToScreen(dock.strip.convert(dock.strip.backdropFrame, to: nil))
             check(abs(actual.minX - expected.minX) < 0.000001 && abs(actual.minY - expected.minY) < 0.000001,
                   "\(label): incorrect physical Dock placement")
+        }
+
+        if let menu = groupTile(dock).menuProvider?() {
+            menu.delegate?.menuWillOpen?(menu)
+            check(coordinator.interactingDisplays == [id], "An open native menu should hold only its source display")
+            menu.delegate?.menuDidClose?(menu)
+            check(coordinator.interactingDisplays.isEmpty, "Closing a menu must release its display")
+        } else {
+            check(false, "Missing native menu for the fixture tile")
         }
 
         for edge in DockEdge.allCases {

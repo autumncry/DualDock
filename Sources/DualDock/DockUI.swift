@@ -312,6 +312,20 @@ final class DockStripView: NSView {
         isGroup ? L("将应用拖到这里", "Drag apps here") : L("拖入应用，开始整理", "Drag apps here to organize them")
     }
 
+    /// Refresh group drawings in place. A different silhouette also changes optical
+    /// spacing, provided this strip currently lays out its icons by visible bounds.
+    func refreshFolderArtwork(contentBounds: CGRect) -> Bool {
+        var boundsChanged = false
+        for (index, tile) in tiles.enumerated() where tile.entry.isGroup {
+            tile.needsDisplay = true
+            if artworkBounds[index] != contentBounds {
+                artworkBounds[index] = contentBounds
+                boundsChanged = true
+            }
+        }
+        return boundsChanged && presentation?.style.spacingPercent != nil
+    }
+
     func refreshLanguage() {
         emptyLabel?.stringValue = emptyMessage
         tiles.forEach { $0.refreshBadge() }

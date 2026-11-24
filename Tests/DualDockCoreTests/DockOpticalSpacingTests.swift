@@ -161,7 +161,7 @@ final class DockOpticalSpacingTests: XCTestCase {
         XCTAssertEqual(clipped.maxX, 0.6, accuracy: 0.000001)
         XCTAssertEqual(clipped.maxY, 1)
         let configuration = DockConfiguration()
-        XCTAssertEqual(configuration.version, 11)
+        XCTAssertEqual(configuration.version, DockConfiguration.currentVersion)
     }
 
     func testDividerKeepsItsOwnNonAppHitRegionAndThinArtworkFocusIsContinuous() {

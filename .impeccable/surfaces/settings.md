@@ -15,4 +15,6 @@ General adds opt-in “登录时启动” using SMAppService.mainApp. Read syste
 
 About retains full version, license, author, project/download/feedback/support information in the restrained layout. All settings across the four toolbar categories remain. Verify Light/Dark, compact windows, no-display, advanced, native mode, independent/synchronized displays, four edges and stable sample identity. Distinguish owned fixture/event and injected service tests from fresh-desktop, VoiceOver and actual-login validation; do not claim the latter from the former.
 
-The default window frame is 820 × 560 pt including toolbar. Preserve its position and size across every page and language, including after manual resizing. Related settings share a scrollable form with sidebar anchors. Appearance, Help and About retain dedicated detail pages.
+The default window frame is 820 × 560 pt including toolbar. Preserve its position and size across every page and language, including after manual resizing. Related settings share a scrollable form with sidebar anchors. Appearance, Group Appearance, Help and About retain dedicated detail pages.
+
+Group Appearance displays the five stock materials side by side and a larger example with the selected color and opacity. Both use the Dock artwork renderer. The color and opacity apply to each group background across displays. Window interaction settings expose independent switches for desktop auto-hide and maximized windows. Full-screen Spaces always retain edge reveal.

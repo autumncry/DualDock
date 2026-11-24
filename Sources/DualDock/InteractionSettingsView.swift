@@ -20,9 +20,15 @@ struct InteractionSettingsView: View {
     private var windowOptions: some View {
         Group {
             SettingsSwitchRow(
+                title: localize("自动隐藏 Dock", "Automatically hide the Dock"),
+                detail: localize("在 Dock 所在的屏幕边缘停留可唤出，移开后收起。全屏时始终自动隐藏。",
+                                 "Pause at the Dock’s screen edge to reveal it. Move away to hide it. Full-screen apps always use edge reveal."),
+                symbol: "dock.rectangle", isOn: binding(\.autoHideDock))
+            Divider()
+            SettingsSwitchRow(
                 title: localize("最大化窗口时隐藏 Dock", "Hide the Dock for maximized windows"),
-                detail: localize("窗口铺满或全屏时，停留在屏幕边缘可唤出 Dock。使用分组、预览或菜单时保持显示。",
-                                 "Hold the pointer at the screen edge to reveal the Dock. It stays visible while you use a group, preview, or menu."),
+                detail: localize("即使关闭上方的自动隐藏，窗口铺满工作区时也会收起。使用分组、预览或菜单时保持显示。",
+                                 "Hide when a window fills the work area, even if auto-hide is off. The Dock stays visible while you use a group, preview, or menu."),
                 symbol: "rectangle.expand.vertical", isOn: binding(\.autoHideWhenMaximized))
             Divider()
             SettingsSwitchRow(

@@ -755,7 +755,7 @@ final class AppStore: ObservableObject {
         change(&next)
         next.normalizeAppearance()
         guard next != configuration else { return }
-        if next.matchesExceptBadgeScale(configuration) {
+        if next.matchesExceptTileArtwork(configuration) {
             configuration = next
             scheduleSave()
             return
@@ -849,7 +849,7 @@ final class AppStore: ObservableObject {
 
     func contentBounds(for entries: [DockEntry]) -> [CGRect] {
         entries.map { entry in
-            if entry.isGroup { return IconArtworkBounds.folder }
+            if entry.isGroup { return DockFolderArtwork.contentBounds(for: configuration.folderAppearance.style) }
             return entry.apps.first.map { iconContentBounds(for: $0) } ?? IconArtworkBounds.full
         }
     }
@@ -952,6 +952,7 @@ final class AppStore: ObservableObject {
         appearanceOnly.customSizing = new.customSizing
         appearanceOnly.magnificationScale = new.magnificationScale
         appearanceOnly.magnificationRadius = new.magnificationRadius
+        appearanceOnly.folderAppearance = new.folderAppearance
         appearanceOnly.badgeScale = new.badgeScale
         for (id, profile) in new.displaySettings {
             var original = appearanceOnly.displaySettings[id] ?? DockDisplaySettings()
@@ -970,9 +971,10 @@ final class AppStore: ObservableObject {
 }
 
 extension DockConfiguration {
-    /// Badge sizing invalidates tile artwork independently of Dock layout.
-    func matchesExceptBadgeScale(_ other: Self) -> Bool {
+    /// Sliders for tile artwork publish immediately and share the debounced save.
+    func matchesExceptTileArtwork(_ other: Self) -> Bool {
         var copy = self
+        copy.folderAppearance = other.folderAppearance
         copy.badgeScale = other.badgeScale
         return copy == other
     }

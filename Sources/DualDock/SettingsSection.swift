@@ -26,7 +26,7 @@ enum SettingsCategory: String, CaseIterable {
 }
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case appearance, displays, contents
+    case appearance, displays, contents, groupAppearance
     case interaction, magnification, notifications
     case general, systemDock, apps, permissions
     case help, about
@@ -34,7 +34,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var category: SettingsCategory {
         switch self {
-        case .appearance, .displays, .contents: return .dock
+        case .appearance, .displays, .contents, .groupAppearance: return .dock
         case .interaction, .magnification, .notifications: return .interaction
         case .general, .systemDock, .apps, .permissions: return .general
         case .help, .about: return .support
@@ -44,6 +44,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     private var names: (String, String) {
         switch self {
         case .appearance: return ("外观与尺寸", "Appearance & Size")
+        case .groupAppearance: return ("应用组外观", "Group Appearance")
         case .displays: return ("屏幕与位置", "Displays & Position")
         case .contents: return ("显示内容", "Dock Contents")
         case .interaction: return ("窗口与预览", "Windows & Previews")
@@ -65,7 +66,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .displays, .contents: return [.displays, .contents]
         case .interaction, .magnification, .notifications: return SettingsCategory.interaction.sections
         case .general, .systemDock, .apps, .permissions: return SettingsCategory.general.sections
-        case .appearance, .help, .about: return [self]
+        case .appearance, .groupAppearance, .help, .about: return [self]
         }
     }
 
@@ -92,9 +93,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     private var keywords: String {
         switch self {
         case .appearance: return "大小 预设 图标间距 长度 Dock高度 两端留白 高级设置 尺寸模式 跟随系统Dock 恢复自动 同步各屏尺寸 放不下时先缩小图标 size preset icon spacing length Dock height end padding sizing mode advanced reset sync sizes across displays shrink icons before scrolling"
+        case .groupAppearance: return "文件夹 文件夹外观 应用组图标 图标风格 背景颜色 背景透明度 背景不透明度 银灰 经典 扁平 拟物 皮革 玻璃 文件夹背景 恢复默认外观 风格原色 folder folders group icon style silver classic flat skeuomorphic leather glass background color colour tint opacity transparency reset restore default"
         case .displays: return "多屏和显示内容 外接显示器 方向 Dock位置 底部 顶部 左侧 右侧 调整所有屏幕尺寸 调整此屏幕尺寸 displays and content screen monitor display Dock position left right top bottom adjust size for all displays"
         case .contents: return "显示模式 固定应用与分组 运行应用 仅正在运行的应用 pinned apps and groups running apps only display mode"
-        case .interaction: return "全屏 最大化窗口时隐藏Dock 自动隐藏 悬停显示窗口预览 关闭窗口 缩略图 close thumbnail fullscreen maximize auto-hide hide the dock for maximized windows show window previews on hover"
+        case .interaction: return "全屏 最大化窗口时隐藏Dock 自动隐藏Dock 自动显示 屏幕边缘唤出 鼠标移开 鼠标离开 悬停显示窗口预览 关闭窗口 缩略图 close thumbnail fullscreen maximize auto-hide autohide automatically hide the dock edge reveal pointer hide the dock for maximized windows show window previews on hover"
         case .magnification: return "鼠标悬停放大 动画 放大峰值 联动范围 曲线预览 hover animation magnify icons on hover peak magnification magnification range curve"
         case .notifications: return "显示消息数量角标 角标大小 未读 红点 叹号 message count show notification badges display badge badge size scale unread"
         case .general: return "显示语言 英文 中文 开机自启动 登录时启动 打开系统登录项 取消启动申请 display language english chinese launch at login open login items settings cancel request startup"
@@ -119,6 +121,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .appearance: return "slider.horizontal.3"
+        case .groupAppearance: return "square.grid.2x2.fill"
         case .displays: return "display"
         case .contents: return "square.grid.2x2"
         case .interaction: return "macwindow"

@@ -47,7 +47,9 @@ Click a folder icon to expand its members horizontally. Reorder apps within a gr
 
 Right-click an unpinned running app, choose **Add to App Group**, then pick a group to pin it at the end of that group. Choose **Pin to DualDock** to pin it as a separate icon. Dropping an app into a folder shows its icon settling into the group. These transitions respect the macOS Reduce Motion setting.
 
-<img src="docs/images/app-group-icons.png" width="264" alt="DualDock group icons with two, three and four members. The last group has an unread badge.">
+In **Settings → Dock → Group Appearance**, choose Silver, Classic, Flat, Leather or Glass for all groups. Pick a background color and adjust its opacity from 0% to 100%. At 0%, the member icons, unread badge and running indicator remain visible.
+
+<img src="docs/images/group-styles.png" width="530" alt="DualDock group icons in Silver, Classic, Flat, Leather and Glass, from left to right">
 
 ### Preview, switch, and close windows
 
@@ -109,9 +111,11 @@ In manual mode, the Interaction page provides two continuous sliders:
 
 A curve preview updates with the sliders while the Dock backdrop stays fixed. Both controls are disabled when magnification is off. Fully adaptive mode continues to follow the system Dock and hides the manual curve controls. Your previous manual peak is preserved, and the new range initially matches the earlier behavior.
 
-### Hide for maximized windows
+### Automatic hiding and edge reveal
 
-Enable “最大化窗口时隐藏 Dock” in Interaction to hide a display's Dock when a window fills its available workspace. Pause the pointer at that edge to reveal it. Moving an ordinary window down over the Dock does not trigger hiding. For a top Dock, the activation edge sits below the menu bar.
+For automatic hiding on the desktop, enable **Settings → Interaction → Windows & Previews → Automatically hide the Dock**. Pause at the Dock edge to reveal it and move away to hide it. Each display responds independently.
+
+Enable **Hide the Dock for maximized windows** in Interaction to hide a display's Dock when a window fills its available workspace. Pause the pointer at that edge to reveal it. Moving an ordinary window down over the Dock does not trigger hiding. For a top Dock, the activation edge sits below the menu bar.
 
 The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Fullscreen apps also support edge reveal; fullscreen auto-hiding is independent of this toggle. The maximized-window option is off by default and does not resize other apps' windows.
 

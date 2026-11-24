@@ -197,6 +197,7 @@ struct SettingsView: View {
         case .general, .contents, .systemDock, .apps:
             GeneralSettingsView(section: section, store: store, launchAtLogin: launchAtLoginService)
         case .appearance: AppearanceSettingsView(store: store, selectedDisplayID: $selectedDisplayID, showsScope: false)
+        case .groupAppearance: FolderAppearanceSettingsView(store: store)
         case .displays:
             DisplayPositionSettingsView(store: store, selectedDisplayID: $selectedDisplayID) { id in
                 selectedDisplayID = id

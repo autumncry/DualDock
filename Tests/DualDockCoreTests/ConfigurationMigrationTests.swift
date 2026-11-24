@@ -2,6 +2,40 @@ import XCTest
 @testable import DualDockCore
 
 final class ConfigurationMigrationTests: XCTestCase {
+    func testDesktopAutoHideIsOptInWhenUpgrading() throws {
+        XCTAssertFalse(DockConfiguration().autoHideDock)
+        for version in [1, 11, DockConfiguration.currentVersion] {
+            let legacy = Data("{\"version\":\(version),\"autoHideWhenObstructed\":true,\"hideSystemDock\":true}".utf8)
+            let config = try JSONDecoder().decode(DockConfiguration.self, from: legacy)
+            XCTAssertFalse(config.autoHideDock)
+            XCTAssertTrue(config.autoHideWhenMaximized)
+            XCTAssertTrue(config.hideSystemDock)
+        }
+    }
+
+    func testDesktopAndMaximizedAutoHidePersistIndependently() throws {
+        for desktop in [false, true] {
+            for maximized in [false, true] {
+                var config = DockConfiguration()
+                config.autoHideDock = desktop
+                config.autoHideWhenMaximized = maximized
+                let restored = try JSONDecoder().decode(DockConfiguration.self, from: JSONEncoder().encode(config))
+                XCTAssertEqual(restored.autoHideDock, desktop)
+                XCTAssertEqual(restored.autoHideWhenMaximized, maximized)
+                XCTAssertFalse(restored.hideSystemDock)
+            }
+        }
+    }
+
+    func testUnknownFutureAutoHideSettingPreservesFutureVersion() throws {
+        let version = DockConfiguration.currentVersion + 1
+        let data = Data("{\"version\":\(version),\"autoHideDock\":\"future\",\"autoHideWhenObstructed\":true}".utf8)
+        let config = try JSONDecoder().decode(DockConfiguration.self, from: data)
+        XCTAssertEqual(config.version, version)
+        XCTAssertFalse(config.autoHideDock)
+        XCTAssertTrue(config.autoHideWhenMaximized)
+    }
+
     func testVersionFiveKeepsManualSizeAndLayoutWithAutoWidthOff() throws {
         var saved = DockConfiguration()
         saved.dockWidth = 1325.375

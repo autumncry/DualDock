@@ -2,6 +2,47 @@ import XCTest
 @testable import DualDockCore
 
 final class DockVisibilityPolicyTests: XCTestCase {
+    func testDesktopAutoHideCombinationsAndFullscreenIndependence() {
+        for always in [false, true] {
+            for conditional in [false, true] {
+                for maximized in [false, true] {
+                    var policy = DockVisibilityPolicy()
+                    let desktop = policy.update(now: 0, fullscreen: false, autoHide: conditional,
+                        maximized: maximized, autoHideDock: always, pointerAtEdge: false,
+                        pointerInsideDock: false, interacting: false)
+                    XCTAssertEqual(desktop, !(always || (conditional && maximized)))
+                    XCTAssertFalse(policy.update(now: 0.1, fullscreen: true, autoHide: conditional,
+                        maximized: maximized, autoHideDock: always, pointerAtEdge: false,
+                        pointerInsideDock: true, interacting: true))
+                    XCTAssertEqual(policy.update(now: 0.2, fullscreen: false, autoHide: conditional,
+                        maximized: maximized, autoHideDock: always, pointerAtEdge: false,
+                        pointerInsideDock: false, interacting: false), desktop)
+                }
+            }
+        }
+    }
+
+    func testAlwaysHiddenDesktopEdgeDwellLeaveGraceAndInteraction() {
+        var state = DockVisibilityPolicy(initiallyVisible: false)
+        func update(_ time: Double, edge: Bool = false, inside: Bool = false, interaction: Bool = false) -> Bool {
+            state.update(now: time, fullscreen: false, autoHide: false, maximized: false, autoHideDock: true,
+                         pointerAtEdge: edge, pointerInsideDock: inside, interacting: interaction)
+        }
+        XCTAssertFalse(update(0, inside: true, interaction: true))
+        XCTAssertFalse(update(0.1, edge: true))
+        XCTAssertFalse(update(0.15), "A pass across the edge must reset its dwell")
+        XCTAssertFalse(update(0.2, edge: true))
+        XCTAssertTrue(update(0.33, edge: true))
+        XCTAssertTrue(update(0.45))
+        XCTAssertTrue(update(0.5, inside: true))
+        XCTAssertTrue(update(0.8, interaction: true))
+        XCTAssertTrue(update(1.0))
+        XCTAssertFalse(update(1.11))
+        XCTAssertFalse(update(1.2, inside: true))
+        XCTAssertFalse(update(1.3, edge: true))
+        XCTAssertTrue(update(1.43, edge: true))
+    }
+
     func testOrdinaryWindowsCoveringDockRemainVisible() {
         let workspace = CGRect(x: 0, y: 0, width: 1800, height: 1129)
         let ordinary = [

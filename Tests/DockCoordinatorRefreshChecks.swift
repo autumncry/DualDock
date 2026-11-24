@@ -296,6 +296,7 @@ struct DockCoordinatorRefreshChecks {
         store.update { $0.showBadges = true }
         check(store.configuration.badgeScale == 2, "Hiding badges reset the chosen scale")
         coordinator.dismissPopups()
+        try checkFolderAppearance(coordinator: coordinator, directory: directory, check: check)
         check(coordinator.docks.values.allSatisfy { !$0.panel.isVisible }, "fixture presented a panel")
         let playback = DisplayCoordinator(store: store, presentsPanels: false)
         playback.checkLifecycleMotion(check)
@@ -308,8 +309,94 @@ struct DockCoordinatorRefreshChecks {
     }
 }
 
+private extension DockCoordinatorRefreshChecks {
+    @MainActor static func checkFolderAppearance(coordinator: DisplayCoordinator, directory: URL,
+                                                check: (Bool, String) -> Void) throws {
+        let store = coordinator.store
+        let file = directory.appendingPathComponent("configuration.json")
+        let entries = store.configuration.entries
+        store.setAdaptiveSizing(false)
+        store.updateCustomSizing(for: nil) {
+            $0.lengthMode = .fixed
+            $0.spacingPercent = 0
+        }
+        store.flushPendingSave()
+        func drain() { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.035)) }
+        drain()
+        let rows = coordinator.docks.values.map(\.strip)
+        let identities = rows.map { $0.tiles.map(ObjectIdentifier.init) }
+        let geometry = rows.map(\.layoutGeometry)
+        let offsets = rows.map(\.scrollOffset)
+        let fileBefore = try Data(contentsOf: file)
+        let groupTiles = rows.flatMap(\.tiles).filter { $0.entry.isGroup }
+        let groupIDs = Set(groupTiles.map(ObjectIdentifier.init))
+        // Once AppKit has consumed a repaint, needsDisplay is false again.
+        // Count the real setter calls on our hidden folder tiles during this burst.
+        let selector = #selector(setter: NSView.needsDisplay)
+        let originalMethod = class_getInstanceMethod(DockTile.self, selector)!
+        let original = method_getImplementation(originalMethod)
+        typealias SetDisplay = @convention(c) (AnyObject, Selector, Bool) -> Void
+        let setDisplay = unsafeBitCast(original, to: SetDisplay.self)
+        var invalidated: [ObjectIdentifier] = []
+        let hook: @convention(block) (DockTile, Bool) -> Void = { tile, needed in
+            if needed { invalidated.append(ObjectIdentifier(tile)) }
+            setDisplay(tile, selector, needed)
+        }
+        let implementation = imp_implementationWithBlock(hook)
+        class_replaceMethod(DockTile.self, selector, implementation, method_getTypeEncoding(originalMethod))
+        defer {
+            class_replaceMethod(DockTile.self, selector, original, method_getTypeEncoding(originalMethod))
+            imp_removeBlock(implementation)
+        }
+        for index in 0..<80 {
+            store.update {
+                $0.folderAppearance.backgroundColor = DockFolderColor(red: 0.64, green: 0.24, blue: 0.9)
+                $0.folderAppearance.backgroundOpacity = Double(index) / 100
+            }
+        }
+        check(try Data(contentsOf: file) == fileBefore, "Opacity slider wrote the settings file synchronously")
+        drain()
+        check(rows.count >= 2 && groupIDs.count >= 2 && Set(invalidated) == groupIDs
+              && invalidated.count == groupIDs.count,
+              "Folder edits should invalidate exactly the group tiles once per burst: \(invalidated.count)/\(groupIDs.count)")
+        check(rows.map(\.layoutGeometry) == geometry && rows.map(\.scrollOffset) == offsets,
+              "Adjusting only the folder color or opacity changed the row geometry or scroll")
+        guard let firstGroup = groupTiles.first(where: { $0.onPress != nil }) else { fatalError("Missing folder tile") }
+        firstGroup.onPress?()
+        let members = coordinator.fixtureCurrentGroup
+        check(members != nil, "No open group before switching styles")
+        for style in DockFolderStyle.allCases {
+            store.update { $0.folderAppearance.style = style }
+            drain()
+            let sourceFrame = firstGroup.window?.convertToScreen(firstGroup.convert(firstGroup.visualIconBounds, to: nil))
+            check(sourceFrame == coordinator.fixturePopupAnchor, "Open folder was left at the previous style’s anchor")
+            for row in rows {
+                let bounds = row.presentation?.style.contentBounds ?? []
+                check(row.presentation?.style.spacingPercent == 0, "Expected a zero-gap optical row")
+                for (index,tile) in row.tiles.enumerated() where tile.entry.isGroup {
+                    check(bounds.indices.contains(index) && bounds[index] == DockFolderArtwork.contentBounds(for: style),
+                          "Folder style did not update cached optical bounds on an existing row")
+                }
+            }
+        }
+        check(rows.map { $0.tiles.map(ObjectIdentifier.init) } == identities, "Folder appearance rebuilt the Dock")
+        check(coordinator.fixtureCurrentGroup === members && members != nil, "Style change closed the open group")
+        coordinator.dismissPopups()
+        store.flushPendingSave()
+        let saved = try JSONDecoder().decode(DockConfiguration.self, from: Data(contentsOf: file))
+        check(saved.folderAppearance == DockFolderAppearance(style: .glass,
+            backgroundColor: DockFolderColor(red: 0.64, green: 0.24, blue: 0.9), backgroundOpacity: 0.79),
+              "Switching styles lost the saved tint or opacity")
+        check(saved.entries == entries, "Changing the folder appearance edited group membership or order")
+        print("Verified live color and opacity on two rows, five drawing bounds, saved appearance and intact groups")
+    }
+}
+
 // Shares a source unit with DisplayCoordinator in this isolated executable.
 private extension DisplayCoordinator {
+    var fixtureCurrentGroup: DockStripView? { groupPanel?.contentView as? DockStripView }
+    var fixturePopupAnchor: CGRect { popupAnchor }
+
     func fixtureIsFullscreen(_ screenID: CGDirectDisplayID) -> Bool {
         visibilitySnapshot.fullscreen.contains(screenID)
     }

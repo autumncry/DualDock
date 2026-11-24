@@ -22,24 +22,27 @@ final class DockVisibilityController {
 
     private let windows: WindowService
     private let targets: () -> [Target]
-    private let autoHide: () -> Bool
+    private let autoHideWhenMaximized: () -> Bool
+    private let autoHideDock: () -> Bool
     private let apply: (Snapshot) -> Void
     private let pointer: () -> NSPoint
     private let obstruction = WindowObstructionService()
     private var states: [CGDirectDisplayID: DockVisibilityPolicy] = [:]
     private var knownSpaceIDs: [CGDirectDisplayID: UInt64] = [:]
     private var lastSnapshot = Snapshot(hidden: [], fullscreen: [])
-    private var previousAutoHide: Bool?
+    private var previousMaximizeSetting: Bool?
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var stopped = false
 
-    init(windows: WindowService, targets: @escaping () -> [Target], autoHide: @escaping () -> Bool,
+    init(windows: WindowService, targets: @escaping () -> [Target],
+         autoHideWhenMaximized: @escaping () -> Bool, autoHideDock: @escaping () -> Bool,
          pointer: @escaping () -> NSPoint = { NSEvent.mouseLocation },
          apply: @escaping (Snapshot) -> Void) {
         self.windows = windows
         self.targets = targets
-        self.autoHide = autoHide
+        self.autoHideWhenMaximized = autoHideWhenMaximized
+        self.autoHideDock = autoHideDock
         self.apply = apply
         self.pointer = pointer
         windows.onFullscreenStateChange = { [weak self] in self?.refresh() }
@@ -79,42 +82,48 @@ final class DockVisibilityController {
         knownSpaceIDs = knownSpaceIDs.filter { valid.contains($0.key) }
         for id in valid {
             if let previous = knownSpaceIDs[id], let current = currentSpaceIDs[id] {
-                if previous != current { states.removeValue(forKey: id) }
+                if previous != current { states[id] = DockVisibilityPolicy(initiallyVisible: false) }
             } else if resetUnknownSpaces {
                 // AX fallback has no Space identity. On a global Space event,
                 // conservatively hide only unknown displays; known peers keep
                 // their revealed Dock, menu, group, preview or drag interaction.
-                states.removeValue(forKey: id)
+                states[id] = DockVisibilityPolicy(initiallyVisible: false)
             }
         }
         // Preserve the last known identity through a transient failed read so
         // a later successful read can still detect a fullscreen-to-fullscreen move.
         knownSpaceIDs.merge(currentSpaceIDs) { _, current in current }
-        let enabled = autoHide()
-        if previousAutoHide != enabled {
+        let alwaysHide = autoHideDock()
+        let hideMaximized = autoHideWhenMaximized()
+        if previousMaximizeSetting != hideMaximized {
             obstruction.invalidate(clear: true)
-            states.removeAll()
-            previousAutoHide = enabled
+            previousMaximizeSetting = hideMaximized
         }
         // A forced apply is also used by live resizing; it must not turn every
         // pointer sample into a WindowServer query. invalidate() resets the read
         // deadline for actual Space, activation and display changes.
-        if enabled { obstruction.refresh() }
+        if hideMaximized { obstruction.refresh() }
         let pointer = pointer()
         let now = ProcessInfo.processInfo.systemUptime
         var next: Set<CGDirectDisplayID> = []
         for target in all {
-            var state = states[target.id] ?? DockVisibilityPolicy()
-            let activationBounds = fullscreen.contains(target.id)
-                ? Self.fullscreenBounds(for: target.screen) : target.visibleFrame
+            var state = states[target.id] ?? DockVisibilityPolicy(initiallyVisible: target.pointerInside || target.interacting)
+            let isFullscreen = fullscreen.contains(target.id)
+            let physical = Self.fullscreenBounds(for: target.screen)
+            let activationBounds = isFullscreen ? physical : target.visibleFrame
             let edge = DockVisibilityPolicy.activationRegion(backdrop: target.backdrop, edge: target.edge,
                                                               visibleScreen: activationBounds)
-            let visible = state.update(now: now, fullscreen: fullscreen.contains(target.id), autoHide: enabled,
-                maximized: enabled && obstruction.frames.contains {
+            // A visible system Dock may reserve part of the desktop. In ordinary
+            // auto-hide mode accept the physical edge as well as the workspace edge.
+            // The top hotspot stays under the menu bar and camera safe area.
+            let physicalEdge = alwaysHide && !isFullscreen && target.edge != .top && physical != activationBounds &&
+                DockVisibilityPolicy.activationRegion(backdrop: target.backdrop, edge: target.edge,
+                                                     visibleScreen: physical).contains(pointer)
+            let visible = state.update(now: now, fullscreen: isFullscreen, autoHide: hideMaximized,
+                maximized: hideMaximized && !alwaysHide && obstruction.frames.contains {
                     DockVisibilityPolicy.isMaximizedWindow($0, in: target.visibleFrame)
-                },
-                pointerAtEdge: edge.contains(pointer), pointerInsideDock: target.pointerInside,
-                interacting: target.interacting)
+                }, autoHideDock: alwaysHide, pointerAtEdge: edge.contains(pointer) || physicalEdge,
+                pointerInsideDock: target.pointerInside, interacting: target.interacting)
             states[target.id] = state
             if !visible { next.insert(target.id) }
         }
