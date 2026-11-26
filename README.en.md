@@ -61,6 +61,8 @@ Windows without a usable screenshot are omitted. Screenshots are processed in lo
 
 Right-click an app icon to list its actionable windows, including minimized ones. A checkmark identifies the selected target. Selecting a window brings it forward and keeps it as the target for subsequent icon clicks during this session.
 
+WeChat’s separate browser icon can also minimize and restore its associated page. If the target is ambiguous, right-click the icon and select it under **Choose the WeChat window for this icon**.
+
 - Background window: bring it forward first.
 - Ordinary foreground window: minimize; click again to restore.
 - Fullscreen or maximized window: activate without minimizing.

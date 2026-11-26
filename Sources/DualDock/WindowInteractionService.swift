@@ -15,14 +15,17 @@ struct DockWindowItem: Identifiable, Equatable, Sendable {
     let isMinimized: Bool
     let isFullscreen: Bool
     let isMaximized: Bool
-    let isFrontmost: Bool
+    var isFrontmost: Bool
     var isFocused: Bool = false
     var isMain: Bool = false
+    // A regular nested Dock icon may be frontmost on behalf of this exact window.
+    var foregroundProxy: WeChatBrowserWindowRouter.Instance?
 }
 
 struct DockWindowListSnapshot: Sendable {
     let items: [DockWindowItem]
     let selectedID: DockWindowIdentity?
+    var isHostedChoice = false
 }
 
 enum DockWindowInventory: Sendable {
@@ -52,13 +55,16 @@ final class WindowInteractionService {
         var read: (AppReference) async -> DockWindowInventory
         var perform: (DockWindowItem, DockWindowAction, AppReference) async -> DockWindowActionOutcome
         var recover: (DockWindowIdentity, AppReference) async -> Bool = { _, _ in false }
+        var browser: WeChatBrowserWindowRouter?
         var invalidate: () -> Void = {}
 
         static func system() -> Environment {
             let backend = WindowInteractionBackend()
+            let browser = WeChatBrowserWindowRouter(backend: backend)
             return Environment(read: { app in await backend.read(for: app) },
                                perform: { item, action, app in await backend.perform(item, action: action, for: app) },
                                recover: { identity, app in await backend.recover(identity, for: app) },
+                               browser: browser,
                                invalidate: { backend.cancel() })
         }
     }
@@ -78,6 +84,11 @@ final class WindowInteractionService {
         let inventory = await environment.read(app)
         guard request == generation, !Task.isCancelled else { return .init(items: [], selectedID: nil) }
         guard case .available(let items) = inventory else { return .init(items: [], selectedID: nil) }
+        if items.isEmpty, WeChatBrowserWindowRouter.hostURL(for: app) != nil,
+           let (_, choices, id) = await environment.browser?.choices(for: app),
+           request == generation, !Task.isCancelled {
+            return .init(items: choices, selectedID: id, isHostedChoice: true)
+        }
         let target = preferred(in: items, for: app)
         return .init(items: items, selectedID: target?.id)
     }
@@ -96,6 +107,13 @@ final class WindowInteractionService {
             case .unavailable: return .targetUnavailable
             case .permissionDenied:
                 return .failure(LocalizedNotice("暂时无法读取这个窗口，请稍后重试或检查辅助功能权限。", "Couldn’t read this window. Try again or check Accessibility permission."))
+            }
+            if items.isEmpty, WeChatBrowserWindowRouter.hostURL(for: app) != nil, let browser = self.environment.browser,
+               let (pair, choices, _) = await browser.choices(for: app), item.foregroundProxy == pair.icon,
+               let fresh = choices.first(where: { $0.id == item.id }) {
+                return await self.act(fresh, action: fresh.isMinimized ? .restore : .activate,
+                                      for: app, owner:pair.hostApp, request:request, beforePerform:beforePerform,
+                                      onPerformed: { browser.remember(fresh.id,in:pair) })
             }
             guard let fresh = items.first(where: { $0.id == item.id }) else {
                 return .targetUnavailable
@@ -123,12 +141,34 @@ final class WindowInteractionService {
                 guard request == self.generation, !Task.isCancelled else { return .handled }
                 return recovered ? .handled : .targetUnavailable
             }
-            guard let target = self.preferred(in: items, for: app) else { return .fallbackToApplication }
+            let target: DockWindowItem
+            let owner: AppReference
+            var forceActivation = false
+            if let direct = self.preferred(in: items, for: app) {
+                target = direct
+                owner = app
+            } else if WeChatBrowserWindowRouter.hostURL(for: app) != nil, let browser = self.environment.browser {
+                beforePerform()
+                let route = await browser.resolve(app)
+                guard request == self.generation, !Task.isCancelled else { return .handled }
+                switch route {
+                case .ordinary: return .fallbackToApplication
+                case .activationRequested: return .handled
+                case .target(let window, let pair): target = window; owner = pair.hostApp
+                case .reveal(let window, let pair):
+                    target = window
+                    owner = pair.hostApp
+                    forceActivation = true
+                }
+            } else {
+                return .fallbackToApplication
+            }
             let action: DockWindowAction
             if target.isMinimized { action = .restore }
-            else if target.isFullscreen || target.isMaximized || !target.isFrontmost { action = .activate }
+            else if forceActivation || target.isFullscreen || target.isMaximized || !target.isFrontmost { action = .activate }
             else { action = .minimize }
-            return await self.act(target, action: action, for: app, request: request, beforePerform: beforePerform)
+            return await self.act(target, action: action, for: app, owner: owner, request: request,
+                                  beforePerform: owner == app ? beforePerform : {})
         }
     }
 
@@ -175,14 +215,16 @@ final class WindowInteractionService {
     }
 
     private func act(_ item: DockWindowItem, action: DockWindowAction, for app: AppReference,
-                     request: UInt64, beforePerform: @MainActor () -> Void) async -> WindowInteractionResult {
+                     owner: AppReference? = nil, request: UInt64, beforePerform: @MainActor () -> Void,
+                     onPerformed: () -> Void = {}) async -> WindowInteractionResult {
         guard generation == request, !Task.isCancelled else { return .handled }
         beforePerform()
         guard generation == request, !Task.isCancelled else { return .handled }
-        let result = await environment.perform(item, action, app)
+        let result = await environment.perform(item, action, owner ?? app)
         guard generation == request, !Task.isCancelled else { return .handled }
         switch result {
         case .performed:
+            onPerformed()
             selected[key(app)] = item.id
             return .handled
         case .missing: return .targetUnavailable

@@ -33,6 +33,9 @@ final class AppStore: ObservableObject {
     private let runningAppsProvider: (() -> [AppReference])?
     private let permissionsProvider: (() -> (accessibility: Bool, capture: Bool))?
     private var observers: [NSObjectProtocol] = []
+    private var processListObservation: NSKeyValueObservation?
+    private var policyObservations: [NSRunningApplication: NSKeyValueObservation] = [:]
+    private var runningRefreshScheduled = false
     private var icons: [String: NSImage] = [:]
     private var artworkBounds: [String: CGRect] = [:]
     private var readOnly = false
@@ -92,6 +95,7 @@ final class AppStore: ObservableObject {
             try systemDock.recoverIfNeeded()
             if initial.hideSystemDock && !readOnly { try systemDock.setHidden(true) }
         } catch { notice = LocalizedNotice("系统 Dock 恢复失败", "Could not restore the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
+        observeRunningApps()
         refreshRunningApps()
         updateDisplays(DockDisplayInfo.current())
         nativeMetricsService.onUpdate = { [weak self] metrics, status in
@@ -105,13 +109,6 @@ final class AppStore: ObservableObject {
             if self.badgeStatus != status { self.badgeStatus = status }
         }
         self.badgeService.setEnabled(configuration.showBadges)
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
-                     NSWorkspace.didActivateApplicationNotification, NSWorkspace.didHideApplicationNotification,
-                     NSWorkspace.didUnhideApplicationNotification] {
-            observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.refreshRunningApps() }
-            })
-        }
         initialSetupComplete = true
         save()
         nativeMetricsService.start()
@@ -788,6 +785,10 @@ final class AppStore: ObservableObject {
         nativeMetricsService.stop()
         observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         observers.removeAll()
+        processListObservation?.invalidate()
+        processListObservation = nil
+        policyObservations.values.forEach { $0.invalidate() }
+        policyObservations.removeAll()
     }
 
     func setSystemDockHidden(_ hidden: Bool) {
@@ -899,13 +900,53 @@ final class AppStore: ObservableObject {
         return NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.id) ?? URL(fileURLWithPath: app.path)
     }
 
-    private func refreshRunningApps() {
-        let found = runningAppsProvider?() ?? NSWorkspace.shared.runningApplications.filter {
+    private func observeRunningApps() {
+        let workspace = NSWorkspace.shared
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
+                     NSWorkspace.didActivateApplicationNotification, NSWorkspace.didHideApplicationNotification,
+                     NSWorkspace.didUnhideApplicationNotification, NSWorkspace.didWakeNotification] {
+            observers.append(workspace.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.scheduleRunningRefresh() }
+            })
+        }
+        if runningAppsProvider == nil {
+            processListObservation = workspace.observe(\.runningApplications, options: []) { [weak self] _, _ in
+                Task { @MainActor in self?.scheduleRunningRefresh() }
+            }
+        }
+    }
+
+    // An app can register as an accessory and become a regular Dock app later,
+    // without launching again or becoming frontmost.
+    private func systemRunningApps() -> [AppReference] {
+        let applications = NSWorkspace.shared.runningApplications
+        let current = Set(applications)
+        policyObservations = policyObservations.filter { current.contains($0.key) }
+        for app in applications where policyObservations[app] == nil {
+            policyObservations[app] = app.observe(\.activationPolicy, options: []) { [weak self] _, _ in
+                Task { @MainActor in self?.scheduleRunningRefresh() }
+            }
+        }
+        return applications.filter {
             $0.activationPolicy == .regular && !$0.isTerminated && $0.processIdentifier != getpid() && $0.bundleIdentifier != "com.apple.dock"
         }.compactMap { app -> AppReference? in
             guard let url = app.bundleURL else { return nil }
             return AppReference(id: app.bundleIdentifier ?? url.path, name: app.localizedName ?? url.deletingPathExtension().lastPathComponent, path: url.path)
         }
+    }
+
+    private func scheduleRunningRefresh() {
+        guard !observers.isEmpty, !runningRefreshScheduled else { return }
+        runningRefreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.observers.isEmpty else { return }
+            self.runningRefreshScheduled = false
+            self.refreshRunningApps()
+        }
+    }
+
+    private func refreshRunningApps() {
+        let found = runningAppsProvider?() ?? systemRunningApps()
         var unique: [AppReference] = []
         for app in found where !unique.contains(where: { $0.id == app.id }) { unique.append(app) }
         let ordered = runningApps.compactMap { old in unique.first { $0.id == old.id } }

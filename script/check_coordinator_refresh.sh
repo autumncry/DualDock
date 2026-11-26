@@ -12,7 +12,7 @@ xcrun swiftc -swift-version 5 -O -emit-module -emit-library -module-name DualDoc
 cat "$ROOT_DIR/Sources/DualDock/DisplayCoordinator.swift" "$ROOT_DIR/Tests/DockCoordinatorRefreshChecks.swift" > "$CHECK_DIR/CoordinatorWithChecks.swift"
 xcrun swiftc -swift-version 5 -O \
   "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$CHECK_DIR/CoordinatorWithChecks.swift" \
-  "$ROOT_DIR/Sources/DualDock/WindowInteractionService.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionBackend.swift" \
+  "$ROOT_DIR/Sources/DualDock/WeChatBrowserWindowRouter.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionService.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionBackend.swift" \
   "$ROOT_DIR/Sources/DualDock/DockVisibilityController.swift" "$ROOT_DIR/Sources/DualDock/WindowObstructionService.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowPreviewCardView.swift" \
   "$ROOT_DIR/Sources/DualDock/DockUI.swift" "$ROOT_DIR/Sources/DualDock/DockTile.swift" \

@@ -954,6 +954,12 @@ final class DisplayCoordinator {
             menu.addAction(L("移除应用组", "Remove Group")) { [weak self] in self?.store.update { $0.removeEntry(id: tile.entry.id) } }
         } else if let app = tile.entry.apps.first {
             if let windows, !windows.items.isEmpty {
+                if windows.isHostedChoice {
+                    let label = NSMenuItem(title: L("选择此图标控制的微信窗口", "Choose the WeChat window for this icon"),
+                                           action:nil, keyEquivalent:"")
+                    label.isEnabled = false
+                    menu.addItem(label)
+                }
                 for item in windows.items {
                     let title = item.title + (item.isMinimized ? L("（已最小化）", " (Minimized)") : "")
                     menu.addAction(title) { [weak self] in

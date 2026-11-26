@@ -393,6 +393,7 @@ enum VerifiedWindowActivation {
     static func raise(windowID: CGWindowID, pid: pid_t, launchDate: Date?,
                       applicationPath: String?, expectedApp: AppReference, reopenOrderedOut: Bool = true,
                       didReopen: (() -> Void)? = nil, nativeTargetConfirmed: Bool = false,
+                      stableFor: TimeInterval = 0, proxyFront: () -> Bool = { false },
                       isCurrent: @escaping @Sendable () -> Bool = { true }) async -> Bool {
         guard windowID != 0, let launchDate, let applicationPath,
               let app = NSRunningApplication(processIdentifier: pid),
@@ -403,17 +404,18 @@ enum VerifiedWindowActivation {
                     capturedPath: applicationPath, capturedLaunchDate: launchDate,
                     liveBundleID: app.bundleIdentifier, livePath: app.bundleURL?.path, liveLaunchDate: app.launchDate)
         }
-        func exposure() -> Exposure? {
+        func exposure(acceptProxy: Bool = false) -> Exposure? {
             guard live() else { return nil }
             guard let row = sourceRow(windowID: windowID, pid: pid) else { return .notListed }
             guard (row[kCGWindowIsOnscreen as String] as? Bool) == true else { return .orderedOut }
-            guard app.isActive, NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return .background }
+            guard (app.isActive && NSWorkspace.shared.frontmostApplication?.processIdentifier == pid) ||
+                    (acceptProxy && proxyFront()) else { return .background }
             return isExposed(windowID: windowID, pid: pid, in: orderedOnscreenRows()) ? .front : .background
         }
         let previousFront = NSWorkspace.shared.frontmostApplication?.processIdentifier
         func focusStillBelongsToRequest() -> Bool {
             let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
-            return front == previousFront || front == pid
+            return front == previousFront || front == pid || proxyFront()
         }
         func reopen() async -> Bool {
             // A path-based reopen is ambiguous if several instances own that path.
@@ -435,7 +437,7 @@ enum VerifiedWindowActivation {
         // Only a freshly matched AX object can bridge a missing CG record
         // during a Space transition; a cached or preview ID alone cannot.
         guard let initial = exposure(), initial != .notListed || nativeTargetConfirmed else { return false }
-        if initial == .front { return true }
+        if initial == .front && stableFor == 0 { return true }
         var didRequestReopen = false
         if initial == .orderedOut && reopenOrderedOut {
             didRequestReopen = true
@@ -450,9 +452,19 @@ enum VerifiedWindowActivation {
         let start = ProcessInfo.processInfo.systemUptime
         let deadline = start + 0.8
         var attempts = 0
+        var exposedSince: TimeInterval?
         while ProcessInfo.processInfo.systemUptime < deadline {
-            guard let current = exposure(), current != .notListed || nativeTargetConfirmed else { return false }
-            if current == .front { return true }
+            guard let current = exposure(acceptProxy: true), current != .notListed || nativeTargetConfirmed else { return false }
+            if current == .front {
+                let now = ProcessInfo.processInfo.systemUptime
+                let since = exposedSince ?? now
+                if now - since >= stableFor { return true }
+                exposedSince = since
+                do { try await Task.sleep(nanoseconds: 40_000_000) }
+                catch { return false }
+                continue
+            }
+            exposedSince = nil
             guard focusStillBelongsToRequest() else { return false }
             if !didRequestReopen, current == .background, ProcessInfo.processInfo.systemUptime >= start + 0.3,
                isSoleVisibleContent(windowID: windowID, pid: pid, in: orderedOnscreenRows()) {
@@ -470,7 +482,8 @@ enum VerifiedWindowActivation {
             do { try await Task.sleep(nanoseconds: 40_000_000) }
             catch { return false }
         }
-        return exposure() == .front
+        return exposure(acceptProxy:true) == .front &&
+            (stableFor == 0 || exposedSince.map { ProcessInfo.processInfo.systemUptime - $0 >= stableFor } == true)
     }
 
     private static func raiseAccessibleWindow(id: CGWindowID, pid: pid_t, launchDate: Date,

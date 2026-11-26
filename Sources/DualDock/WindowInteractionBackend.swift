@@ -111,9 +111,15 @@ final class WindowInteractionBackend {
         guard !Task.isCancelled else { return .unavailable }
         let path = Self.canonical(app.path)
         let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let browserIcon = WeChatBrowserWindowRouter.hostURL(for: app) != nil
         let processes = NSWorkspace.shared.runningApplications.compactMap { running -> ProcessSnapshot? in
-            guard !running.isTerminated, let url = running.bundleURL, let date = running.launchDate,
-                  running.bundleIdentifier == app.id || Self.canonical(url.path) == path else { return nil }
+            guard !running.isTerminated, let url = running.bundleURL, let date = running.launchDate else { return nil }
+            if browserIcon {
+                guard running.activationPolicy == .regular, running.bundleIdentifier == app.id,
+                      Self.canonical(url.path) == path else { return nil }
+            } else if running.bundleIdentifier != app.id && Self.canonical(url.path) != path {
+                return nil
+            }
             return .init(pid: running.processIdentifier, path: Self.canonical(url.path), launchDate: date,
                          active: running.isActive && running.processIdentifier == frontPID)
         }
@@ -132,7 +138,9 @@ final class WindowInteractionBackend {
         let displays = Self.displays()
         let epoch = actionEpoch
         let request = epoch.current()
-        let allowed: @Sendable () -> Bool = { epoch.current() == request }
+        let allowed: @Sendable () -> Bool = {
+            epoch.current() == request && (item.foregroundProxy.map { WeChatBrowserWindowRouter.isCurrentProxy($0, host: app) } ?? true)
+        }
         let result: DockWindowActionOutcome = await withCheckedContinuation { continuation in
             queue.async { continuation.resume(returning: Self.apply(item, action: action, expected: app, displays: displays, allowed: allowed)) }
         }
@@ -140,7 +148,7 @@ final class WindowInteractionBackend {
         // A stale AX object cannot identify a replacement document. The
         // WindowServer identity may still be valid even when AX has lost it.
         guard result == .performed || (action == .activate && result == .missing) else { return result }
-        let visible = await recover(item.id, for: app, nativeTargetConfirmed: result == .performed, isCurrent: allowed)
+        let visible = await recover(item.id, for: app, nativeTargetConfirmed: result == .performed, proxy:item.foregroundProxy, isCurrent:allowed)
         guard allowed(), !Task.isCancelled else { return .superseded }
         if visible { return .performed }
         guard result != .missing, Self.liveApplication(item.id, expected: app) != nil,
@@ -156,10 +164,11 @@ final class WindowInteractionBackend {
     }
 
     private func recover(_ id: DockWindowIdentity, for app: AppReference, nativeTargetConfirmed: Bool,
-                         isCurrent: @escaping @Sendable () -> Bool) async -> Bool {
+                         proxy: WeChatBrowserWindowRouter.Instance? = nil, isCurrent: @escaping @Sendable () -> Bool) async -> Bool {
         await VerifiedWindowActivation.raise(windowID: id.windowID, pid: id.pid, launchDate: id.processLaunchDate,
             applicationPath: id.applicationPath, expectedApp: app, reopenOrderedOut: false,
-            nativeTargetConfirmed: nativeTargetConfirmed, isCurrent: isCurrent)
+            nativeTargetConfirmed: nativeTargetConfirmed, stableFor: proxy == nil ? 0 : 0.22,
+            proxyFront: { proxy.map { WeChatBrowserWindowRouter.frontProxy($0,host:app) } ?? false }, isCurrent:isCurrent)
     }
 
     nonisolated private static func canonical(_ path: String) -> String {
@@ -363,8 +372,13 @@ final class WindowInteractionBackend {
         if action == .minimize {
             // A user focus change or newly maximized window wins over a queued
             // click. Never minimize a different/newly focused document.
-            guard reader.value(application, kAXFrontmostAttribute) as? Bool == true,
-                  let focused = reader.element(application, kAXFocusedWindowAttribute), CFEqual(focused, target),
+            let focused = reader.element(application, kAXFocusedWindowAttribute)
+            let ownerFocused = reader.value(application, kAXFrontmostAttribute) as? Bool == true &&
+                focused.map { CFEqual($0, target) } == true
+            let proxyFocused = item.foregroundProxy.map {
+                WeChatBrowserWindowRouter.frontProxy($0, host: expected) && focused.map { CFEqual($0, target) } != false
+            } ?? false
+            guard ownerFocused || proxyFocused,
                   VerifiedWindowActivation.isExposed(windowID: item.id.windowID, pid: item.id.pid,
                       in: VerifiedWindowActivation.orderedOnscreenRows()),
                   reader.value(target, "AXFullScreen") as? Bool != true,
