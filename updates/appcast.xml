@@ -4,28 +4,38 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.9.1</title>
-            <pubDate>Thu, 26 Nov 2026 11:37:53 +0800</pubDate>
+            <title>2.9.0</title>
+            <pubDate>Tue, 24 Nov 2026 15:14:57 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.9.1</sparkle:fullReleaseNotesLink>
-            <sparkle:version>41</sparkle:version>
-            <sparkle:shortVersionString>2.9.1</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.9.0</sparkle:fullReleaseNotesLink>
+            <sparkle:version>40</sparkle:version>
+            <sparkle:shortVersionString>2.9.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.9.1
+            <description sparkle:format="markdown"><![CDATA[# DualDock 2.9.0
 
-- 修复微信独立浏览器图标可以唤起网页、再次点却无法收起的问题。DualDock 会核对图标所代表的网页窗口，并对同一扇窗口执行前置、最小化或还原。多个微信窗口难以区分时，可右键该图标选定目标窗口。
-- 活动区现在会监听 macOS 运行应用列表和应用身份的变化。先在后台启动、随后才注册为普通 Dock 应用的进程，可以及时显示图标；转回后台身份时，图标也会及时移除。
+### 应用组外观
+
+在 **设置 → Dock → 应用组外观** 中为所有屏幕的应用组选择图标。
+
+- **银灰**沿用四格应用托盘，**经典**还原旧版蓝色文件夹和叠放的成员图标。新加入的三款分别是**扁平、皮革和玻璃**。
+- 每款风格都支持自定义背景色与 0–100% 背景不透明度。0% 时只隐藏文件夹底板，成员图标、运行状态和消息提醒仍可见。
+- 升级后默认使用银灰风格。可随时恢复风格原色或默认外观。
+
+### 自动隐藏 Dock
+
+在 **设置 → 交互 → 窗口与预览** 开启 **自动隐藏 Dock** 后，指针停在某块屏幕的 Dock 边缘即可唤出，离开后自动收起。使用菜单、分组、预览或拖拽时保持显示。该选项默认关闭。全屏应用仍然独立支持边缘唤出。
 
 ## English
 
-- Fixed repeated clicks on WeChat’s separate browser icon. DualDock identifies the corresponding window and can bring it forward, minimize it, or restore it. If more than one WeChat window could be the target, choose one from the icon’s context menu.
-- Running app icons now update when macOS changes an app’s Dock eligibility, including apps that start in the background and register their Dock icon later.
+Open **Settings → Dock → Group Appearance** to choose a style for app groups across your displays. Silver keeps the four-icon tray, Classic brings back the blue folder, and Flat, Leather and Glass offer three new looks. Set a custom background color and adjust background opacity from 0 to 100%. At 0%, member icons, running indicators and notification badges remain visible.
+
+In **Settings → Interaction → Windows & Previews**, enable **Automatically hide the Dock** to reveal DualDock at the configured edge and hide it after the pointer leaves. It stays open while you use a group, menu or preview, or drag an item. The option is off by default. Full-screen Spaces continue to support edge reveal independently.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.9.1/DualDock-2.9.1-arm64.dmg" length="3596266" type="application/octet-stream" sparkle:edSignature="gRLKd10R+XQZTcheXBjo+bE7YuVk4Nfg9oe3cU2DyNgChmAD1fBZBRVRirpwsSZXQE7/YXTUg/MrucJJ4GcFAg=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.9.0/DualDock-2.9.0-arm64.dmg" length="3521176" type="application/octet-stream" sparkle:edSignature="G6P2KufgmtAgIF0Tj53mN2+YBAD+22o3hRAfLJUpe6i8pjZRpREEtsTKVyw5z9hbj3kdZdNNW3lw8LPn2xinDA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: yTn+kf0ISfsNMEIVAQ/nhsw42HltMPKyBsxG/Io3Yu5tHFuc0bMxbf8u9G5UO1R6MdUdQKIIjR3Dksd30gx2Bw==
-length: 2347
+edSignature: y9vhmxcPORq3wSMDuvTcwSWPpPCTg4D7/iLBb6RusgKTLJT6t5E4MtuHcknde2Hm7LVfSkNbuNzw8zl4JyntBw==
+length: 2985
 -->
