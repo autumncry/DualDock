@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import DualDockCore
 
 /// An owned windowless app changes its Dock eligibility without activation.
@@ -44,8 +45,6 @@ struct RunningAppObservationChecks {
                               userInfo: [NSLocalizedDescriptionKey: detail])
             }
         }
-        func request(_ name: String) throws { try Data().write(to: dir.appendingPathComponent(name)) }
-
         application.setActivationPolicy(.prohibited)
         application.finishLaunching()
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -58,50 +57,83 @@ struct RunningAppObservationChecks {
         let store = AppStore(directory: dir)
         defer { store.stopBackgroundServices() }
 
-        let options = NSWorkspace.OpenConfiguration()
-        options.activates = false
-        options.addsToRecentItems = false
-        options.arguments = ["--policy-helper", dir.path]
-        var launched: NSRunningApplication?
-        var launchError: Error?
-        NSWorkspace.shared.openApplication(at: fixture, configuration: options) { app, error in
-            launched = app
-            launchError = error
+        var lastSnapshot = store.runningApps
+        let updates = store.$runningApps.dropFirst().sink { apps in
+            precondition(apps != lastSnapshot, "Unchanged running list was published")
+            lastSnapshot = apps
         }
-        defer {
-            try? request("stop")
-            if let launched { try? wait("Fixture did not quit during cleanup") { launched.isTerminated } }
-        }
-        try wait("Fixture did not launch") { launched != nil || launchError != nil }
-        if let launchError { throw launchError }
-        guard let helper = launched else { fatalError("No fixture process") }
-        try wait("Fixture not registered as accessory") {
-            NSWorkspace.shared.runningApplications.contains(helper) && helper.activationPolicy == .accessory
-        }
-        // Give startup notifications a chance to settle before the policy changes.
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.35))
-        precondition(!store.runningApps.contains { $0.id == id })
+        defer { updates.cancel() }
+        let settingsURL = dir.appendingPathComponent("configuration.json")
+        let modificationDate = try settingsURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        var observedPIDs = Set<pid_t>()
+        var maxLatency: TimeInterval = 0
+        let passes = 8
 
-        for _ in 0..<2 {
+        for pass in 1...passes {
+            let controls = dir.appendingPathComponent("fixture-\(pass)", isDirectory: true)
+            try FileManager.default.createDirectory(at: controls, withIntermediateDirectories: true)
+            func request(_ name: String) throws { try Data().write(to: controls.appendingPathComponent(name)) }
+            let options = NSWorkspace.OpenConfiguration()
+            options.activates = false
+            options.createsNewApplicationInstance = true
+            options.addsToRecentItems = false
+            options.arguments = ["--policy-helper", controls.path]
+            var launched: NSRunningApplication?
+            var launchError: Error?
+            NSWorkspace.shared.openApplication(at: fixture, configuration: options) { app, error in
+                launched = app
+                launchError = error
+            }
+            defer {
+                try? request("stop")
+                if let launched { try? wait("Fixture did not quit during cleanup") { launched.isTerminated } }
+            }
+            try wait("Fixture did not launch") { launched != nil || launchError != nil }
+            if let launchError { throw launchError }
+            guard let helper = launched else { fatalError("No fixture process") }
+            try wait("Fixture not registered as accessory") {
+                NSWorkspace.shared.runningApplications.contains(helper) && helper.activationPolicy == .accessory
+            }
+            precondition(observedPIDs.insert(helper.processIdentifier).inserted, "Expected a fresh process")
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.35))
+            precondition(!store.runningApps.contains { $0.id == id })
+
+            for _ in 0..<2 {
+                let stable = store.runningApps.map(\.id)
+                try request("regular")
+                try wait("Workspace did not promote fixture") { helper.activationPolicy == .regular }
+                let registeredAt = ProcessInfo.processInfo.systemUptime
+                try wait("Dock did not add the newly regular app") { store.runningApps.contains { $0.id == id } }
+                maxLatency = max(maxLatency, ProcessInfo.processInfo.systemUptime - registeredAt)
+                precondition(store.displayedEntries.filter { $0.apps.first?.id == id }.count == 1)
+                let kept = Set(stable).intersection(store.runningApps.map(\.id))
+                precondition(stable.filter(kept.contains) == store.runningApps.map(\.id).filter(kept.contains))
+                try request("accessory")
+                try wait("Workspace did not demote fixture") { helper.activationPolicy == .accessory }
+                try wait("Dock retained the demoted app") { !store.runningApps.contains { $0.id == id } }
+            }
+
+            if pass == passes {
+                store.stopBackgroundServices()
+                store.stopBackgroundServices()
+            }
             try request("regular")
-            try wait("Workspace did not promote fixture") { helper.activationPolicy == .regular }
-            let registeredAt = ProcessInfo.processInfo.systemUptime
-            try wait("Dock did not add the newly regular app") { store.runningApps.contains { $0.id == id } }
-            print(String(format: "Dock ready %.0f ms after observing regular status",
-                         (ProcessInfo.processInfo.systemUptime - registeredAt) * 1000))
-            precondition(store.displayedEntries.filter { $0.apps.first?.id == id }.count == 1)
-            try request("accessory")
-            try wait("Workspace did not demote fixture") { helper.activationPolicy == .accessory }
-            try wait("Dock retained the demoted app") { !store.runningApps.contains { $0.id == id } }
+            try wait("Fixture did not promote before terminating") { helper.activationPolicy == .regular }
+            if pass == passes {
+                NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.7))
+                precondition(!store.runningApps.contains { $0.id == id }, "Refresh remained active after shutdown")
+            }
+            // Exit while regular, including cases where removal races queued additions.
+            try request("stop")
+            try wait("Fixture did not quit") { helper.isTerminated }
+            try wait("Dock retained the terminated app") { !store.runningApps.contains { $0.id == id } }
         }
+        let finalDate = try settingsURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        precondition(modificationDate == finalDate, "Inventory reconciliation wrote configuration to disk")
+        print(String(format: "Running-app observation: %d process lifetimes, %d policy transitions, max addition %.0f ms",
+                     passes, passes * 5, maxLatency * 1000))
+        print("Stable order, unique publications, no configuration writes, idempotent stop and cleanup verified")
 
-        store.stopBackgroundServices()
-        try request("regular")
-        try wait("Fixture did not promote after shutdown") { helper.activationPolicy == .regular }
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
-        precondition(!store.runningApps.contains { $0.id == id }, "Observer remained active after shutdown")
-        try request("stop")
-        try wait("Fixture did not quit") { helper.isTerminated }
-        print("Running-app observation: two accessory/regular round trips, unique entries and shutdown verified")
     }
 }

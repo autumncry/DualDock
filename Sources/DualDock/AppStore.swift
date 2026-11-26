@@ -33,8 +33,7 @@ final class AppStore: ObservableObject {
     private let runningAppsProvider: (() -> [AppReference])?
     private let permissionsProvider: (() -> (accessibility: Bool, capture: Bool))?
     private var observers: [NSObjectProtocol] = []
-    private var processListObservation: NSKeyValueObservation?
-    private var policyObservations: [NSRunningApplication: NSKeyValueObservation] = [:]
+    private var runningReconciliationTimer: Timer?
     private var runningRefreshScheduled = false
     private var icons: [String: NSImage] = [:]
     private var artworkBounds: [String: CGRect] = [:]
@@ -785,10 +784,8 @@ final class AppStore: ObservableObject {
         nativeMetricsService.stop()
         observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         observers.removeAll()
-        processListObservation?.invalidate()
-        processListObservation = nil
-        policyObservations.values.forEach { $0.invalidate() }
-        policyObservations.removeAll()
+        runningReconciliationTimer?.invalidate()
+        runningReconciliationTimer = nil
     }
 
     func setSystemDockHidden(_ hidden: Bool) {
@@ -909,25 +906,21 @@ final class AppStore: ObservableObject {
                 Task { @MainActor in self?.scheduleRunningRefresh() }
             })
         }
-        if runningAppsProvider == nil {
-            processListObservation = workspace.observe(\.runningApplications, options: []) { [weak self] _, _ in
-                Task { @MainActor in self?.scheduleRunningRefresh() }
-            }
+        guard runningAppsProvider == nil else { return }
+        // Helpers can gain or lose Dock eligibility without a workspace notification.
+        // Keep process observation out of AppKit's per-application KVO lifetime path.
+        let timer = Timer(timeInterval: 0.65, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleRunningRefresh() }
         }
+        timer.tolerance = 0.10
+        RunLoop.main.add(timer, forMode: .common)
+        runningReconciliationTimer = timer
     }
 
     // An app can register as an accessory and become a regular Dock app later,
     // without launching again or becoming frontmost.
     private func systemRunningApps() -> [AppReference] {
-        let applications = NSWorkspace.shared.runningApplications
-        let current = Set(applications)
-        policyObservations = policyObservations.filter { current.contains($0.key) }
-        for app in applications where policyObservations[app] == nil {
-            policyObservations[app] = app.observe(\.activationPolicy, options: []) { [weak self] _, _ in
-                Task { @MainActor in self?.scheduleRunningRefresh() }
-            }
-        }
-        return applications.filter {
+        NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !$0.isTerminated && $0.processIdentifier != getpid() && $0.bundleIdentifier != "com.apple.dock"
         }.compactMap { app -> AppReference? in
             guard let url = app.bundleURL else { return nil }
@@ -947,10 +940,11 @@ final class AppStore: ObservableObject {
 
     private func refreshRunningApps() {
         let found = runningAppsProvider?() ?? systemRunningApps()
-        var unique: [AppReference] = []
-        for app in found where !unique.contains(where: { $0.id == app.id }) { unique.append(app) }
-        let ordered = runningApps.compactMap { old in unique.first { $0.id == old.id } }
-            + unique.filter { new in !runningApps.contains { $0.id == new.id } }
+        var seen = Set<String>()
+        let unique = found.filter { seen.insert($0.id).inserted }
+        var additions = Dictionary(uniqueKeysWithValues: unique.map { ($0.id, $0) })
+        var ordered = runningApps.compactMap { additions.removeValue(forKey: $0.id) }
+        ordered.append(contentsOf: unique.filter { additions[$0.id] != nil })
         if ordered != runningApps { runningApps = ordered }
     }
 
