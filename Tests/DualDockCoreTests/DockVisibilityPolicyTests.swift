@@ -43,6 +43,64 @@ final class DockVisibilityPolicyTests: XCTestCase {
         XCTAssertTrue(update(1.43, edge: true))
     }
 
+    func testAlwaysHideDwellsAtEdgeHonorsInteractionAndRehidesOnOrdinaryDesktop() {
+        var state = DockVisibilityPolicy()
+        func visible(_ time: Double, edge: Bool = false, inside: Bool = false, interacting: Bool = false) -> Bool {
+            state.update(now: time, fullscreen: false, autoHide: false, maximized: false, autoHideDock: true,
+                         pointerAtEdge: edge, pointerInsideDock: inside, interacting: interacting)
+        }
+        XCTAssertFalse(visible(0))
+        XCTAssertFalse(visible(1, inside: true), "Hidden artwork must not take over underlying windows")
+        XCTAssertFalse(visible(2, edge: true))
+        XCTAssertFalse(visible(2.09, edge: true))
+        XCTAssertFalse(visible(2.1), "Passing the edge should cancel a partial dwell")
+        XCTAssertFalse(visible(3, edge: true))
+        XCTAssertTrue(visible(3.13, edge: true))
+        XCTAssertTrue(visible(4, inside: true))
+        XCTAssertTrue(visible(5, interacting: true))
+        XCTAssertTrue(visible(5.2), "Grace period lets the pointer reach an owned popup")
+        XCTAssertFalse(visible(5.31))
+    }
+
+    func testGeneralAndMaximizedOptionsCannotOverrideFullscreen() {
+        var state = DockVisibilityPolicy()
+        func visible(_ time: Double, _ fullscreen: Bool, _ general: Bool, _ onMaximize: Bool,
+                     maximized: Bool = false, edge: Bool = false, inside: Bool = false) -> Bool {
+            state.update(now: time, fullscreen: fullscreen, autoHide: onMaximize, maximized: maximized,
+                         autoHideDock: general, pointerAtEdge: edge, pointerInsideDock: inside, interacting: false)
+        }
+        XCTAssertFalse(visible(0, false, true, false))
+        XCTAssertTrue(visible(1, false, false, false))
+        XCTAssertFalse(visible(2, false, false, true, maximized: true))
+        XCTAssertFalse(visible(3, true, false, false))
+        XCTAssertFalse(visible(4, true, true, false, edge: true))
+        XCTAssertTrue(visible(4.13, true, false, true, edge: true))
+        XCTAssertTrue(visible(5, true, true, false, inside: true))
+        XCTAssertFalse(visible(6, false, true, false))
+        XCTAssertTrue(visible(7, false, false, false))
+    }
+
+    func testApproachStripCoversDockInsetOnlyAlongItsSpanAndInsideItsOwnDisplay() {
+        let screen = CGRect(x: -900, y: 10, width: 900, height: 760)
+        for (edge, body, probe, outside, outsideSpan) in [
+            (DockEdge.top, CGRect(x: -700, y: 706, width: 500, height: 56),
+             CGPoint(x: -500, y: 763), CGPoint(x: -500, y: 771), CGPoint(x: -800, y: 763)),
+            (.bottom, CGRect(x: -700, y: 18, width: 500, height: 56),
+             CGPoint(x: -500, y: 15), CGPoint(x: -500, y: 9), CGPoint(x: -800, y: 15)),
+            (.left, CGRect(x: -892, y: 210, width: 56, height: 500),
+             CGPoint(x: -895, y: 400), CGPoint(x: -901, y: 400), CGPoint(x: -895, y: 100)),
+            (.right, CGRect(x: -64, y: 210, width: 56, height: 500),
+             CGPoint(x: -5, y: 400), CGPoint(x: 0.1, y: 400), CGPoint(x: -5, y: 100))
+        ] {
+            let strip = DockVisibilityPolicy.activationRegion(backdrop: body, edge: edge, visibleScreen: screen,
+                                                              includingDockInset: true)
+            XCTAssertTrue(strip.contains(probe), "Gap unreachable on \(edge)")
+            XCTAssertFalse(strip.contains(outside), "Adjacent display or menu bar triggered \(edge)")
+            XCTAssertFalse(strip.contains(outsideSpan), "Outside the Dock length on \(edge)")
+            XCTAssertFalse(strip.contains(CGPoint(x: body.midX, y: body.midY)), "Whole hidden body triggered \(edge)")
+        }
+    }
+
     func testOrdinaryWindowsCoveringDockRemainVisible() {
         let workspace = CGRect(x: 0, y: 0, width: 1800, height: 1129)
         let ordinary = [

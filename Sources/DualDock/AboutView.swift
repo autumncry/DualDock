@@ -15,7 +15,7 @@ struct AboutView: View {
                     .resizable().scaledToFit().frame(width: 56, height: 56)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("DualDock").font(.system(size: 18, weight: .semibold))
+                    Text("DualDock 3").font(.system(size: 18, weight: .semibold))
                     Text(localize("应用有序收纳，Dock 多屏同在。", "Organized apps. A Dock on every display."))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(localize("原生 macOS 多屏 Dock", "A native multi-display Dock for macOS"))
@@ -25,19 +25,23 @@ struct AboutView: View {
 
             VStack(spacing: 0) {
                 detailRow(localize("版本", "Version")) {
-                    HStack(spacing: 8) {
-                        Text(versionDescription).textSelection(.enabled)
-                        Spacer(minLength: 2)
-                        Button {
-                            updates.check()
-                        } label: {
-                            Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
-                        }.controlSize(.small).disabled(!updates.canCheck)
-                    }
-                    if let error = updates.startupError {
-                        Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
-                            .font(.callout).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if LocalPreviewConfiguration.isPreview {
+                        Text(versionDescription + localize(" · 本地试用版", " · Local preview")).textSelection(.enabled)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text(versionDescription).textSelection(.enabled)
+                            Spacer(minLength: 2)
+                            Button {
+                                updates.check()
+                            } label: {
+                                Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
+                            }.controlSize(.small).disabled(!updates.canCheck)
+                        }
+                        if let error = updates.startupError {
+                            Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
+                                .font(.callout).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 Divider()

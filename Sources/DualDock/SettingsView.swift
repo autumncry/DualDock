@@ -31,6 +31,7 @@ extension AppLanguage {
 
 struct SettingsView: View {
     @ObservedObject var store: AppStore
+    @StateObject private var tools: DockToolsStore
     @StateObject private var launchAtLoginService: LaunchAtLoginService
     @State private var language = AppLanguage.current
     @StateObject private var navigation: SettingsNavigation
@@ -39,8 +40,10 @@ struct SettingsView: View {
     private var selected: SettingsSection { navigation.selected }
 
     init(store: AppStore, initialSection: SettingsSection = .general, displayID: String? = nil,
-         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil) {
+         launchAtLoginService: LaunchAtLoginService? = nil, navigation: SettingsNavigation? = nil,
+         tools: DockToolsStore? = nil) {
         self.store = store
+        _tools = StateObject(wrappedValue: tools ?? DockToolsStore(directory: store.directory))
         _launchAtLoginService = StateObject(wrappedValue: launchAtLoginService ?? LaunchAtLoginService())
         _navigation = StateObject(wrappedValue: navigation ?? SettingsNavigation(initialSection))
         _selectedDisplayID = State(initialValue: displayID)
@@ -204,6 +207,7 @@ struct SettingsView: View {
                 navigation.show(SettingsSection.appearance)
             }
         case .interaction, .magnification, .notifications: InteractionSettingsView(store: store, section: section)
+        case .tools: DockToolsSettingsView(store: tools)
         case .permissions: PermissionsSettingsView(store: store)
         case .help: DockHelpSettingsView()
         case .about: AboutView()

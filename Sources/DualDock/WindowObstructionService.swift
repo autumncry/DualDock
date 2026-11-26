@@ -28,7 +28,9 @@ final class WindowObstructionService {
         generation &+= 1
         if clear { frames = []; snapshotTime = nil }
         lastRead = -.infinity
-        pending = reading
+        // Clearing a mode's snapshot retires queued work as well. An explicit
+        // refresh after the reset can still request a replacement.
+        pending = reading && !clear
     }
 
     func refresh(force: Bool = false) {

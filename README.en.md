@@ -1,3 +1,9 @@
+# DualDock 3.0 development branch
+
+Based on **v2.9.2**. Run `./script/package_preview.sh` to build **DualDock 3.app** in this directory. The preview stores its own settings and tool layout in `LocalData/` and can run alongside the installed release.
+
+The installation guide below applies to the public release.
+
 <div align="center">
 
 <img src="Resources/AppIcon.iconset/icon_128x128@2x.png" width="112" alt="DualDock icon">
@@ -188,12 +194,12 @@ Apple guidance: [Safely open apps on your Mac](https://support.apple.com/en-us/1
 ## Building from source
 
 ```sh
-git clone https://github.com/autumncry/DualDock.git
+git clone --branch feature/dualdock-3.0 https://github.com/autumncry/DualDock.git
 cd DualDock
-./script/build_and_run.sh
+./script/build_and_run.sh --preview
 ```
 
-This is a Swift Package Manager project; no Xcode project needs to be created. The script first asks an existing DualDock process to quit normally, then builds, bundles, locally signs, and launches `dist/DualDock.app`.
+This command builds and launches `DualDock 3.app` in your checkout, alongside an installed 2.x release. Maintainers can use `./script/package_app.sh release` to build the production bundle in `dist/release/`.
 
 ### Requirements
 

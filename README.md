@@ -1,3 +1,9 @@
+# DualDock 3.0 开发分支
+
+基线为 **v2.9.2**。用 `./script/package_preview.sh` 在本目录构建独立的 **DualDock 3.app**，双击即可试用。本地配置在同级的 `LocalData/`，已有的 3.0 工具排列会继续使用。[3.0 试用指南](./试用指南.md)
+
+下方是正式发行版的安装与使用说明。
+
 <div align="center">
 
 <img src="Resources/AppIcon.iconset/icon_128x128@2x.png" width="112" alt="DualDock 图标">
@@ -188,12 +194,12 @@ Apple 说明：[安全地打开 Mac 上的 App](https://support.apple.com/en-us/
 ## 从源码构建
 
 ```sh
-git clone https://github.com/autumncry/DualDock.git
+git clone --branch feature/dualdock-3.0 https://github.com/autumncry/DualDock.git
 cd DualDock
-./script/build_and_run.sh
+./script/build_and_run.sh --preview
 ```
 
-这是一个 Swift Package Manager 项目，无需创建 Xcode 工程。脚本会先请求已运行的 DualDock 正常退出，再构建、打包、本地签名并启动 `dist/DualDock.app`。
+此命令构建并启动当前工作目录中的 `DualDock 3.app`，可与正式安装的 2.x 同时运行。维护者使用 `./script/package_app.sh release` 在 `dist/release/` 中构建正式身份的应用。
 
 ### 系统要求
 

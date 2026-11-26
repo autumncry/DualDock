@@ -35,7 +35,7 @@ final class DockTile: NSView, NSDraggingSource {
     private var ownsInteraction = false
     private var destinationInteraction = false
     private var dwell: DispatchWorkItem?
-    private var mergeReady = false
+    private(set) var mergeReady = false
     private var dragInside = false
     private var dropAfter = false
     private var centralDrop = false

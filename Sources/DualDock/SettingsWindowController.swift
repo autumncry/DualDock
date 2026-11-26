@@ -23,19 +23,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     static let minimumContentSize = NSSize(width: 740, height: 320)
 
     init(store: AppStore, navigation supplied: SettingsNavigation? = nil,
-         launchAtLoginService: LaunchAtLoginService? = nil) {
+         launchAtLoginService: LaunchAtLoginService? = nil, tools: DockToolsStore? = nil) {
         self.store = store
         let navigation = supplied ?? SettingsNavigation()
         self.navigation = navigation
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.initialFrameSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = L("DualDock 设置", "DualDock Settings")
+        window.title = L("DualDock 3 设置", "DualDock 3 Settings")
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         super.init(window: window)
         let content = NSHostingController(rootView: SettingsView(store: store,
-            launchAtLoginService: launchAtLoginService, navigation: navigation))
+            launchAtLoginService: launchAtLoginService, navigation: navigation, tools: tools))
         // The window owns its frame. Controls and translations reflow inside the detail scroll view.
         content.sizingOptions = []
         window.contentViewController = content
@@ -86,7 +86,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         if let category = SettingsCategory(rawValue: sender.itemIdentifier.rawValue) { navigation.show(category) }
     }
 
-    func show() {
+    func show(section: SettingsSection? = nil) {
+        if let section { navigation.show(section) }
         guard let window else { return }
         if let previous = NSWorkspace.shared.frontmostApplication,
            previous.processIdentifier != ProcessInfo.processInfo.processIdentifier {
@@ -104,7 +105,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     @objc private func updateLanguage() {
-        window?.title = L("DualDock 设置", "DualDock Settings")
+        window?.title = L("DualDock 3 设置", "DualDock 3 Settings")
         for item in window?.toolbar?.items ?? [] {
             if let category = SettingsCategory(rawValue: item.itemIdentifier.rawValue) { item.label = category.title }
         }

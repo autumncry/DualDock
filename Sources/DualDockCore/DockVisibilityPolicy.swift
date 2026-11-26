@@ -80,9 +80,19 @@ public struct DockVisibilityPolicy: Sendable {
 
     /// At the top, the activation edge is below the menu bar / camera safe area.
     public static func activationRegion(backdrop: CGRect, edge: DockEdge,
-                                        visibleScreen: CGRect) -> CGRect {
+                                        visibleScreen: CGRect, includingDockInset: Bool = false) -> CGRect {
         guard valid(backdrop), valid(visibleScreen) else { return .null }
-        let depth: CGFloat = 3
+        // The normal backdrop sits 8 pt inside the work area. Cover that short
+        // approach to its nearest edge, but do not extend the trigger through
+        // an obsolete frame while the window is being placed on a new Space.
+        let gap: CGFloat
+        switch edge {
+        case .bottom: gap = backdrop.minY - visibleScreen.minY
+        case .top: gap = visibleScreen.maxY - backdrop.maxY
+        case .left: gap = backdrop.minX - visibleScreen.minX
+        case .right: gap = visibleScreen.maxX - backdrop.maxX
+        }
+        let depth: CGFloat = 3 + (includingDockInset ? min(9, max(0, gap)) : 0)
         switch edge {
         case .bottom:
             return CGRect(x: backdrop.minX, y: visibleScreen.minY, width: backdrop.width, height: depth)

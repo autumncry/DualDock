@@ -23,6 +23,7 @@ final class AppStore: ObservableObject {
     }
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var captureGranted = CGPreflightScreenCaptureAccess()
+    let managesSystemDock: Bool
     let systemDock: SystemDockService
     let windows = WindowService()
     private let badgeService: DockBadgeService
@@ -50,7 +51,8 @@ final class AppStore: ObservableObject {
     init(directory: URL,
          runningAppsProvider: (() -> [AppReference])? = nil,
          permissionsProvider: (() -> (accessibility: Bool, capture: Bool))? = nil,
-         badgeService: DockBadgeService? = nil) {
+         badgeService: DockBadgeService? = nil, managesSystemDock: Bool = true) {
+        self.managesSystemDock = managesSystemDock
         self.badgeService = badgeService ?? DockBadgeService()
         self.directory = directory
         self.runningAppsProvider = runningAppsProvider
@@ -83,6 +85,7 @@ final class AppStore: ObservableObject {
             readOnly = true
             issue = LocalizedNotice("无法读取配置，原文件已保留。请打开配置目录检查。", "Could not read the configuration. Open the configuration folder to inspect the original file.").appending(.init(verbatim: error.localizedDescription), separator: "\n")
         }
+        if !managesSystemDock { initial.hideSystemDock = false }
         initial.normalizeAppearance()
         configuration = initial
         if let permissions = permissionsProvider?() {
@@ -91,7 +94,7 @@ final class AppStore: ObservableObject {
         }
         notice = issue
         do {
-            try systemDock.recoverIfNeeded()
+            if managesSystemDock { try systemDock.recoverIfNeeded() }
             if initial.hideSystemDock && !readOnly { try systemDock.setHidden(true) }
         } catch { notice = LocalizedNotice("系统 Dock 恢复失败", "Could not restore the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
         observeRunningApps()
@@ -163,6 +166,14 @@ final class AppStore: ObservableObject {
         if valid != displays {
             displays = valid
             cancelResizePreview()
+            if !managesSystemDock && !readOnly {
+                let added = valid.filter { !$0.isMirrored && configuration.displaySettings[$0.id] == nil }
+                if !added.isEmpty {
+                    update { config in
+                        for display in added { config.displaySettings[display.id] = DockDisplaySettings(edge: .top) }
+                    }
+                }
+            }
         }
         // Empty transition snapshots remove the UI rows but retain the last
         // valid sizing limits and leave a pending width migration unresolved.
@@ -337,7 +348,7 @@ final class AppStore: ObservableObject {
     }
 
     func edge(for displayID: String) -> DockEdge {
-        configuration.displaySettings[displayID]?.edge ?? .bottom
+        configuration.displaySettings[displayID]?.edge ?? (managesSystemDock ? .bottom : .top)
     }
 
     func setEdge(_ edge: DockEdge, for displayID: String) {
@@ -789,7 +800,7 @@ final class AppStore: ObservableObject {
     }
 
     func setSystemDockHidden(_ hidden: Bool) {
-        guard !readOnly else { return }
+        guard managesSystemDock, !readOnly else { return }
         do {
             try systemDock.setHidden(hidden)
             update { $0.hideSystemDock = hidden }
@@ -797,6 +808,7 @@ final class AppStore: ObservableObject {
     }
 
     func restoreSystemDock() {
+        guard managesSystemDock else { return }
         do {
             try systemDock.restore()
             if !readOnly { update { $0.hideSystemDock = false } }

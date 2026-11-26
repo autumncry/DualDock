@@ -6,13 +6,30 @@ enum AppLanguage: String, CaseIterable {
 
     static let preferenceKey = "DualDockDisplayLanguage"
 
+    private static var localFile: URL?
+    private static var localLanguage: AppLanguage = .simplifiedChinese
+
+    static func useLocalSettings(in directory: URL) {
+        let file = directory.appendingPathComponent("language.txt")
+        let saved = try? String(contentsOf: file, encoding: .utf8)
+        localLanguage = saved.flatMap(Self.init(rawValue:)) ?? .simplifiedChinese
+        localFile = file
+    }
+
     static var current: AppLanguage {
-        UserDefaults.standard.string(forKey: preferenceKey).flatMap(Self.init(rawValue:)) ?? .simplifiedChinese
+        if localFile != nil { return localLanguage }
+        return UserDefaults.standard.string(forKey: preferenceKey).flatMap(Self.init(rawValue:)) ?? .simplifiedChinese
     }
 
     @MainActor static func set(_ language: AppLanguage) {
         guard language != current else { return }
-        UserDefaults.standard.set(language.rawValue, forKey: preferenceKey)
+        if let localFile {
+            do { try language.rawValue.write(to: localFile, atomically: true, encoding: .utf8) }
+            catch { return }
+            localLanguage = language
+        } else {
+            UserDefaults.standard.set(language.rawValue, forKey: preferenceKey)
+        }
         NotificationCenter.default.post(name: .dualDockLanguageDidChange, object: nil)
     }
 }

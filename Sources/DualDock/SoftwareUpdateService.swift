@@ -11,7 +11,7 @@ final class SoftwareUpdateService: NSObject, ObservableObject {
     static let shared = SoftwareUpdateService()
 
     #if SWIFT_PACKAGE
-    @Published private(set) var canCheck = true
+    @Published private(set) var canCheck = !LocalPreviewConfiguration.isPreview
     private lazy var controller = SPUStandardUpdaterController(
         startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
     private var availability: AnyCancellable?
@@ -25,6 +25,7 @@ final class SoftwareUpdateService: NSObject, ObservableObject {
 
     func check() {
         #if SWIFT_PACKAGE
+        guard !LocalPreviewConfiguration.isPreview else { return }
         let updater = controller.updater
         if !started {
             do {

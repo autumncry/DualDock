@@ -30,7 +30,7 @@ final class DockVisibilityController {
     private var states: [CGDirectDisplayID: DockVisibilityPolicy] = [:]
     private var knownSpaceIDs: [CGDirectDisplayID: UInt64] = [:]
     private var lastSnapshot = Snapshot(hidden: [], fullscreen: [])
-    private var previousMaximizeSetting: Bool?
+    private var checkingMaximized = false
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var stopped = false
@@ -65,7 +65,7 @@ final class DockVisibilityController {
     func invalidate(resetReveal: Bool = false) {
         guard !stopped else { return }
         windows.invalidateFullscreenState()
-        obstruction.invalidate()
+        if checkingMaximized { obstruction.invalidate() }
         refresh(force: true, resetUnknownSpaces: resetReveal)
     }
 
@@ -94,15 +94,14 @@ final class DockVisibilityController {
         // a later successful read can still detect a fullscreen-to-fullscreen move.
         knownSpaceIDs.merge(currentSpaceIDs) { _, current in current }
         let alwaysHide = autoHideDock()
-        let hideMaximized = autoHideWhenMaximized()
-        if previousMaximizeSetting != hideMaximized {
+        let needsMaximizedFrames = !alwaysHide && autoHideWhenMaximized() && fullscreen != valid
+        if checkingMaximized != needsMaximizedFrames {
+            checkingMaximized = needsMaximizedFrames
             obstruction.invalidate(clear: true)
-            previousMaximizeSetting = hideMaximized
         }
-        // A forced apply is also used by live resizing; it must not turn every
-        // pointer sample into a WindowServer query. invalidate() resets the read
-        // deadline for actual Space, activation and display changes.
-        if hideMaximized { obstruction.refresh() }
+        // Forced applies are also used by live resizing. Only the maximize-only
+        // mode on a normal desktop needs scheduled window bounds reads.
+        if needsMaximizedFrames { obstruction.refresh() }
         let pointer = pointer()
         let now = ProcessInfo.processInfo.systemUptime
         var next: Set<CGDirectDisplayID> = []
@@ -112,15 +111,16 @@ final class DockVisibilityController {
             let physical = Self.fullscreenBounds(for: target.screen)
             let activationBounds = isFullscreen ? physical : target.visibleFrame
             let edge = DockVisibilityPolicy.activationRegion(backdrop: target.backdrop, edge: target.edge,
-                                                              visibleScreen: activationBounds)
+                                                              visibleScreen: activationBounds,
+                                                              includingDockInset: state.isVisible || (alwaysHide && !isFullscreen))
             // A visible system Dock may reserve part of the desktop. In ordinary
             // auto-hide mode accept the physical edge as well as the workspace edge.
             // The top hotspot stays under the menu bar and camera safe area.
             let physicalEdge = alwaysHide && !isFullscreen && target.edge != .top && physical != activationBounds &&
                 DockVisibilityPolicy.activationRegion(backdrop: target.backdrop, edge: target.edge,
                                                      visibleScreen: physical).contains(pointer)
-            let visible = state.update(now: now, fullscreen: isFullscreen, autoHide: hideMaximized,
-                maximized: hideMaximized && !alwaysHide && obstruction.frames.contains {
+            let visible = state.update(now: now, fullscreen: isFullscreen, autoHide: needsMaximizedFrames,
+                maximized: !isFullscreen && needsMaximizedFrames && obstruction.frames.contains {
                     DockVisibilityPolicy.isMaximizedWindow($0, in: target.visibleFrame)
                 }, autoHideDock: alwaysHide, pointerAtEdge: edge.contains(pointer) || physicalEdge,
                 pointerInsideDock: target.pointerInside, interacting: target.interacting)

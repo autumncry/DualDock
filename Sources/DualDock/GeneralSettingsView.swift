@@ -70,8 +70,12 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private var systemDock: some View {
-        Group {
+    @ViewBuilder private var systemDock: some View {
+        if !store.managesSystemDock {
+            Text(localize("本地试用版与 2.x 可同时运行。系统 Dock 由原版或系统设置管理。",
+                          "The local preview and 2.x can run together. Manage the system Dock in 2.x or System Settings."))
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+        } else {
             SettingsSwitchRow(title: localize("隐藏系统 Dock", "Hide the system Dock"),
                               detail: localize("正常退出 DualDock 时恢复原设置。全屏时，在屏幕边缘停留可唤出 DualDock。",
                                                "Quitting DualDock restores your settings. In full screen, hold the pointer at the edge to reveal DualDock."),

@@ -7,6 +7,10 @@ struct DockHelpSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             GroupBox {
                 VStack(alignment: .leading, spacing: 0) {
+                    guideRow(localize("工具页", "Tools page"), symbol: "rectangle.2.swap") {
+                        Text(localize("在顶部或底部 Dock 上双指上下滑，在侧边 Dock 上左右滑。沿栏滑动浏览更多项目。每块屏幕可以停在不同页。到“Dock → 工具页”添加卡片、调宽度或叠放卡片。", "Swipe up or down on a horizontal Dock, or sideways on a side Dock. Scroll along the bar to see more items. Each display keeps its own page. Open Dock → Tools Page to add, resize, or stack cards."))
+                    }
+                    Divider()
                     guideRow(localize("整理应用", "Organize apps"), symbol: "folder") {
                         Text(localize("从 Finder 拖入应用，也可在“通用”中添加。将图标拖到另一个图标中央，稍作停留再松开即可成组。右键点按活动应用，选“加入应用组”可直接收入已有分组。点击分组可展开，右键可重命名或拆分。", "Drag apps from Finder or add them in General. Hold an icon over another, then release to make a group. To add a running app to an existing group, right-click it and choose Add to App Group. Click a group to expand it or right-click to rename or ungroup it."))
                     }

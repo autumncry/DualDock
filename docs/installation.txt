@@ -1,4 +1,4 @@
-DualDock 2.9.2
+DualDock 3.0.0
 
 系统要求
 macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。

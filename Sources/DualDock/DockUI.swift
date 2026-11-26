@@ -3,7 +3,7 @@ import QuartzCore
 import DualDockCore
 
 struct DockDrag: Codable {
-    static let pasteboardType = NSPasteboard.PasteboardType("local.ronny.DualDock.item")
+    static let pasteboardType = NSPasteboard.PasteboardType((Bundle.main.bundleIdentifier ?? "local.ronny.DualDock") + ".item")
     var appID: String?
     var entryID: UUID
     var groupID: UUID?
@@ -20,6 +20,10 @@ final class DockPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    private var dispatchingContextClick = false
+    private weak var trackedContextMenu: NSMenu?
+    var holdsContextMenu: Bool { dispatchingContextClick || trackedContextMenu != nil }
+
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isFloatingPanel = true
@@ -34,6 +38,40 @@ final class DockPanel: NSPanel {
         collectionBehavior = Self.normalBehavior
         acceptsMouseMovedEvents = true
         animationBehavior = .none
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(menuBegan(_:)), name: NSMenu.didBeginTrackingNotification, object: nil)
+        center.addObserver(self, selector: #selector(menuEnded(_:)), name: NSMenu.didEndTrackingNotification, object: nil)
+    }
+
+    @objc private func menuBegan(_ note: Notification) {
+        guard dispatchingContextClick, trackedContextMenu == nil else { return }
+        trackedContextMenu = note.object as? NSMenu
+    }
+
+    @objc private func menuEnded(_ note: Notification) {
+        if let menu = note.object as? NSMenu, menu === trackedContextMenu { trackedContextMenu = nil }
+    }
+
+    /// AppKit owns contextual menu dispatch, including menus built by a SwiftUI card.
+    /// Keep this panel engaged until the menu it opened ends tracking.
+    func dispatchContextClick(_ dispatch: () -> Void) {
+        let previous = dispatchingContextClick
+        dispatchingContextClick = true
+        defer { dispatchingContextClick = previous }
+        dispatch()
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        // Handle contact before either the app row or the SwiftUI tools' native
+        // scroll view consumes it. Nothing is intercepted outside this panel.
+        if event.type == .scrollWheel, let strip = contentView as? DockStripView,
+           strip.routeShelfScroll(event) { return }
+        if contentView is DockStripView,
+           event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control)) {
+            dispatchContextClick { super.sendEvent(event) }
+            return
+        }
+        super.sendEvent(event)
     }
 
     func setFullscreenOverlay(_ enabled: Bool) {
@@ -122,7 +160,17 @@ final class DockStripView: NSView {
     private var artworkBounds: [CGRect] = []
     private let backdrop = NSVisualEffectView()
     var backdropFrame: NSRect { backdrop.frame }
+    private let pageCanvas = NSView()
     private let scrolling = DockScrollView()
+    private var toolsSurface: DockShelfSurface?
+    private(set) var page: DockShelfPage = .apps
+    private var gesture = DockShelfGesture()
+    private var pagingProgress: CGFloat?
+    private var transitionID: UInt = 0
+    private var scrubbing = false
+    var canStartPaging: (() -> Bool)?
+    var onPageMotionBegan: (() -> Void)?
+    var onPageChanged: ((DockShelfPage) -> Void)?
     var scroll: NSScrollView { scrolling }
     let document = DockDocumentView(frame: .zero)
     private(set) var tiles: [DockTile] = []
@@ -135,7 +183,10 @@ final class DockStripView: NSView {
     private(set) var desiredWidth: CGFloat = 200
     var layoutGeometry: DockGeometry? { currentGeometry }
     var isResizing: Bool { resizeSession?.started == true }
-    var isInteracting: Bool { interactionDepth > 0 || resizeSession != nil }
+    var isInteracting: Bool {
+        interactionDepth > 0 || resizeSession != nil || scrubbing || pagingProgress != nil
+            || (window as? DockPanel)?.holdsContextMenu == true
+    }
     private var scrollOriginRemainder = NSPoint.zero
     var scrollOffset: CGFloat {
         let logicalBounds = scrolling.contentView.bounds.offsetBy(dx: scrollOriginRemainder.x,
@@ -219,7 +270,9 @@ final class DockStripView: NSView {
             let local = self.convert(point, from: self.document)
             return self.interactionTileIndex(at: local).map { self.tiles[$0] }
         }
-        addSubview(scrolling)
+        pageCanvas.wantsLayer = true
+        addSubview(pageCanvas)
+        pageCanvas.addSubview(scrolling)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -237,7 +290,7 @@ final class DockStripView: NSView {
         super.viewDidMoveToWindow()
         removeMouseMonitors()
         cursorLayout = nil
-        if window == nil { cancelResize(); stopAnimations(); return }
+        if window == nil { cancelResize(); stopAnimations(); cancelPageMotion(); return }
         needsLayout = true
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
@@ -252,6 +305,8 @@ final class DockStripView: NSView {
         super.layout()
         guard let geometry = currentGeometry else { return }
         let offset = scrollOffset
+        pageCanvas.frame = bounds
+        toolsSurface?.view.frame = backdropFrame.insetBy(dx: 3, dy: 3)
         scrolling.frame = backingAlignedRect(geometry.viewportRect, options: [.alignAllEdgesOutward])
         scrolling.layoutSubtreeIfNeeded()
         let clip = scrolling.contentView.bounds.size
@@ -274,6 +329,7 @@ final class DockStripView: NSView {
                   presentation supplied: DockPresentation? = nil, preservingOffset offset: CGFloat = 0,
                   configure: (DockTile) -> Void) -> NSSize {
         cancelResize()
+        cancelPageMotion()
         stopAnimations()
         document.subviews.forEach { $0.removeFromSuperview() }
         tiles = []; divider = nil; emptyLabel = nil
@@ -286,6 +342,7 @@ final class DockStripView: NSView {
         artworkBounds = store.contentBounds(for: entries)
         if resolved.style.spacingPercent != nil { resolved.style.contentBounds = artworkBounds }
         presentation = resolved
+        toolsSurface?.update(resolved.edge, resolved.style.iconSize)
         dividerIndex = !isGroup && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
         for entry in entries {
             let tile = DockTile(entry: entry, groupID: groupID, store: store, size: resolved.style.iconSize)
@@ -327,6 +384,7 @@ final class DockStripView: NSView {
     }
 
     func refreshLanguage() {
+        refreshPageAccessibility()
         emptyLabel?.stringValue = emptyMessage
         tiles.forEach { $0.refreshBadge() }
     }
@@ -339,8 +397,10 @@ final class DockStripView: NSView {
         guard value != presentation else { return frame.size }
         let offset = scrollOffset
         if value.edge != presentation?.edge || !value.canResize { cancelResize() }
+        cancelPageMotion()
         stopAnimations()
         presentation = value
+        toolsSurface?.update(value.edge, value.style.iconSize)
         return installBaseGeometry(preservingOffset: offset)
     }
 
@@ -408,7 +468,8 @@ final class DockStripView: NSView {
     }
 
     func containsInteractivePoint(_ point: NSPoint) -> Bool {
-        backdropFrame.contains(point) || interactionTileIndex(at: point) != nil || resizeHandle(at: point) != nil
+        backdropFrame.contains(point) || (page == .apps && pagingProgress == nil && interactionTileIndex(at: point) != nil)
+            || resizeHandle(at: point) != nil
     }
 
     private func tileIndex(at local: NSPoint) -> Int? {
@@ -426,7 +487,7 @@ final class DockStripView: NSView {
 
     func updateMousePassthrough() { updateMousePassthrough(at: NSEvent.mouseLocation) }
     func updateMousePassthrough(at global: NSPoint) {
-        guard resizeSession == nil, interactionDepth == 0, let window else { return }
+        guard resizeSession == nil, interactionDepth == 0, !scrubbing, pagingProgress == nil, let window else { return }
         if pointerIsOccluded?(global) == true { window.ignoresMouseEvents = true; return }
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
         window.ignoresMouseEvents = !containsInteractivePoint(local)
@@ -444,16 +505,19 @@ final class DockStripView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         guard containsInteractivePoint(local) else { return nil }
-        if resizeHandle(at: local) != nil { return self }
+        if scrubbing || pagingProgress != nil || resizeHandle(at: local) != nil { return self }
+        if page == .tools, let view = toolsSurface?.view {
+            return view.hitTest(pageCanvas.convert(local, from: self)) ?? self
+        }
         if let index = interactionTileIndex(at: local) { return tiles[index] }
         return self
     }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { document.draggingEntered(sender) }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { document.draggingUpdated(sender) }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { page == .apps ? document.draggingEntered(sender) : [] }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { page == .apps ? document.draggingUpdated(sender) : [] }
     override func draggingExited(_ sender: NSDraggingInfo?) { document.draggingExited(sender) }
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { document.prepareForDragOperation(sender) }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { document.performDragOperation(sender) }
-    override func scrollWheel(with event: NSEvent) { if resizeSession == nil { scrolling.scrollWheel(with: event) } }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { page == .apps && document.prepareForDragOperation(sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { page == .apps && document.performDragOperation(sender) }
+    override func scrollWheel(with event: NSEvent) { if page == .apps && resizeSession == nil { scrolling.scrollWheel(with: event) } }
     override func rightMouseDown(with event: NSEvent) { showContextMenu(event) }
 
     private func resizeHandle(at local: NSPoint) -> DockResizeHandle? {
@@ -504,7 +568,8 @@ final class DockStripView: NSView {
         let point = window.convertPoint(toScreen: event.locationInWindow)
         let local = convert(event.locationInWindow, from: nil)
         guard let handle = resizeHandle(at: local) else { return }
-        let clickTile = interactionTileIndex(at: local).map { tiles[$0] }.flatMap { tile in
+        let appIndex = page == .apps && pagingProgress == nil ? interactionTileIndex(at: local) : nil
+        let clickTile = appIndex.map { tiles[$0] }.flatMap { tile in
             tile.visibleContentBounds.contains(tile.convert(local, from: self)) ? tile : nil
         }
         let lengthOnly = handle == .leading || handle == .trailing
@@ -563,13 +628,19 @@ final class DockStripView: NSView {
         let local = convert(event.locationInWindow, from: nil)
         // Resize handles take hit-testing priority, but secondary clicks on
         // an icon crossing that edge still belong to the application menu.
-        if let index = interactionTileIndex(at: local) {
+        if page == .apps, let index = interactionTileIndex(at: local) {
             tiles[index].rightMouseDown(with: event)
             return
         }
         guard backdropFrame.contains(local), settingsAction != nil else { return }
         interactionChanged(true); defer { interactionChanged(false) }
         let menu = NSMenu()
+        if toolsSurface != nil {
+            menu.addAction(page == .apps ? L("显示工具页", "Show Tools Page") : L("显示应用页", "Show Apps Page")) { [weak self] in
+                guard let self else { return }
+                self.setShelfPage(self.page.other)
+            }
+        }
         menu.addAction(L("DualDock 设置…", "DualDock Settings…")) { [weak self] in self?.settingsAction?() }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
@@ -591,6 +662,7 @@ final class DockStripView: NSView {
     func updatePointer(at global: NSPoint, buttonsPressed: Bool, force: Bool = false) {
         guard resizeSession == nil, interactionDepth == 0, let window, let geometry = currentGeometry else { return }
         updateMousePassthrough(at: global)
+        guard page == .apps, !scrubbing, pagingProgress == nil else { return }
         if pointerIsOccluded?(global) == true { pauseForPointerOcclusion(); return }
         if buttonsPressed {
             if focusIndex != nil || baseGeometry.map({ geometry.maximumDifference(from: $0) > 0.08 }) == true {
@@ -657,7 +729,7 @@ final class DockStripView: NSView {
         else if interactionDepth == 0 { updatePointer(force: true); startAnimation() }
     }
     private func startAnimation() {
-        guard interactionDepth == 0, window != nil else { return }
+        guard page == .apps, pagingProgress == nil, interactionDepth == 0, window != nil else { return }
         if isGroup || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             if let targetGeometry { currentGeometry = targetGeometry; apply(targetGeometry) }
             displayLink?.isPaused = true; animationTiming.pause(); return
@@ -694,7 +766,7 @@ final class DockStripView: NSView {
         if remaining < 0.08 { displayLink?.isPaused = true; animationTiming.pause(); refreshHoveredIndex(at: pointer) }
     }
     private func refreshHoveredIndex(at global: NSPoint = NSEvent.mouseLocation) {
-        guard resizeSession == nil, interactionDepth == 0, let window else { return }
+        guard page == .apps, pagingProgress == nil, resizeSession == nil, interactionDepth == 0, let window else { return }
         if pointerIsOccluded?(global) == true { pauseForPointerOcclusion(); updateMousePassthrough(); return }
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
         changeHoveredIndex(resizeHandle(at: local) == nil ? tileIndex(at: local) : nil)
@@ -728,6 +800,184 @@ final class DockStripView: NSView {
             scrolling.reflectScrolledClipView(scrolling.contentView)
         }
         updateMousePassthrough(at: pointer ?? NSEvent.mouseLocation)
+    }
+}
+
+/// The panel hosts either native controls or a SwiftUI hierarchy behind this
+/// small interface. Input and page transitions do not depend on widget types.
+@MainActor
+struct DockShelfSurface {
+    let view: NSView
+    let update: (DockEdge, CGFloat) -> Void
+}
+
+extension DockStripView {
+    func installTools(_ surface: DockShelfSurface, initialPage: DockShelfPage) {
+        guard toolsSurface == nil else { return }
+        toolsSurface = surface
+        let view = surface.view
+        view.wantsLayer = true
+        view.autoresizingMask = []
+        pageCanvas.addSubview(view)
+        scrolling.wantsLayer = true
+        page = initialPage
+        refreshPageAccessibility()
+        finishPageTransition()
+        needsLayout = true
+    }
+
+    var hasTools: Bool { toolsSurface != nil }
+
+    func cancelPageMotion() {
+        gesture = DockShelfGesture()
+        if pagingProgress != nil || scrubbing { finishPageTransition() }
+    }
+
+    private func refreshPageAccessibility() {
+        guard hasTools else { return }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(page == .apps ? L("应用页", "Apps Page") : L("工具页", "Tools Page"))
+        let action = NSAccessibilityCustomAction(name: page == .apps
+            ? L("显示工具页", "Show Tools Page") : L("显示应用页", "Show Apps Page")) { [weak self] in
+            guard let self, self.resizeSession == nil, self.interactionDepth == 0 else { return false }
+            self.setShelfPage(self.page.other)
+            return true
+        }
+        setAccessibilityCustomActions([action])
+    }
+
+    func routeShelfScroll(_ event: NSEvent) -> Bool {
+        guard hasTools, !isGroup, let presentation else { return false }
+        let phase: DockShelfGesture.Phase
+        if !event.momentumPhase.isEmpty { phase = .momentum }
+        else if !event.hasPreciseScrollingDeltas || event.phase.isEmpty { phase = .wheel }
+        else if event.phase.contains(.cancelled) { phase = .cancelled }
+        else if event.phase.contains(.ended) { phase = .ended }
+        else if event.phase.contains(.began) { phase = .began }
+        else if event.phase.contains(.changed) { phase = .changed }
+        else { return false }
+
+        let horizontal = presentation.edge.isHorizontal
+        // NSEvent deltas are scroll deltas. Undo the system preference for
+        // physical finger travel: up reveals Tools on horizontal bars, left
+        // reveals Tools on vertical bars. Along-edge scrolling stays native.
+        let sign: CGFloat = event.isDirectionInvertedFromDevice ? -1 : 1
+        let across = (horizontal ? event.scrollingDeltaY : event.scrollingDeltaX) * sign
+        let along = horizontal ? event.scrollingDeltaX : event.scrollingDeltaY
+        let local = convert(event.locationInWindow, from: nil)
+        let inside = scrubbing || containsInteractivePoint(local)
+        let covered = window.map { pointerIsOccluded?($0.convertPoint(toScreen: event.locationInWindow)) == true } ?? false
+        let dragging = window?.isVisible == true && NSEvent.pressedMouseButtons != 0
+        let allowed = inside && !covered && resizeSession == nil && interactionDepth == 0 &&
+            event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty &&
+            !dragging && canStartPaging?() != false
+        let result = gesture.update(phase: phase, along: along, across: across,
+                                    travel: presentation.style.barThickness, page: page, enabled: allowed)
+        switch result {
+        case .pass: return false
+        case .consume: return true
+        case .preview(let fraction):
+            if !scrubbing {
+                onPageMotionBegan?()
+                resetMagnification()
+                scrubbing = true
+            }
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                showPageProgress(fraction)
+            }
+            return true
+        case .settle(let next):
+            scrubbing = false
+            setShelfPage(next)
+            return true
+        }
+    }
+
+    func setShelfPage(_ next: DockShelfPage, animated: Bool = true) {
+        guard let toolsSurface else { return }
+        let old = page
+        let from = pagingProgress ?? old.position
+        let motion = animated && window?.isVisible == true &&
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion &&
+            abs(from - next.position) > 0.001
+        if next != old {
+            if pagingProgress == nil { onPageMotionBegan?(); resetMagnification() }
+            page = next
+            refreshPageAccessibility()
+            onPageChanged?(next)
+        }
+        guard motion else { finishPageTransition(); return }
+
+        showPageProgress(from)
+        let generation = transitionID
+        let duration = 0.11 + 0.11 * Double(abs(from - next.position))
+        let end = next.position
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self] in
+            Task { @MainActor in
+                guard let self, generation == self.transitionID else { return }
+                self.finishPageTransition()
+            }
+        }
+        for (view, source) in [(scrolling as NSView, CGFloat(0)), (toolsSurface.view, CGFloat(1))] {
+            guard let layer = view.layer else { continue }
+            let animation = CABasicAnimation(keyPath: "transform")
+            animation.fromValue = NSValue(caTransform3D: shelfTransform(from - source))
+            layer.transform = shelfTransform(end - source)
+            animation.toValue = NSValue(caTransform3D: layer.transform)
+            animation.duration = duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer.add(animation, forKey: "dualdock.page")
+        }
+        pagingProgress = end
+        CATransaction.commit()
+    }
+
+    private func shelfTransform(_ displacement: CGFloat) -> CATransform3D {
+        if presentation?.edge.isHorizontal != false {
+            return CATransform3DMakeTranslation(0, displacement * backdropFrame.height, 0)
+        }
+        return CATransform3DMakeTranslation(-displacement * backdropFrame.width, 0, 0)
+    }
+
+    private func showPageProgress(_ position: CGFloat) {
+        guard let toolsSurface else { return }
+        transitionID &+= 1
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if pagingProgress == nil {
+            let clip = CAShapeLayer()
+            clip.frame = pageCanvas.bounds
+            let radius = min(18, (presentation?.style.barThickness ?? 66) * 0.28)
+            clip.path = CGPath(roundedRect: backdropFrame, cornerWidth: radius, cornerHeight: radius, transform: nil)
+            pageCanvas.layer?.mask = clip
+        }
+        for (view, source) in [(scrolling as NSView, CGFloat(0)), (toolsSurface.view, CGFloat(1))] {
+            view.layer?.removeAnimation(forKey: "dualdock.page")
+            view.isHidden = false
+            view.layer?.transform = shelfTransform(position - source)
+        }
+        CATransaction.commit()
+        pagingProgress = position
+    }
+
+    private func finishPageTransition() {
+        transitionID &+= 1
+        pagingProgress = nil
+        scrubbing = false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for view in [scrolling as NSView, toolsSurface?.view].compactMap({ $0 }) {
+            view.layer?.removeAnimation(forKey: "dualdock.page")
+            view.layer?.transform = CATransform3DIdentity
+        }
+        scrolling.isHidden = page == .tools
+        toolsSurface?.view.isHidden = page == .apps
+        pageCanvas.layer?.mask = nil
+        CATransaction.commit()
+        updateMousePassthrough()
     }
 }
 
