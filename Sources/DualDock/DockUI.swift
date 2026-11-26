@@ -89,10 +89,15 @@ final class DockPanel: NSPanel {
         let desired = geometry.panelFrame(in: bounds)
         // Enclose both endpoints before AppKit rounds. Rounding origin and size
         // separately can otherwise clip a fractional strip at the far edge.
-        setFrame(desired.integral, display: false)
-        strip.setFrameOrigin(NSPoint(x: desired.minX - frame.minX,
-                                     y: desired.minY - frame.minY))
-        strip.needsLayout = true
+        let enclosing = desired.integral
+        let frameChanged = frame != enclosing
+        if frameChanged { setFrame(enclosing, display: false) }
+        let origin = NSPoint(x: desired.minX - frame.minX, y: desired.minY - frame.minY)
+        if strip.frame.origin != origin {
+            strip.setFrameOrigin(origin)
+            strip.needsLayout = true
+        }
+        if frameChanged { strip.needsLayout = true }
         strip.layoutSubtreeIfNeeded()
         if display { displayIfNeeded() }
     }
@@ -188,6 +193,7 @@ final class DockStripView: NSView {
             || (window as? DockPanel)?.holdsContextMenu == true
     }
     private var scrollOriginRemainder = NSPoint.zero
+    private var layoutScrollOffset: CGFloat?
     var scrollOffset: CGFloat {
         let logicalBounds = scrolling.contentView.bounds.offsetBy(dx: scrollOriginRemainder.x,
                                                                   dy: scrollOriginRemainder.y)
@@ -217,6 +223,8 @@ final class DockStripView: NSView {
     private var baseGeometry: DockGeometry?
     private var currentGeometry: DockGeometry?
     private var targetGeometry: DockGeometry?
+    private var targetNeedsUpdate = false
+    private var targetScrollOffset: CGFloat = 0
     private var focusIndex: CGFloat?
     private var terminalIndex: Int?
     private var terminalDisplacement: CGFloat = 0
@@ -304,9 +312,9 @@ final class DockStripView: NSView {
     override func layout() {
         super.layout()
         guard let geometry = currentGeometry else { return }
-        let offset = scrollOffset
+        let offset = layoutScrollOffset ?? scrollOffset
         pageCanvas.frame = bounds
-        toolsSurface?.view.frame = backdropFrame.insetBy(dx: 3, dy: 3)
+        if page == .tools || pagingProgress != nil { prepareToolSurface() }
         scrolling.frame = backingAlignedRect(geometry.viewportRect, options: [.alignAllEdgesOutward])
         scrolling.layoutSubtreeIfNeeded()
         let clip = scrolling.contentView.bounds.size
@@ -342,7 +350,6 @@ final class DockStripView: NSView {
         artworkBounds = store.contentBounds(for: entries)
         if resolved.style.spacingPercent != nil { resolved.style.contentBounds = artworkBounds }
         presentation = resolved
-        toolsSurface?.update(resolved.edge, resolved.style.iconSize)
         dividerIndex = !isGroup && store.pinnedCount > 0 && store.pinnedCount < entries.count ? store.pinnedCount : nil
         for entry in entries {
             let tile = DockTile(entry: entry, groupID: groupID, store: store, size: resolved.style.iconSize)
@@ -380,6 +387,11 @@ final class DockStripView: NSView {
                 boundsChanged = true
             }
         }
+        if boundsChanged, presentation?.style.spacingPercent == nil {
+            // Legacy spacing keeps the same longitudinal slots, but running
+            // indicators must follow the new folder silhouette as well.
+            _ = installBaseGeometry(preservingOffset: scrollOffset)
+        }
         return boundsChanged && presentation?.style.spacingPercent != nil
     }
 
@@ -400,23 +412,22 @@ final class DockStripView: NSView {
         cancelPageMotion()
         stopAnimations()
         presentation = value
-        toolsSurface?.update(value.edge, value.style.iconSize)
         return installBaseGeometry(preservingOffset: offset)
     }
 
     private func installBaseGeometry(preservingOffset offset: CGFloat) -> NSSize {
+        targetNeedsUpdate = false
+        targetScrollOffset = offset
         let base = makeGeometry(focus: nil, offset: offset)
         baseGeometry = base; currentGeometry = base; targetGeometry = base
-        apply(base)
-        restoreScrollOffset(offset, geometry: base)
-        scrolling.reflectScrolledClipView(scrolling.contentView)
+        apply(base, preservingScrollOffset: offset)
         return base.canvasSize
     }
 
     private func restoreScrollOffset(_ offset: CGFloat, geometry: DockGeometry) {
         let point = geometry.scrollOrigin(forCanonicalOffset: offset, actualDocumentSize: document.frame.size,
                                           actualViewportSize: scrolling.contentView.bounds.size)
-        scrolling.contentView.scroll(to: point)
+        if scrolling.contentView.bounds.origin != point { scrolling.contentView.scroll(to: point) }
         // Keep AppKit's pixel-aligned clipping and native wheel behavior. Its
         // rounded viewport and scroll origin are rendering details, not a user
         // scroll: retain their remainders in canonical document coordinates.
@@ -429,6 +440,7 @@ final class DockStripView: NSView {
 
     func stopAnimations() {
         displayLink?.invalidate(); displayLink = nil; animationTarget = nil
+        targetNeedsUpdate = false
         animationTiming.pause(); focusIndex = nil; lastMousePoint = nil
         terminalIndex = nil; terminalDisplacement = 0; terminalAnchor = nil
         changeHoveredIndex(nil)
@@ -475,7 +487,8 @@ final class DockStripView: NSView {
     private func tileIndex(at local: NSPoint) -> Int? {
         guard scrolling.frame.contains(local), let geometry = currentGeometry else { return nil }
         let point = document.convert(local, from: self)
-        return geometry.hitFrames.firstIndex { $0.contains(point) }
+        let transform = geometry.documentTransform
+        return geometry.canonicalHitFrames.firstIndex { transform.rectToPhysical($0).contains(point) }
     }
 
     private func interactionTileIndex(at local: NSPoint) -> Int? {
@@ -490,7 +503,8 @@ final class DockStripView: NSView {
         guard resizeSession == nil, interactionDepth == 0, !scrubbing, pagingProgress == nil, let window else { return }
         if pointerIsOccluded?(global) == true { window.ignoresMouseEvents = true; return }
         let local = convert(window.convertPoint(fromScreen: global), from: nil)
-        window.ignoresMouseEvents = !containsInteractivePoint(local)
+        let passThrough = !containsInteractivePoint(local)
+        if window.ignoresMouseEvents != passThrough { window.ignoresMouseEvents = passThrough }
     }
     private func removeMouseMonitors() {
         if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
@@ -650,7 +664,9 @@ final class DockStripView: NSView {
             return .make(count: 0, edge: .bottom,
                          style: .init(iconSize: 48, barThickness: 66, gap: 14, leadingPadding: 6, trailingPadding: 6), maximumLength: 240)
         }
-        return .make(count: tiles.count, edge: p.edge, style: p.style, maximumLength: p.maximumLength,
+        var style = p.style
+        style.contentBounds = artworkBounds
+        return .make(count: tiles.count, edge: p.edge, style: style, maximumLength: p.maximumLength,
                      fixedLength: p.fixedLength, focusIndex: focus, dividerIndex: dividerIndex,
                      scrollOffset: offset ?? scrollOffset, terminalAnchor: terminalAnchor, resizeMargin: p.resizeMargin)
     }
@@ -680,6 +696,8 @@ final class DockStripView: NSView {
             return
         }
         changeHoveredIndex(tileIndex(at: local))
+        let previousFocus = focusIndex
+        let previousAnchor = terminalAnchor
         if !isGroup, (presentation?.style.magnificationScale ?? 1) > 1,
            scrolling.frame.contains(local), let baseGeometry {
             let point = document.convert(local, from: self)
@@ -689,9 +707,24 @@ final class DockStripView: NSView {
             focusIndex = nil
             terminalIndex = nil; terminalDisplacement = 0; terminalAnchor = nil
         }
-        let next = makeGeometry(focus: focusIndex)
-        guard targetGeometry != next || geometry.maximumDifference(from: next) > 0.08 else { return }
-        targetGeometry = next; startAnimation()
+        let offset = scrollOffset
+        if focusIndex != previousFocus || terminalAnchor != previousAnchor ||
+            (focusIndex != nil && offset != targetScrollOffset) {
+            // Pointer events can outnumber display refreshes. Rebuild the wave
+            // once at the next tick using the latest focus and scroll position.
+            targetNeedsUpdate = true
+            targetScrollOffset = offset
+        }
+        if targetNeedsUpdate || (animationTiming.isRunning == false &&
+            targetGeometry.map { geometry.maximumDifference(from: $0) > 0.08 } == true) {
+            startAnimation()
+        }
+    }
+
+    private func updateWaveTarget() {
+        guard targetNeedsUpdate else { return }
+        targetNeedsUpdate = false
+        targetGeometry = focusIndex == nil ? baseGeometry : makeGeometry(focus: focusIndex, offset: targetScrollOffset)
     }
 
     private func updateTerminalAnchor(pointer: CGFloat, geometry: DockGeometry, base: DockGeometry) {
@@ -731,6 +764,7 @@ final class DockStripView: NSView {
     private func startAnimation() {
         guard page == .apps, pagingProgress == nil, interactionDepth == 0, window != nil else { return }
         if isGroup || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            updateWaveTarget()
             if let targetGeometry { currentGeometry = targetGeometry; apply(targetGeometry) }
             displayLink?.isPaused = true; animationTiming.pause(); return
         }
@@ -749,7 +783,7 @@ final class DockStripView: NSView {
     /// The display-link callback supplies time and input explicitly so animation
     /// frames can also be replayed without sending events to the desktop.
     func advanceAnimation(at timestamp: TimeInterval, pointer: NSPoint, buttonsPressed: Bool) {
-        guard resizeSession == nil, interactionDepth == 0, let geometry = currentGeometry, let targetGeometry else {
+        guard resizeSession == nil, interactionDepth == 0, let geometry = currentGeometry else {
             displayLink?.isPaused = true; animationTiming.pause(); return
         }
         if pointerIsOccluded?(pointer) == true { pauseForPointerOcclusion(); updateMousePassthrough(at: pointer); return }
@@ -759,6 +793,8 @@ final class DockStripView: NSView {
             updatePointer(at: pointer, buttonsPressed: false, force: true)
             return
         }
+        updateWaveTarget()
+        guard let targetGeometry else { return }
         let fraction = animationTiming.fraction(at: timestamp, returningToRest: focusIndex == nil)
         let remaining = geometry.maximumDifference(from: targetGeometry)
         let next = remaining < 0.08 ? targetGeometry : geometry.interpolated(to: targetGeometry, fraction: fraction)
@@ -775,7 +811,7 @@ final class DockStripView: NSView {
     private func pauseForPointerOcclusion() {
         displayLink?.isPaused = true; animationTiming.pause(); lastMousePoint = nil; changeHoveredIndex(nil)
     }
-    private func apply(_ value: DockGeometry, pointer: NSPoint? = nil) {
+    private func apply(_ value: DockGeometry, pointer: NSPoint? = nil, preservingScrollOffset offset: CGFloat? = nil) {
         let container = ContainerLayout(canvasSize: value.canvasSize, documentSize: value.documentSize,
             viewport: value.viewportRect, backdrop: value.backdropRect, thickness: value.barThickness)
         let containerChanged = containerLayout != container
@@ -785,19 +821,32 @@ final class DockStripView: NSView {
             backdrop.frame = value.backdropRect
             backdrop.layer?.cornerRadius = min(18, value.barThickness * 0.28)
         }
-        let frames = value.tileFrames, icons = value.iconFrames, dots = value.dotFrames
+        let transform = value.documentTransform
+        let baseSize = presentation?.style.iconSize ?? 48
+        let optical = presentation?.style.spacingPercent != nil
         for index in tiles.indices {
-            tiles[index].applyGeometry(frame: frames[index], iconFrame: icons[index], dotFrame: dots[index],
-                baseIconSize: presentation?.style.iconSize ?? 48, edge: value.edge,
-                contentFrame: value.contentFrames[index], hitFrame: value.hitFrames[index],
-                optical: presentation?.style.spacingPercent != nil)
+            tiles[index].applyGeometry(frame: transform.rectToPhysical(value.canonicalTileFrames[index]),
+                iconFrame: transform.rectToPhysical(value.canonicalIconFrames[index]),
+                dotFrame: transform.rectToPhysical(value.canonicalDotFrames[index]),
+                baseIconSize: baseSize, edge: value.edge,
+                contentFrame: transform.rectToPhysical(value.canonicalContentFrames[index]),
+                hitFrame: transform.rectToPhysical(value.canonicalHitFrames[index]), optical: optical)
         }
         divider?.frame = value.dividerFrame ?? .zero
         desiredWidth = value.bodyLength
         if containerChanged {
+            layoutScrollOffset = offset
             needsLayout = true
             layoutSubtreeIfNeeded()
+            layoutScrollOffset = nil
             scrolling.reflectScrolledClipView(scrolling.contentView)
+        } else {
+            if let offset {
+                restoreScrollOffset(offset, geometry: value)
+                scrolling.reflectScrolledClipView(scrolling.contentView)
+            }
+            // Fixed bar dimensions can stay constant while the card scale changes.
+            if page == .tools { prepareToolSurface() }
         }
         updateMousePassthrough(at: pointer ?? NSEvent.mouseLocation)
     }
@@ -935,6 +984,13 @@ extension DockStripView {
         CATransaction.commit()
     }
 
+    private func prepareToolSurface() {
+        guard let surface = toolsSurface, let p = presentation else { return }
+        surface.update(p.edge, p.style.iconSize)
+        let rect = backdropFrame.insetBy(dx: 3, dy: 3)
+        if surface.view.frame != rect { surface.view.frame = rect }
+    }
+
     private func shelfTransform(_ displacement: CGFloat) -> CATransform3D {
         if presentation?.edge.isHorizontal != false {
             return CATransform3DMakeTranslation(0, displacement * backdropFrame.height, 0)
@@ -948,6 +1004,7 @@ extension DockStripView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if pagingProgress == nil {
+            prepareToolSurface()
             let clip = CAShapeLayer()
             clip.frame = pageCanvas.bounds
             let radius = min(18, (presentation?.style.barThickness ?? 66) * 0.28)
@@ -973,6 +1030,7 @@ extension DockStripView {
             view.layer?.removeAnimation(forKey: "dualdock.page")
             view.layer?.transform = CATransform3DIdentity
         }
+        if page == .tools { prepareToolSurface() }
         scrolling.isHidden = page == .tools
         toolsSurface?.view.isHidden = page == .apps
         pageCanvas.layer?.mask = nil
