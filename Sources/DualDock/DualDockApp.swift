@@ -196,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 struct DualDockApplication {
     @MainActor
     static func main() {
+        if AIQuotaClaudeBridge.handleInvocation() { return }
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         let delegate = AppDelegate()

@@ -101,6 +101,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         store.refreshPermissions()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        NotificationCenter.default.post(name: .dualDockSettingsDidOpen, object: self)
         publishVisibility()
     }
 
@@ -121,6 +122,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func windowWillClose(_ notification: Notification) {
+        NotificationCenter.default.post(name: .dualDockSettingsDidClose, object: self)
         publishVisibility(false)
         if NSApp.isActive, let previousApplication, !previousApplication.isTerminated {
             previousApplication.activate(options: [])

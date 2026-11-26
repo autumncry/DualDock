@@ -126,13 +126,22 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 heading(selected)
                     .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 14)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                if selected == .tools {
+                    // Keep the destination in view while dragging from a scrolled library.
+                    VStack(alignment: .leading, spacing: 6) {
                         content(selected).environment(\.settingsPageTitle, selected.title)
                         notice
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 22).padding(.bottom, 18)
+                    .padding(.horizontal, 22).padding(.bottom, 8)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            content(selected).environment(\.settingsPageTitle, selected.title)
+                            notice
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 22).padding(.bottom, 18)
+                    }
                 }
             }
             .id(selected)

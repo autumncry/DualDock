@@ -68,15 +68,30 @@ private struct DockToolTile: View {
     var body: some View {
         let rowLayout = horizontal ? AnyLayout(HStackLayout(spacing: 2)) : AnyLayout(VStackLayout(spacing: 2))
         rowLayout {
-            Button(action: primaryAction) { face }
+            if let provider = card.kind.quotaProvider {
+                AIQuotaCardView(provider: provider, service: store.quota, span: slot.span, horizontal: horizontal) { open in
+                    store.setDetailOpen(open, cardID: card.id, on: displayID)
+                }
+            } else if card.kind.isLocalMetric {
+                LocalToolCardView(kind: card.kind, metrics: store.metrics, span: slot.span,
+                                  horizontal: horizontal, visible: store.visibleDisplays.contains(displayID)) { open in
+                    store.setDetailOpen(open, cardID: card.id, on: displayID)
+                }
+            } else if card.kind == .music {
+                Button { showDetail = true } label: {
+                    MusicShelfFace(data: data, compact: slot.span == 1, horizontal: horizontal)
+                }
                 .buttonStyle(.plain)
-                .disabled(card.kind == .music && data.musicBusy)
-                .accessibilityLabel("\(card.title) · \(title)")
-                .help("\(title) · \(subtitle)")
-                .popover(isPresented: $showDetail) { detail }
-            if case .track = data.music, card.kind == .music, slot.span >= 2 {
-                iconButton(symbol: "forward.end.fill", label: localize("下一首", "Next Track")) { data.nextTrack() }
-                    .disabled(data.musicBusy)
+                .accessibilityLabel(localize("显示音乐播放器", "Show Music Player"))
+                .accessibilityIdentifier("DualDock3.Music.OpenPlayer")
+                .help(localize("显示正在播放的音乐", "Show Now Playing"))
+                .popover(isPresented: $showDetail) { MusicPlayerView(data: data) }
+            } else {
+                Button(action: primaryAction) { face }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(card.title) · \(title)")
+                    .help("\(title) · \(subtitle)")
+                    .popover(isPresented: $showDetail) { detail }
             }
             if slot.cards.count > 1 {
                 let index = (slot.cards.firstIndex(of: card) ?? 0) + 1
@@ -93,11 +108,6 @@ private struct DockToolTile: View {
         .onChange(of: showDetail) { _, isOpen in store.setDetailOpen(isOpen, cardID: card.id, on: displayID) }
         .onDisappear { store.setDetailOpen(false, cardID: card.id, on: displayID) }
         .contextMenu {
-            if card.kind == .music, case .track = data.music {
-                Button(localize("下一首", "Next Track")) { data.nextTrack() }
-                    .disabled(data.musicBusy)
-                Divider()
-            }
             Button(localize("工具页设置…", "Tools Page Settings…"), action: DockToolsStore.openSettings)
             if slot.cards.count > 1 {
                 Divider()
@@ -155,10 +165,9 @@ private struct DockToolTile: View {
 
     private var tint: Color {
         switch card.kind {
-        case .music: return .pink
         case .calendar: return .orange
         case .weather: return .cyan
-        case .launcher: return .accentColor
+        default: return .accentColor
         }
     }
 
@@ -183,43 +192,28 @@ private struct DockToolTile: View {
 
     private var symbol: String {
         switch card.kind {
-        case .music:
-            if case .track(_, _, let playing) = data.music { return playing ? "pause.fill" : "play.fill" }
-            return "music.note"
         case .weather:
             if case .conditions(let value, _) = data.weather { return weatherCondition(value.code).symbol }
             return "cloud.sun.fill"
-        case .calendar, .launcher:
+        default:
             return card.symbol
         }
     }
 
     private var title: String {
         switch card.kind {
-        case .music:
-            if case .track(let name, _, _) = data.music { return name }
-            return localize("音乐", "Music")
         case .weather:
             if case .conditions(let value, _) = data.weather { return degrees(value) + "  " + value.city.name }
             return store.city?.name ?? localize("设置城市", "Choose City")
         case .calendar:
             if case .upcoming(let event, _, _) = data.calendar { return event }
             return Date.now.formatted(.dateTime.month().day().locale(Locale(identifier: localize.rawValue)))
-        case .launcher: return card.title
+        default: return card.title
         }
     }
 
     private var subtitle: String {
         switch card.kind {
-        case .music:
-            switch data.music {
-            case .disconnected: return localize("连接 Apple Music", "Connect Apple Music")
-            case .notRunning: return localize("打开音乐", "Open Music")
-            case .idle: return localize("播放音乐", "Play music")
-            case .track(_, let artist, _): return artist.isEmpty ? localize("正在播放的曲目", "Current track") : artist
-            case .denied: return localize("需要自动化权限", "Automation access needed")
-            case .unavailable: return localize("播放器未响应", "Player unavailable")
-            }
         case .weather:
             switch data.weather {
             case .noCity: return localize("选择城市", "Choose a city")
@@ -249,23 +243,15 @@ private struct DockToolTile: View {
             case .application: return localize("打开应用", "Open app")
             case .file: return localize("打开项目", "Open item")
             }
+        default: return ""
         }
     }
 
     private func primaryAction() {
         actionFailed = false
         switch card.kind {
-        case .music:
-            switch data.music {
-            case .disconnected: data.enableMusic()
-            case .notRunning:
-                if !DockToolsStore.openApp("com.apple.Music") { actionFailed = true; showDetail = true }
-            case .track, .idle: data.togglePlayback()
-            case .unavailable: data.enableMusic()
-            case .denied: showDetail = true
-            }
         case .weather:
-            if store.city == nil { DockToolsStore.openSettings() } else { showDetail = true }
+            if store.city == nil { store.requestCityEditor() } else { showDetail = true }
         case .calendar: showDetail = true
         case .launcher:
             guard let d = card.destination, DockToolsStore.open(d) else {
@@ -273,6 +259,7 @@ private struct DockToolTile: View {
                 showDetail = true
                 return
             }
+        default: break
         }
     }
 
@@ -314,12 +301,9 @@ private struct DockToolTile: View {
                     } else { Text(subtitle).foregroundStyle(.secondary) }
                     HStack {
                         Button(localize("刷新", "Refresh")) { data.refreshWeather() }
-                        Button(localize("更改城市…", "Change City…"), action: DockToolsStore.openSettings)
+                        Button(localize("更改城市…", "Change City…"), action: store.requestCityEditor)
                     }
-                case .music:
-                    Text(subtitle).foregroundStyle(.secondary)
-                    Button(localize("打开自动化隐私设置", "Automation Privacy Settings")) { openPrivacy("Automation") }
-                case .launcher: EmptyView()
+                default: EmptyView()
                 }
             }
         }
@@ -334,7 +318,7 @@ private struct DockToolTile: View {
 }
 
 @MainActor
-private enum DockToolArtwork {
+enum DockToolArtwork {
     static let cache = NSCache<NSString, NSImage>()
     static func icon(at url: URL) -> NSImage {
         let key = url.path as NSString

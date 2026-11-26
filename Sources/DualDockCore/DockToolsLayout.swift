@@ -5,6 +5,16 @@ import Foundation
 public struct DockToolsLayout: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case music, calendar, weather, launcher
+        case systemStatus, battery, storage, focusTimer
+        case codexQuota, claudeQuota, geminiQuota
+
+        public var defaultSpan: Int {
+            switch self {
+            case .music, .codexQuota, .claudeQuota, .geminiQuota: return 3
+            case .calendar, .systemStatus, .storage, .focusTimer: return 2
+            case .weather, .launcher, .battery: return 1
+            }
+        }
     }
 
     public struct Destination: Codable, Equatable, Sendable {
@@ -78,14 +88,15 @@ public struct DockToolsLayout: Codable, Equatable, Sendable {
         ])
     }
 
-    public mutating func add(_ card: Card) {
-        let span: Int
-        switch card.kind {
-        case .music: span = 3
-        case .calendar: span = 2
-        case .weather, .launcher: span = 1
-        }
-        slots.append(Slot(span: span, cards: [card]))
+    public func contains(_ kind: Kind) -> Bool {
+        slots.contains { $0.cards.contains { $0.kind == kind } }
+    }
+
+    public mutating func add(_ card: Card, before beforeID: UUID? = nil) {
+        guard card.kind == .launcher || !contains(card.kind) else { return }
+        let slot = Slot(span: card.kind.defaultSpan, cards: [card])
+        let index = beforeID.flatMap { id in slots.firstIndex { $0.id == id } } ?? slots.endIndex
+        slots.insert(slot, at: index)
     }
 
     public mutating func move(_ id: UUID, by amount: Int) {
@@ -93,6 +104,13 @@ public struct DockToolsLayout: Codable, Equatable, Sendable {
         let new = old + amount
         guard slots.indices.contains(new), old != new else { return }
         slots.insert(slots.remove(at: old), at: new)
+    }
+
+    public mutating func move(_ id: UUID, before beforeID: UUID?) {
+        guard id != beforeID, let old = slots.firstIndex(where: { $0.id == id }) else { return }
+        let slot = slots.remove(at: old)
+        let index = beforeID.flatMap { next in slots.firstIndex { $0.id == next } } ?? slots.endIndex
+        slots.insert(slot, at: index)
     }
 
     public mutating func resize(_ id: UUID, to span: Int) {

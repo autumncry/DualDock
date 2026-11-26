@@ -10,6 +10,8 @@ final class ToolDataService: ObservableObject {
         var calendar: @Sendable (Bool) async -> ToolCalendarState
         var conditions: @Sendable (ToolWeatherCity) async throws -> ToolWeatherReading
         var cities: @Sendable (String, String) async throws -> [ToolWeatherCity]
+        var musicPlayer: @Sendable () async -> ToolMusicPlayerRead = { .unavailable(.unavailable) }
+        var musicPlaylist: @Sendable (Int) async -> ToolMusicPlaylist? = { _ in nil }
         var now: () -> Date = Date.init
 
         static func system() -> Self {
@@ -19,7 +21,9 @@ final class ToolDataService: ObservableObject {
             return Self(music: { await music.perform($0, requestPermission: $1) },
                         calendar: { await calendar.load(requestPermission: $0) },
                         conditions: { try await weather.conditions(in: $0) },
-                        cities: { try await weather.search($0, language: $1) })
+                        cities: { try await weather.search($0, language: $1) },
+                        musicPlayer: { await music.player() },
+                        musicPlaylist: { await music.playlist(offset: $0) })
         }
     }
 
@@ -36,6 +40,10 @@ final class ToolDataService: ObservableObject {
     }
 
     @Published private(set) var music: ToolMusicState = .disconnected
+    @Published private(set) var player: ToolMusicPlayer?
+    @Published private(set) var playlist: ToolMusicPlaylist?
+    @Published private(set) var musicPlaylistLoading = false
+    @Published private(set) var musicActionFailed = false
     @Published private(set) var calendar: ToolCalendarState = .notDetermined
     @Published private(set) var weather: ToolWeatherState = .noCity
     @Published private(set) var musicBusy = false
@@ -52,6 +60,9 @@ final class ToolDataService: ObservableObject {
     private var weatherLoop: Task<Void, Never>?
     private var musicAction: Task<Void, Never>?
     private var calendarAuthorization: Task<Void, Never>?
+    private var musicPanels = Set<UUID>()
+    private var playlistPanels = Set<UUID>()
+    private var playlistRequest: Task<Void, Never>?
     private var musicRevision = 0
     private var calendarRevision = 0
 
@@ -66,6 +77,7 @@ final class ToolDataService: ObservableObject {
         calendarLoop?.cancel()
         weatherLoop?.cancel()
         musicAction?.cancel()
+        playlistRequest?.cancel()
         calendarAuthorization?.cancel()
     }
 
@@ -83,7 +95,7 @@ final class ToolDataService: ObservableObject {
         demand = next
         for source in [Demand.music, .calendar, .weather] where previous.contains(source) != next.contains(source) {
             switch source {
-            case .music: updateMusicLoop()
+            case .music: if musicPanels.isEmpty { updateMusicLoop() }
             case .calendar: updateCalendarLoop()
             default: updateWeatherLoop()
             }
@@ -100,35 +112,149 @@ final class ToolDataService: ObservableObject {
     }
 
     func togglePlayback() { runMusic(.toggle) }
+    func previousTrack() { runMusic(.previous) }
     func nextTrack() { runMusic(.next) }
+
+    func seekMusic(to seconds: Double, trackID: String) {
+        guard seconds.isFinite, let player, player.trackID == trackID,
+              let duration = player.duration, duration.isFinite, duration > 0 else { return }
+        runMusic(.seek(seconds: max(0, min(duration, seconds)), trackID: trackID))
+    }
+
+    func playMusicTrack(_ row: ToolMusicRow) {
+        guard playlist?.id == row.playlistID, playlist?.tracks.contains(row) == true else { return }
+        runMusic(.play(row))
+    }
+
+    func setMusicPanelVisible(_ visible: Bool, id: UUID) {
+        let hadPanel = !musicPanels.isEmpty
+        if visible { musicPanels.insert(id) } else {
+            musicPanels.remove(id)
+            setMusicPlaylistVisible(false, id: id)
+        }
+        if hadPanel != !musicPanels.isEmpty {
+            musicActionFailed = false
+            updateMusicLoop()
+        }
+    }
+
+    func setMusicPlaylistVisible(_ visible: Bool, id: UUID) {
+        let wasOpen = !playlistPanels.isEmpty
+        if visible && musicPanels.contains(id) { playlistPanels.insert(id) } else { playlistPanels.remove(id) }
+        if !wasOpen && !playlistPanels.isEmpty { refreshMusicPlaylist() }
+        if wasOpen && playlistPanels.isEmpty { clearPlaylist() }
+    }
+
+    func refreshMusicPlaylist() {
+        guard state.musicEnabled, !playlistPanels.isEmpty else { return }
+        requestPlaylist(offset: 0)
+    }
+
+    func loadMoreMusicTracks() {
+        guard !playlistPanels.isEmpty, !musicPlaylistLoading, let playlist,
+              playlist.tracks.count < playlist.totalCount else { return }
+        requestPlaylist(offset: playlist.tracks.count)
+    }
+
+    private func clearPlaylist() {
+        playlistRequest?.cancel()
+        playlistRequest = nil
+        musicPlaylistLoading = false
+        playlist = nil
+    }
+
+    private func requestPlaylist(offset: Int) {
+        playlistRequest?.cancel()
+        let fetch = environment.musicPlaylist
+        musicPlaylistLoading = true
+        playlistRequest = Task { [weak self] in
+            let page = await fetch(offset)
+            guard let self, !Task.isCancelled else { return }
+            self.musicPlaylistLoading = false
+            self.playlistRequest = nil
+            guard let page else {
+                if offset == 0 { self.playlist = nil }
+                else { self.musicActionFailed = true }
+                return
+            }
+            if offset == 0 {
+                self.playlist = page
+            } else if let previous = self.playlist,
+                      previous.id == page.id, previous.tracks.count == offset, previous.totalCount == page.totalCount,
+                      !page.tracks.isEmpty {
+                self.playlist = ToolMusicPlaylist(id: page.id, name: page.name,
+                    tracks: previous.tracks + page.tracks, totalCount: page.totalCount)
+            } else {
+                // The library changed while a page was in flight; start again
+                // against the actual current playlist rather than mixing rows.
+                self.requestPlaylist(offset: 0)
+            }
+        }
+    }
 
     private func runMusic(_ command: ToolMusicCommand, requestPermission: Bool = false) {
         guard state.musicEnabled, !musicBusy else { return }
         musicBusy = true
+        musicActionFailed = false
         musicRevision &+= 1
         let fetch = environment.music
         musicAction = Task { [weak self] in
             let result = await fetch(command, requestPermission)
             guard let self, !Task.isCancelled else { return }
-            self.music = result
+            if command != .status && result == .unavailable {
+                self.musicActionFailed = true
+            } else {
+                self.applyMusicState(result)
+            }
             self.musicBusy = false
             self.musicAction = nil
+            if !self.musicPanels.isEmpty { self.updateMusicLoop() }
         }
+    }
+
+    private func applyMusicState(_ state: ToolMusicState) {
+        if let current = player {
+            if case let .track(title, artist, _) = state, title == current.title, artist == current.artist {
+                // Keep matching artwork while the next playback sample is pending.
+            } else { player = nil }
+        }
+        if music != state { music = state }
+        if case .track = state { return }
+        if playlist != nil || playlistRequest != nil { clearPlaylist() }
     }
 
     private func updateMusicLoop() {
         musicLoop?.cancel()
         musicLoop = nil
-        guard state.musicEnabled, demand.contains(.music) else { return }
+        guard state.musicEnabled, demand.contains(.music) || !musicPanels.isEmpty else { return }
+        let details = !musicPanels.isEmpty
         let fetch = environment.music
+        let fetchPlayer = environment.musicPlayer
         musicLoop = Task { [weak self] in
             while !Task.isCancelled {
                 if let revision = self?.musicRevision, self?.musicBusy == false {
-                    let result = await fetch(.status, false)
-                    guard !Task.isCancelled else { return }
-                    if self?.musicRevision == revision && self?.music != result { self?.music = result }
+                    if details {
+                        let result = await fetchPlayer()
+                        guard !Task.isCancelled else { return }
+                        if let self, self.musicRevision == revision {
+                            switch result {
+                            case .player(let sample):
+                                let changedTrack = self.player?.trackID != sample.trackID
+                                self.player = sample
+                                self.applyMusicState(sample.state)
+                                if changedTrack && !self.playlistPanels.isEmpty && self.playlistRequest == nil {
+                                    self.refreshMusicPlaylist()
+                                }
+                            case .unavailable(let state): self.applyMusicState(state)
+                            }
+                        }
+                    } else {
+                        let result = await fetch(.status, false)
+                        guard !Task.isCancelled else { return }
+                        if self?.musicRevision == revision { self?.applyMusicState(result) }
+                    }
                 }
-                try? await Task.sleep(for: .seconds(6))
+                try? await Task.sleep(for: .seconds(details ? 3 : 6))
             }
         }
     }
