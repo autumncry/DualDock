@@ -242,6 +242,9 @@ private struct CanvasCard: View {
         if let provider = card.kind.quotaProvider {
             AIQuotaPreviewView(provider: provider, service: quota, span: span)
                 .allowsHitTesting(false)
+        } else if card.kind == .systemStatus {
+            SystemStatusFace(metrics: metrics, span: span, horizontal: true)
+                .padding(.horizontal, span == 1 ? 2 : 5)
         } else if card.kind == .music {
             MusicShelfFace(data: data, compact: span == 1, horizontal: true)
                 .padding(.horizontal, 5)
@@ -287,7 +290,7 @@ private struct CanvasCard: View {
 
     private var detail: String {
         switch card.kind {
-        case .music: return ""
+        case .music, .systemStatus: return ""
         case .calendar:
             if case .upcoming(let title, _, _) = data.calendar { return title }
             return Date.now.formatted(.dateTime.month().day().locale(Locale(identifier:text.rawValue)))
@@ -296,7 +299,6 @@ private struct CanvasCard: View {
                 return (stale ? "≈" : "") + reading.temperature.formatted(.number.precision(.fractionLength(0))) + "°C"
             }
             return storeWeatherLabel
-        case .systemStatus: return metrics.cpuPercent.map { "\(Int($0))%" } ?? "—"
         case .battery: return metrics.batteryPercent.map { "\(Int($0))%" } ?? "—"
         case .storage: return metrics.diskAvailableBytes.map { ByteCountFormatter.string(fromByteCount:$0,countStyle:.file) } ?? "—"
         case .focusTimer: return formatTime(metrics.focusRemaining)
