@@ -12,6 +12,7 @@ final class ToolDataService: ObservableObject {
         var cities: @Sendable (String, String) async throws -> [ToolWeatherCity]
         var musicPlayer: @Sendable () async -> ToolMusicPlayerRead = { .unavailable(.unavailable) }
         var musicPlaylist: @Sendable (Int) async -> ToolMusicPlaylist? = { _ in nil }
+        var calendarEvents: @Sendable (DateInterval) async -> ToolCalendarRead = { _ in .unavailable }
         var now: () -> Date = Date.init
 
         static func system() -> Self {
@@ -23,7 +24,8 @@ final class ToolDataService: ObservableObject {
                         conditions: { try await weather.conditions(in: $0) },
                         cities: { try await weather.search($0, language: $1) },
                         musicPlayer: { await music.player() },
-                        musicPlaylist: { await music.playlist(offset: $0) })
+                        musicPlaylist: { await music.playlist(offset: $0) },
+                        calendarEvents: { await calendar.events(in: $0) })
         }
     }
 
@@ -37,6 +39,7 @@ final class ToolDataService: ObservableObject {
     private struct Saved: Codable {
         var musicEnabled = false
         var lastWeather: ToolWeatherReading?
+        var calendarMode: String?
     }
 
     @Published private(set) var music: ToolMusicState = .disconnected
@@ -48,6 +51,7 @@ final class ToolDataService: ObservableObject {
     @Published private(set) var weather: ToolWeatherState = .noCity
     @Published private(set) var musicBusy = false
     @Published private(set) var calendarBusy = false
+    @Published private(set) var calendarMode: ToolCalendarMode
 
     private let environment: Environment
     private let stateFile: URL
@@ -69,7 +73,9 @@ final class ToolDataService: ObservableObject {
     init(directory: URL, environment: Environment? = nil) {
         self.environment = environment ?? .system()
         stateFile = directory.appendingPathComponent("tool-provider-state.json")
-        state = (try? JSONDecoder().decode(Saved.self, from: Data(contentsOf: stateFile))) ?? Saved()
+        let saved = (try? JSONDecoder().decode(Saved.self, from: Data(contentsOf: stateFile))) ?? Saved()
+        state = saved
+        calendarMode = saved.calendarMode.flatMap(ToolCalendarMode.init(rawValue:)) ?? .month
     }
 
     deinit {
@@ -257,6 +263,17 @@ final class ToolDataService: ObservableObject {
                 try? await Task.sleep(for: .seconds(details ? 3 : 6))
             }
         }
+    }
+
+    func setCalendarMode(_ mode: ToolCalendarMode) {
+        guard mode != calendarMode else { return }
+        calendarMode = mode
+        state.calendarMode = mode.rawValue
+        save()
+    }
+
+    func readCalendarEvents(in interval: DateInterval) async -> ToolCalendarRead {
+        await environment.calendarEvents(interval)
     }
 
     func authorizeCalendar() {

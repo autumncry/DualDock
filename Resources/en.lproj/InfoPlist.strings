@@ -1,3 +1,3 @@
 "NSScreenCaptureUsageDescription" = "DualDock captures windows to show their thumbnails when you hover over an app.";
 "NSAppleEventsUsageDescription" = "Display the current track and control the Music app when you enable the music card.";
-"NSCalendarsFullAccessUsageDescription" = "Display the next event when you enable calendar access for the tools page.";
+"NSCalendarsFullAccessUsageDescription" = "Show your next event on the tools page and events for a selected date in the week or month view.";

@@ -4,10 +4,20 @@ import Foundation
 enum ToolCalendarState: Equatable, Sendable {
     case notDetermined, denied, empty, unavailable
     case upcoming(title: String, start: Date, isAllDay: Bool)
+
+    enum ReadAccess { case notDetermined, denied, allowed, unavailable }
+
+    var readAccess: ReadAccess {
+        switch self {
+        case .notDetermined: return .notDetermined
+        case .denied: return .denied
+        case .empty, .upcoming: return .allowed
+        case .unavailable: return .unavailable
+        }
+    }
 }
 
-/// The event store and its EKEvents stay on this actor. The UI receives only
-/// the next event's title and start; calendar contents are never written to disk.
+/// EventKit objects stay on this actor. Event titles and times live in memory.
 actor ToolCalendarClient {
     private var store: EKEventStore?
 
@@ -38,6 +48,22 @@ actor ToolCalendarClient {
         }
         guard let event = candidates.min(by: { a, b in a.startDate < b.startDate }) else { return .empty }
         return .upcoming(title: event.title ?? "", start: event.startDate, isAllDay: event.isAllDay)
+    }
+
+    func events(in interval: DateInterval) -> ToolCalendarRead {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .notDetermined, .writeOnly: return .notDetermined
+        case .restricted, .denied: return .denied
+        case .fullAccess: break
+        @unknown default: return .unavailable
+        }
+        guard !Task.isCancelled else { return .unavailable }
+        let source = eventStore()
+        let predicate = source.predicateForEvents(withStart: interval.start, end: interval.end, calendars: nil)
+        return .events(source.events(matching: predicate).compactMap { event in
+            guard event.status != .canceled, let start = event.startDate, let end = event.endDate else { return nil }
+            return ToolCalendarEvent(title: event.title ?? "", start: start, end: end, allDay: event.isAllDay)
+        })
     }
 
     private func eventStore() -> EKEventStore {

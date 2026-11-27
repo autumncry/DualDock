@@ -91,7 +91,10 @@ private struct DockToolTile: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(card.title) · \(title)")
                     .help("\(title) · \(subtitle)")
-                    .popover(isPresented: $showDetail) { detail }
+                    .popover(isPresented: $showDetail) {
+                        if card.kind == .calendar { ToolCalendarView(data: data) }
+                        else { detail }
+                    }
             }
             if slot.cards.count > 1 {
                 let index = (slot.cards.firstIndex(of: card) ?? 0) + 1
@@ -271,17 +274,6 @@ private struct DockToolTile: View {
                 Button(localize("工具页设置…", "Tools Page Settings…"), action: DockToolsStore.openSettings)
             } else {
                 switch card.kind {
-                case .calendar:
-                    Text(title).font(.body)
-                    Text(subtitle).foregroundStyle(.secondary)
-                    switch data.calendar {
-                    case .notDetermined:
-                        Button(localize("授权读取日程", "Allow Calendar Access")) { data.authorizeCalendar() }.disabled(data.calendarBusy)
-                    case .denied:
-                        Button(localize("打开日历隐私设置", "Calendar Privacy Settings")) { openPrivacy("Calendars") }
-                    default:
-                        Button(localize("打开日历", "Open Calendar")) { _ = DockToolsStore.openApp("com.apple.iCal") }
-                    }
                 case .weather:
                     Text(title).font(.title2)
                     if case .conditions(let reading, let stale) = data.weather {
@@ -309,11 +301,6 @@ private struct DockToolTile: View {
         }
         .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
         .frame(width: 230, alignment: .leading).padding(14)
-    }
-
-    private func openPrivacy(_ anchor: String) {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_" + anchor) else { return }
-        NSWorkspace.shared.open(url)
     }
 }
 
