@@ -1,176 +1,37 @@
 <div align="center">
 
-<img src="Resources/AppIcon.iconset/icon_128x128@2x.png" width="112" alt="DualDock icon">
+<img src="Resources/AppIcon.iconset/icon_128x128@2x.png" width="88" alt="DualDock icon">
 
 # DualDock
 
-### Apps neatly organized. A Dock on every display.
-
-Group your apps on every display, then swipe the Dock to reach music, your calendar, system stats and AI quotas without leaving the window you are working in.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#requirements)
-[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases/latest)
-[![Release](https://img.shields.io/github/v/release/autumncry/DualDock)](https://github.com/autumncry/DualDock/releases/latest)
-
-[简体中文](README.md) &nbsp;·&nbsp; **English**
-
-[**Download**](https://github.com/autumncry/DualDock/releases/latest) &nbsp;·&nbsp; [**Build from source**](#building-from-source) &nbsp;·&nbsp; [**Report an issue**](https://github.com/autumncry/DualDock/issues)
+[简体中文](README.md) · **English** · [Download for macOS](https://github.com/autumncry/DualDock/releases/latest)
 
 </div>
 
-<div align="center">
-  <img src="docs/images/dualdock-overview.png" width="1000" alt="DualDock example layout with grouped apps, a window preview, and the main Dock">
-  <p><sub>Example layout rendered with actual AppKit components and sample content.</sub></p>
-</div>
+## A Dock on each display
 
-## Why DualDock
+DualDock shows a Dock on your Mac’s built-in screen and external displays at the same time. Your MacBook can show apps along the bottom while an external monitor shows music and calendar events on its right edge. Each display remembers its Dock position and current page. Displays share the same app groups and tools layout.
 
-When your workspace extends beyond a laptop, your everyday apps should stay within reach. DualDock focuses on multiple displays and app groups, keeping a familiar starting point on each screen.
+When an app goes full screen, the Dock hides on that display. Hold the pointer at its edge to bring it back.
 
-- **A shared layout.** Every extended display gets a Dock, with the same apps, groups, order, and display mode.
-- **Apps organized around your work.** Group related apps, open them in a horizontal strip, and rearrange members whenever you need.
-- **Source you can change.** Built with Swift, AppKit, and SwiftUI, and released under the MIT license.
+<img src="docs/images/dualdock-overview.png" width="820" alt="Apps page with an expanded app group and a window preview">
 
-## Features
+## Apps and tools
 
-### Swipe between your apps and tools
+On the **Apps page**, drag apps together to group them. Hover over an app to preview its windows, then click a thumbnail to bring that window forward.
 
-With the pointer over a horizontal Dock, swipe up with two fingers to open Tools and down to return to Apps. On a left or right Dock, swipe horizontally. Each display remembers its own page. With a mouse, use the menu bar command to switch the page on the current display.
+The **Tools page** holds music, calendar, weather, system stats, shortcuts, and quota cards for Codex, Gemini, Claude and Cursor. Swipe with two fingers over the Dock to switch pages. Swipe up or down on a horizontal Dock, or left or right on a vertical Dock. You can also switch from the menu bar. [Tool settings and quota sources](docs/tools.en.md)
 
-<img src="docs/images/tools-shelf.png" width="620" alt="Native DualDock tools page with music, calendar and a shortcut (sample data)">
-
-Open **Settings → Dock → Tools Page → Edit**. Drag cards from the library, rearrange them, choose a width of 1–4 slots, or stack cards in one slot. Choose **Done** to apply the layout across displays.
-
-- **Music and calendar.** Open Now Playing to view the current track, scrub, change tracks or pick a song from the Music app’s current playlist. Switch between week and month in the calendar, then select a date to see events you have granted access to.
-- **System and shortcuts.** Check CPU, RAM, swap, battery, storage and weather, start a focus timer, or open an app, file, URL or macOS shortcut.
-- **Four AI quota cards.** Codex uses the signed-in Codex CLI. Gemini reads the Antigravity quota. Claude reads subscription windows from Claude Code’s `/usage`; the CLI may reuse cached values. Cursor offers the legacy CLI usage screen (experimental) or the shared pool for the same X Subscription. Remaining allowances and reset times are shown when the provider supplies them. [Connection and plan details](docs/tools.en.md)
-
-### A Dock on each display
-
-Use DualDock on your MacBook display and external monitors at the same time. It responds to display changes; mirrored displays follow the image duplicated by macOS. When an app enters full screen, DualDock hides on that display. Dwell at its edge to reveal it; moving away hides it again.
-
-### App groups and drag-and-drop
-
-Drag apps in from Finder or add them through Settings. Drop near an icon's edge to reorder; hold over its center for about 0.6 seconds before dropping to create an app group.
-
-Click a folder icon to expand its members horizontally. Reorder apps within a group, move them back to the main Dock, or use the context menu to rename or dissolve a group. The first launch imports pinned apps from the system Dock. DualDock then maintains its own layout; re-importing adds missing apps while preserving existing groups.
-
-Right-click an unpinned running app, choose **Add to App Group**, then pick a group to pin it at the end of that group. Choose **Pin to DualDock** to pin it as a separate icon. Dropping an app into a folder shows its icon settling into the group. These transitions respect the macOS Reduce Motion setting.
-
-In **Settings → Dock → Group Appearance**, choose Silver, Classic, Flat, Leather or Glass for all groups. Pick a background color and adjust its opacity from 0% to 100%. At 0%, the member icons, unread badge and running indicator remain visible.
-
-<img src="docs/images/group-styles.png" width="530" alt="DualDock group icons in Silver, Classic, Flat, Leather and Glass, from left to right">
-
-### Preview, switch, and close windows
-
-Hover over a running app to see window thumbnails. Click a thumbnail to switch to that window. A **×** appears in the upper-right corner when DualDock can identify and use the window’s native Close control. The original app handles any unsaved-changes confirmation. Closing dismisses the current preview; the next hover reads the window list again.
-
-Windows without a usable screenshot are omitted. Screenshots are processed in local memory, without being saved to disk or uploaded.
-
-### Choose a window and toggle it repeatedly
-
-Right-click an app icon to list its actionable windows, including minimized ones. A checkmark identifies the selected target. Selecting a window brings it forward and keeps it as the target for subsequent icon clicks during this session.
-
-WeChat’s separate browser icon can also minimize and restore its associated page. If the target is ambiguous, right-click the icon and select it under **Choose the WeChat window for this icon**.
-
-- Background window: bring it forward first.
-- Ordinary foreground window: minimize; click again to restore.
-- Fullscreen or maximized window: activate without minimizing.
-
-Window actions use the original app's native controls. Animation follows macOS and the app. Failed reads do not silently select and minimize another window. Accessibility permission is required.
-
-### Two display modes
-
-- **Pinned apps and groups + running apps:** keep your usual shortcuts alongside running apps that are not pinned.
-- **Running apps only:** show regular running apps in a flat row, including hidden or minimized apps and apps on other Spaces. Switching back restores the saved groups and order.
-
-Change the mode in Settings; every display updates together.
-
-### Fully adaptive system Dock sizing
-
-Choose “跟随系统 Dock” in Appearance & Size to follow the system Dock's base icon size, bar height, icon spacing, end padding, and magnification. The bar grows or shrinks with the app count and stays centered on its display edge. Hovering changes the icons while keeping the backdrop fixed.
-
-Adaptive mode hides manual size and magnification controls and disables edge resizing. Turning it off restores the previous manual configuration. Users who enabled automatic width in an earlier version are migrated to fully adaptive sizing.
-
-Dimensions are read from system preferences and Accessibility geometry without changing them. Temporary read failures retain the latest valid measurement; compatible values are used when there is no prior measurement. Accessibility bounds can differ from actual system rendering, so pixel-identical results are not guaranteed.
-
-### Simple sizing with an illustrative Dock
-
-Three primary controls cover everyday changes:
-
-- **Size:** set the icon size; the default bar height is calculated automatically.
-- **Icon spacing:** continuously adjust 0–100. Zero places neighboring visible artwork bounds together; 100 leaves about one visible icon width between them. Original artwork size and shape are preserved.
-- **Length:** fit the content, fill the available edge, or use a fixed screen percentage.
-
-Advanced settings expose padding, Dock Height, fixed length percentage, alignment, and optional icon shrinking before scrolling. The entire header toggles the section. Percentage spacing is retained when space runs out; icons shrink if enabled, then overflow scrolls without a visible scrollbar. The layout example uses five fixed sample icons that respond to sizing and position, independently of the running-app list.
-
-Upgrades preserve existing dimensions and appearance. Editing the new spacing slider opts that profile into visible-artwork spacing. Reset restores recommended dimensions for the selected scope.
-
-### Per-display position and edge resizing
-
-Choose **bottom, top, left, or right** independently for each display using a clickable display diagram. Icons stay upright, groups expand horizontally, and popups open inward.
-
-Drag the inward edge to change height and scale icons, either endpoint to change length, or an inward corner to scale both axes. In content-fit mode, endpoint dragging redefines end padding.
-
-“同步各屏尺寸” applies shared sizing within the range available to every display; turn it off for independent sizing. Re-enabling adopts the currently selected display's settings. Height remains capped at **12%** of the applicable short edge, and length at the available edge. Values use macOS logical points.
-
-### Shape the magnification curve
-
-In manual mode, the Interaction page provides two continuous sliders:
-
-- **Peak size (放大峰值):** the maximum size of the icon under the pointer.
-- **Influence range (联动范围):** how many neighboring icons join the wave. Narrowing it reduces magnification around the focused icon.
-
-A curve preview updates with the sliders while the Dock backdrop stays fixed. Both controls are disabled when magnification is off. Fully adaptive mode continues to follow the system Dock and hides the manual curve controls. Your previous manual peak is preserved, and the new range initially matches the earlier behavior.
-
-### Automatic hiding and edge reveal
-
-For automatic hiding on the desktop, enable **Settings → Interaction → Windows & Previews → Automatically hide the Dock**. Pause at the Dock edge to reveal it and move away to hide it. Each display responds independently.
-
-Enable **Hide the Dock for maximized windows** in Interaction to hide a display's Dock when a window fills its available workspace. Pause the pointer at that edge to reveal it. Moving an ordinary window down over the Dock does not trigger hiding. For a top Dock, the activation edge sits below the menu bar.
-
-The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Fullscreen apps also support edge reveal; fullscreen auto-hiding is independent of this toggle. The maximized-window option is off by default and does not resize other apps' windows.
-
-### Settings window
-
-Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. All pages share one resizable window. Switching pages or languages and expanding advanced settings preserve the window frame. Related sections in Interaction and General share a scrollable form. Select a sidebar entry to jump to that section. The window follows the system appearance. About includes the version, MIT license, and project links.
-
-To switch the app to English, open **通用 (General) → 显示语言 (Display Language)** and select **English**. The change takes effect immediately and is remembered at the next launch.
-
-Enable **Launch at Login** in General to start DualDock after signing into macOS. The control reflects system registration and provides an approval link when required. Opening Settings does not register the app automatically.
-
-<img src="docs/images/dualdock-settings-en.png" width="820" alt="Native DualDock settings with fixed sample icons and Size, Icon Spacing, and Length controls">
-
-<sub>Native settings capture using an isolated example configuration.</sub>
-
-### More details
-
-- **Notification badges:** individual apps show the labels supplied by the system; a group shows a red **!** when a member has an unread indicator. In Interaction → Notifications, use **Badge size** to scale counts and exclamation marks from 75% to 200% (default 100%). The setting applies to every display and open group. A global switch disables badges. Only badge state is read, not notification text. Some apps may not provide a usable label.
-- **System Dock management:** optionally hide the system Dock. The preferences changed by DualDock are restored on normal exit, or recovered at the next launch after an interruption; later manual changes are preserved. A manual restore command is also available in the menu bar.
-- **Quick access to Settings:** right-click a blank area of the Dock, or use the overlapping-rectangles icon in the menu bar.
-- **Local configuration:** groups, order, and preferences live in `~/Library/Application Support/DualDock/`, with migration backups created when needed.
-
-### Upgrading from 2.x or the preview
-
-v3.0.0 keeps the original **DualDock.app** identity and update channel. Existing release settings carry forward. When a preview configuration is found, its app groups, display positions and tools layout take precedence. The previous release configuration is backed up in `~/Library/Application Support/DualDock Backups/`, and the original preview files remain available.
+<img src="docs/images/tools-shelf.png" width="620" alt="Tools page with music, calendar, a focus timer, Gemini quota and Shortcuts">
 
 ## Download and install
 
-Download the latest `DualDock-<version>-arm64.dmg` and optional SHA-256 checksum from [Releases](https://github.com/autumncry/DualDock/releases/latest).
+Requires an **Apple Silicon Mac running macOS 14 or later**. Download the DMG from [GitHub Releases](https://github.com/autumncry/DualDock/releases/latest) and drag `DualDock.app` into Applications. DualDock uses Screen Recording permission for window previews and Accessibility permission to switch or close windows.
 
-1. Open the DMG and drag `DualDock.app` into `Applications`.
-2. Launch DualDock and grant **Screen Recording** and **Accessibility** access in its Permissions settings.
-3. Choose the display mode, adaptive or manual sizing, and each display’s position in Settings, then organize app groups with drag-and-drop. Hiding the system Dock is off by default and can be enabled when desired.
+On version 2.8.0 or later, choose **Settings → Support → About DualDock → Check for Updates**. If an older preview configuration is found, DualDock backs up your release settings before importing the preview’s groups and tools layout. [Installation and upgrade notes (Chinese)](docs/installation.txt)
 
-Screen Recording provides window thumbnails; Accessibility identifies, activates, and closes windows, and reads system Dock layout and badge information. If a permission change does not take effect, quit and reopen DualDock. Updates retain your local configuration.
-
-> [!NOTE]
-> The current release targets Apple Silicon and uses an ad-hoc signature for personal use. It is not notarized by Apple. If macOS blocks the first launch, consult the [installation notes](docs/installation.txt) (Chinese).
-
-Open **首次安装 - First Launch.html** inside the DMG for an offline guide in English and Chinese. Its **Copy commands** button copies the optional Terminal commands for you to review and run.
-
-**Updates:** From 2.8.0 onward, open **Settings → Support → About DualDock → Check for Updates**. If a newer version is available, review it and confirm the download, installation, and relaunch. Install this first updater-enabled version manually if upgrading from 2.7.0 or earlier.
+<details>
+<summary><strong>First launch blocked? Open Anyway instructions and optional Terminal commands</strong></summary>
 
 <!-- first-launch-guidance:start -->
 ### First launch: Apple cannot verify the app or developer
@@ -200,7 +61,11 @@ If the alert says the app **will damage your computer**, contains detected malwa
 Apple guidance: [Safely open apps on your Mac](https://support.apple.com/en-us/102445) and [the per-app approval and its time limit](https://support.apple.com/en-gb/guide/mac-help/mh40617/mac).
 <!-- first-launch-guidance:end -->
 
+</details>
+
 ## Building from source
+
+On macOS, use Xcode or Command Line Tools with Swift 5.9 or later.
 
 ```sh
 git clone https://github.com/autumncry/DualDock.git
@@ -208,59 +73,4 @@ cd DualDock
 ./script/build_and_run.sh
 ```
 
-This is a Swift Package Manager project; no Xcode project needs to be created. The script first asks an existing DualDock process to quit normally, then builds, bundles, locally signs, and launches `dist/DualDock.app`.
-
-### Requirements
-
-- Runtime: macOS 14 or later. The distributed DMG is built for Apple Silicon (arm64).
-- The interface is available in Simplified Chinese and English.
-- Build tools: Xcode or command-line tools supporting Swift tools version 5.9 and the corresponding macOS SDK.
-
-### Build and validation commands
-
-```sh
-./script/build_and_run.sh --build-only # Build the .app without launching it
-./script/build_and_run.sh --verify     # Build, launch, and check the process
-./script/package_dmg.sh               # Release build, DMG, and SHA-256
-swift test -c release                 # Model, layout, and window-policy tests
-./script/check_dock_views.sh          # Hidden AppKit component checks
-./script/check_four_edge_views.sh     # Four-edge layout, scroll, and input routing
-./script/check_display_sizing_store.sh # Per-display sizing, sync, and resize commits
-./script/check_native_dock_metrics.sh # Native Dock measurement and fallback checks
-./script/check_dock_animation.sh      # Hover redraw, layout, and badge regressions
-./script/check_terminal_hover.sh      # Endpoint magnification, exit, and scroll stability
-./script/check_dock_visibility.sh     # Visibility timing and lifecycle checks
-./script/check_fullscreen_fallback.sh # Async fullscreen fallback and stale results
-./script/check_window_obstruction.sh  # Obstruction reads, caching, and coalescing
-./script/check_application_activation.sh # App and helper-process activation routing
-./script/check_badges.sh              # Badge reads and asynchronous state checks
-./script/check_system_dock.sh         # Isolated system Dock recovery checks
-```
-
-The build-and-run script also supports `--logs`, `--telemetry`, and `--debug`. Test instances can use the `.app` launch arguments `--config-dir <directory>` for isolated configuration and `--diagnostics <JSON path>` for layout diagnostics.
-
-## Documentation
-
-- [Getting started with the tools page and AI quotas](docs/tools.en.md)
-
-- [Installation notes](docs/installation.txt) (Chinese)
-- [Validation records and known limitations](docs/validation.md) (Chinese)
-- [Implementation research and initial design](docs/superpowers/specs/2026-11-09-dualdock-design.md) (Chinese)
-- [2.0 adaptive sizing, per-display positions, and resizing](docs/superpowers/specs/2026-11-10-four-edge-adaptive.md) (Chinese)
-- [2.1 visibility, activation, and animation changes](docs/superpowers/specs/2026-11-11-visibility-and-motion.md) (Chinese)
-
-Window identity matching and full-screen detection use optional macOS private interfaces with fallbacks. macOS updates may require adjustments. Preview and window-control behavior for minimized windows, other Spaces, and protected content depends on the target app and macOS.
-
-## Feedback and contributions
-
-Use [Issues](https://github.com/autumncry/DualDock/issues) for bug reports and suggestions. Please include the DualDock and macOS versions, display setup, and reproduction steps; redact private content before sharing screenshots. Pull requests are welcome.
-
-The README presentation takes inspiration from [Docky](https://github.com/josejuanqm/docky). The text, branding, and demo content here are specific to DualDock.
-
-## Dependencies
-
-No third-party Swift Package dependencies. DualDock primarily uses system frameworks including AppKit, SwiftUI, ScreenCaptureKit, Accessibility, and CoreGraphics.
-
-## License
-
-[MIT License](LICENSE). Copyright © 2026 Ronny Cao.
+[Report an issue](https://github.com/autumncry/DualDock/issues) · [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE)
