@@ -28,6 +28,12 @@ final class DockTile: NSView, NSDraggingSource {
     private var usesOpticalGeometry = false
     private var badgeRenderer = DockBadgeRenderer()
     private(set) var badgeScale: Double = 1
+    // Independent backing planes let ordinary icons resize on the compositor
+    // without repainting their bitmap and running indicator for each hover frame.
+    private var artworkPlane: CALayer?
+    private var indicatorPlane: CALayer?
+    private var composited = false
+    private var rasterPixels: CGFloat = 0
     private var hovered = false
     private var dragStart: NSPoint?
     private var dragging = false
@@ -35,8 +41,10 @@ final class DockTile: NSView, NSDraggingSource {
     private var ownsInteraction = false
     private var destinationInteraction = false
     private var dwell: DispatchWorkItem?
-    private var mergeReady = false
-    private var dragInside = false
+    private(set) var mergeReady = false
+    private var dragInside = false {
+        didSet { if dragInside != oldValue { refreshCompositedArtwork() } }
+    }
     private var dropAfter = false
     private var centralDrop = false
     private var backingScale: CGFloat = 0
@@ -75,6 +83,8 @@ final class DockTile: NSView, NSDraggingSource {
     }
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        rasterPixels = 0
+        refreshCompositedArtwork()
         needsDisplay = true
     }
     override func viewDidChangeBackingProperties() {
@@ -84,6 +94,8 @@ final class DockTile: NSView, NSDraggingSource {
         guard backingScale != scale || backingColorSpace != colorSpace else { return }
         backingScale = scale
         backingColorSpace = colorSpace
+        rasterPixels = 0
+        refreshCompositedArtwork()
         needsDisplay = true
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -133,7 +145,10 @@ final class DockTile: NSView, NSDraggingSource {
         usesOpticalGeometry = optical
         unitScale = scale
         layoutEdge = edge
-        if changed { needsDisplay = true }
+        if changed {
+            if composited { updateCompositedGeometry() }
+            else { needsDisplay = true }
+        }
     }
 
     var visibleContentBounds: NSRect { explicitContentBounds ?? visualIconBounds }
@@ -264,6 +279,7 @@ final class DockTile: NSView, NSDraggingSource {
 
     func refreshBadge() {
         badgeScale = store.configuration.badgeScale
+        refreshCompositedArtwork()
         needsDisplay = true
         let base = entry.isGroup ? L("应用组 \(entry.name)，\(entry.apps.count) 个应用", "App group \(entry.name), \(entry.apps.count) apps") : entry.name
         if let badge = store.badgeLabel(for: entry) {
@@ -273,7 +289,71 @@ final class DockTile: NSView, NSDraggingSource {
         }
     }
 
+    private func refreshCompositedArtwork() {
+        guard let parent = layer else { return }
+        var enabled = !entry.isGroup && !dragInside && store.badgeLabel(for: entry) == nil && entry.apps.first != nil
+        if enabled, artworkPlane == nil {
+            let icon = CALayer()
+            let dot = CALayer()
+            icon.name = "dock.icon"
+            dot.name = "dock.indicator"
+            let noActions = ["position": NSNull(), "bounds": NSNull(), "contents": NSNull(),
+                             "hidden": NSNull(), "cornerRadius": NSNull(), "backgroundColor": NSNull()]
+            icon.actions = noActions
+            dot.actions = noActions
+            icon.minificationFilter = .trilinear
+            parent.addSublayer(icon)
+            parent.addSublayer(dot)
+            artworkPlane = icon
+            indicatorPlane = dot
+        }
+        if enabled { enabled = prepareRaster() }
+        if composited != enabled {
+            composited = enabled
+            artworkPlane?.isHidden = !enabled
+            indicatorPlane?.isHidden = !enabled
+            needsDisplay = true
+        }
+        guard enabled, let app = entry.apps.first else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            indicatorPlane?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.8).cgColor
+        }
+        indicatorPlane?.isHidden = !store.isRunning(app)
+        updateCompositedGeometry()
+    }
+
+    /// Reuse the current native icon representation until a bigger backing
+    /// bitmap is needed. Zooming or resizing back down does not decode it again.
+    private func prepareRaster() -> Bool {
+        guard let plane = artworkPlane, let app = entry.apps.first else { return false }
+        let scale = max(1, window?.backingScaleFactor ?? 2)
+        let points = max(visualIconBounds.width, unitScale * 48 * 1.5)
+        guard rasterPixels < points * scale else { return plane.contents != nil }
+        var proposed = NSRect(x: 0, y: 0, width: points, height: points)
+        guard let bitmap = store.icon(for: app).cgImage(forProposedRect: &proposed, context: nil, hints: nil)
+        else { return plane.contents != nil }
+        plane.contents = bitmap
+        plane.contentsScale = scale
+        rasterPixels = max(points * scale, CGFloat(bitmap.width))
+        return true
+    }
+
+    private func updateCompositedGeometry() {
+        _ = prepareRaster()
+        if artworkPlane?.frame != visualIconBounds { artworkPlane?.frame = visualIconBounds }
+        let dot = runningIndicatorBounds
+        if indicatorPlane?.frame != dot {
+            indicatorPlane?.frame = dot
+            indicatorPlane?.cornerRadius = dot.width / 2
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
+        if !composited { drawSnapshot() }
+    }
+
+    /// A drag image / explicit bitmap capture includes the compositor planes.
+    func drawSnapshot() {
         NSGraphicsContext.current?.imageInterpolation = .high
         let iconRect = visualIconBounds
         if mergeReady {
@@ -345,7 +425,7 @@ final class DockTile: NSView, NSDraggingSource {
         item.setData(data, forType: DockDrag.pasteboardType)
         let drag = NSDraggingItem(pasteboardWriter: item)
         let image = NSImage(size: bounds.size)
-        image.lockFocus(); draw(bounds); image.unlockFocus()
+        image.lockFocus(); drawSnapshot(); image.unlockFocus()
         drag.setDraggingFrame(bounds, contents: image)
         beginDraggingSession(with: [drag], event: event, source: self)
     }

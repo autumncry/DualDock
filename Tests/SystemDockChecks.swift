@@ -63,6 +63,45 @@ struct SystemDockChecks {
             assert(!svc.hasRecoveryRecord)
             assert(env.restarts == 3)
         }
+        try scenario("already suppressed Dock remains owned by the original settings provider") { _, env, svc in
+            env.values = ["autohide": true, "autohide-delay": 1000.0]
+            try svc.setHidden(true)
+            try svc.setHidden(true)
+            assert(svc.isSuppressed && !svc.hasRecoveryRecord)
+            try svc.restore()
+            assert(env.writes == 0 && env.restarts == 0)
+        }
+        try scenario("deferred enable snapshots the restored, ordinary auto-hide settings") { _, env, svc in
+            env.values = ["autohide": true, "autohide-delay": 2000.0]
+            try svc.setHidden(true)
+            assert(!svc.hasRecoveryRecord && env.writes == 0)
+            env.values = ["autohide": true, "autohide-delay": 0.125]
+            try svc.setHidden(true)
+            assert(svc.hasRecoveryRecord && env.restarts == 1)
+            try svc.setHidden(false)
+            assert((env.values["autohide"] as? NSNumber)?.boolValue == true)
+            assert((env.values["autohide-delay"] as? NSNumber)?.doubleValue == 0.125)
+        }
+        try scenario("recovery after a single key write preserves a dormant long delay") { _, env, svc in
+            env.values = ["autohide": false, "autohide-delay": 2000.0]
+            try svc.setHidden(true)
+            // Recreate a crash after writing autohide, before changing the delay.
+            env.values["autohide-delay"] = 2000.0
+            try svc.recoverIfNeeded()
+            assert((env.values["autohide"] as? NSNumber)?.boolValue == false)
+            assert((env.values["autohide-delay"] as? NSNumber)?.doubleValue == 2000.0)
+            assert(!svc.hasRecoveryRecord)
+        }
+        try scenario("another utility with a longer delay keeps its enabled flag on recovery") { _, env, svc in
+            env.values = ["autohide": false, "autohide-delay": 0.2]
+            try svc.setHidden(true)
+            env.values["autohide-delay"] = 4000.0
+            let writes = env.writes, restarts = env.restarts
+            try svc.restore()
+            assert((env.values["autohide"] as? NSNumber)?.boolValue == true)
+            assert((env.values["autohide-delay"] as? NSNumber)?.doubleValue == 4000.0)
+            assert(env.writes == writes && env.restarts == restarts && !svc.hasRecoveryRecord)
+        }
         try scenario("restore preserves a setting changed by the user") { _, env, svc in
             env.values = ["autohide": false, "autohide-delay": 0.2, "orientation": "left"]
             try svc.setHidden(true)

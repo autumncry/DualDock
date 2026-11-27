@@ -53,7 +53,9 @@ final class RunningIndicatorTests: XCTestCase {
                 for index in value.canonicalDotFrames.indices {
                     let dot = value.canonicalDotFrames[index]
                     let icon = value.canonicalIconFrames[index]
-                    XCTAssertGreaterThanOrEqual(dot.minY, 0)
+                    XCTAssertGreaterThanOrEqual(dot.minY, 3)
+                    XCTAssertGreaterThanOrEqual(dot.width, 2)
+                    XCTAssertGreaterThanOrEqual(icon.minY - dot.maxY, 2)
                     XCTAssertLessThanOrEqual(dot.maxY, icon.minY)
                     XCTAssertLessThanOrEqual(icon.minY - dot.maxY, 3)
                     XCTAssertTrue(dot.width.isFinite && dot.height.isFinite)
@@ -61,4 +63,34 @@ final class RunningIndicatorTests: XCTestCase {
             }
         }
     }
+    func testCompactArtworkKeepsIndicatorClearOnEveryEdgeDuringHover() {
+        let bounds = [CGRect(x: 0.08, y: 0.05, width: 0.82, height: 0.90),
+                      CGRect(x: 0.04, y: 0.11, width: 0.91, height: 0.80)]
+        for edge in DockEdge.allCases {
+            for percent: CGFloat? in [0, 22, nil] {
+                let style = DockGeometryStyle(iconSize: 49, barThickness: 53, gap: 5,
+                    leadingPadding: 5, trailingPadding: 5, magnificationScale: 2,
+                    contentBounds: bounds, spacingPercent: percent)
+                let base = DockGeometry.make(count: 2, edge: edge, style: style, maximumLength: 1200)
+                let peak = DockGeometry.make(count: 2, edge: edge, style: style, maximumLength: 1200, focusIndex: 0.4)
+                for frame in [base, base.interpolated(to: peak, fraction: 0.4), peak] {
+                    for index in bounds.indices {
+                        let icon = frame.iconFrames[index]
+                        let b = bounds[index]
+                        let art = CGRect(x: icon.minX + b.minX * icon.width, y: icon.minY + b.minY * icon.height,
+                                         width: b.width * icon.width, height: b.height * icon.height)
+                        let actualBody = frame.documentTransform.rectToCanonical(art)
+                        let dot = frame.canonicalDotFrames[index]
+                        XCTAssertEqual(dot.midX, actualBody.midX, accuracy: 0.000001)
+                        XCTAssertGreaterThanOrEqual(dot.minY, 3 - 0.000001)
+                        XCTAssertGreaterThanOrEqual(dot.width, 2 - 0.000001)
+                        XCTAssertLessThanOrEqual(dot.width, 4)
+                        XCTAssertGreaterThanOrEqual(actualBody.minY - dot.maxY, 2 - 0.000001)
+                        XCTAssertLessThanOrEqual(actualBody.minY - dot.maxY, 3.000001)
+                    }
+                }
+            }
+        }
+    }
+
 }

@@ -4,6 +4,13 @@ import QuartzCore
 import DualDockCore
 
 @MainActor
+protocol DockShelfToolsProviding: AnyObject {
+    func makeSurface(on displayID: String, presentation: DockPresentation) -> DockShelfSurface
+    func setShelfVisible(_ visible: Bool, on displayID: String)
+    func keepsShelfOpen(on displayID: String) -> Bool
+}
+
+@MainActor
 final class DisplayCoordinator {
     struct ApplicationActions {
         var launch: (AppReference) -> Void
@@ -20,6 +27,10 @@ final class DisplayCoordinator {
     private let windowInteractions: WindowInteractionService
     private let applicationActions: ApplicationActions
     private let presentsPanels: Bool
+    private let tools: DockShelfToolsProviding?
+    private let pageStateURL: URL?
+    private var pages: [String: DockShelfPage]
+    private var visibleToolDisplays: Set<String> = []
     var showSettings: (() -> Void)?
     private(set) var docks: [CGDirectDisplayID: ScreenDock] = [:]
     private var subscriptions = Set<AnyCancellable>()
@@ -73,7 +84,14 @@ final class DisplayCoordinator {
 
     /// Hidden coordinators exercise the real update pipeline without presenting UI.
     init(store: AppStore, presentsPanels: Bool = true, windowInteractions: WindowInteractionService? = nil,
-         applicationActions: ApplicationActions? = nil) {
+         applicationActions: ApplicationActions? = nil, tools: DockShelfToolsProviding? = nil,
+         pageStateDirectory: URL? = nil) {
+        self.tools = tools
+        self.pageStateURL = pageStateDirectory?.appendingPathComponent("dock-pages.json")
+        if let url = self.pageStateURL, let data = try? Data(contentsOf: url),
+           let saved = try? JSONDecoder().decode([String: DockShelfPage].self, from: data) {
+            self.pages = saved
+        } else { self.pages = [:] }
         self.store = store
         self.windowInteractions = windowInteractions ?? WindowInteractionService()
         self.applicationActions = applicationActions ?? ApplicationActions(
@@ -164,6 +182,19 @@ final class DisplayCoordinator {
                 self?.pointerIsOverPopup(point, includeGroup: true) ?? false
             }
             strip.settingsAction = { [weak self] in self?.dismissPopups(); self?.showSettings?() }
+            if let tools, !strip.hasTools {
+                strip.installTools(tools.makeSurface(on: display.id, presentation: presentation),
+                                   initialPage: pages[display.id] ?? .apps)
+                strip.canStartPaging = { [weak self] in self?.contextMenuTracking == false }
+                strip.onPageMotionBegan = { [weak self] in
+                    guard let self else { return }
+                    if self.popupScreen == id || self.pendingPreviewScreen == id { self.dismissPopups() }
+                    for case let exit as DockDeparturePanel in self.docks[id]?.panel.childWindows ?? [] {
+                        exit.dismiss()
+                    }
+                }
+                strip.onPageChanged = { [weak self] page in self?.setPage(page, for: display.id) }
+            }
             strip.resizeInteractionAllowed = { [weak self] in
                 guard let self else { return false }
                 // Popups own only their covered region. Exposed edges must
@@ -196,6 +227,40 @@ final class DisplayCoordinator {
         renderedHideSystemDock = store.configuration.hideSystemDock
         tileAppearanceNeedsRefresh = false
         visibility?.invalidate()
+        refreshToolVisibility()
+    }
+
+    func togglePageForPointerDisplay() {
+        let pointer = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? NSScreen.main
+        guard let screen, let strip = docks[Self.id(screen)]?.strip, strip.hasTools,
+              !strip.isResizing else { return }
+        strip.setShelfPage(strip.page.other)
+    }
+
+    private func setPage(_ page: DockShelfPage, for displayID: String) {
+        pages[displayID] = page
+        if let url = pageStateURL {
+            do {
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                        withIntermediateDirectories: true)
+                try JSONEncoder().encode(pages).write(to: url, options: .atomic)
+            } catch {
+                store.notice = .init("未能保存此屏的工具页选择。", "Could not save the Dock page for this display.")
+            }
+        }
+        refreshToolVisibility()
+        visibility?.refresh(force: true)
+    }
+
+    private func refreshToolVisibility() {
+        guard let tools else { return }
+        let visible = Set(docks.values.compactMap { dock in
+            dock.panel.isVisible && dock.strip.page == .tools ? dock.displayID : nil
+        })
+        for id in visibleToolDisplays.subtracting(visible) { tools.setShelfVisible(false, on: id) }
+        for id in visible.subtracting(visibleToolDisplays) { tools.setShelfVisible(true, on: id) }
+        visibleToolDisplays = visible
     }
 
     private func scheduleGeometryRefresh() {
@@ -276,7 +341,7 @@ final class DisplayCoordinator {
         var change = LifecycleChange(started: started, stopped: ended)
         guard structureChanged else { return change }
         let remaining = Set(nextEntries.flatMap { $0.apps.map(\.id) })
-        for (id, dock) in docks where dock.panel.isVisible && !dock.panel.isMiniaturized {
+        for (id, dock) in docks where dock.strip.page == .apps && dock.panel.isVisible && !dock.panel.isMiniaturized {
             change.centers[id] = [:]
             for tile in dock.strip.tiles {
                 guard let center = tile.presentedIconCenterOnScreen else { continue }
@@ -290,7 +355,7 @@ final class DisplayCoordinator {
     }
 
     private func finishLifecycle(_ change: LifecycleChange) {
-        for (id, dock) in docks where dock.panel.isVisible {
+        for (id, dock) in docks where dock.strip.page == .apps && dock.panel.isVisible {
             // A quick relaunch replaces its fading image immediately.
             for case let exit as DockDeparturePanel in dock.panel.childWindows ?? [] where change.started.contains(exit.appID) {
                 exit.dismiss()
@@ -432,6 +497,7 @@ final class DisplayCoordinator {
         dismissPopups()
         docks.values.forEach { $0.strip.cancelResize(); $0.strip.stopAnimations(); $0.panel.close() }
         docks.removeAll()
+        refreshToolVisibility()
     }
 
     private func configure(_ tile: DockTile, on screen: NSScreen, displayID: String, edge: DockEdge) {
@@ -748,11 +814,13 @@ final class DisplayCoordinator {
         return docks.map { id, dock in
             let local = dock.strip.convert(dock.panel.convertPoint(fromScreen: pointer), from: nil)
             let popupOpen = popupScreen == id && (groupPanel?.isVisible == true || previewPanel?.isVisible == true)
-            return .init(id: id, screen: dock.screen, visibleFrame: placementBounds(for: dock.screen),
+            let workArea = store.displays.first { $0.runtimeID == id }?.visibleFrame ?? dock.screen.visibleFrame
+            return .init(id: id, screen: dock.screen, visibleFrame: workArea,
                 edge: dock.strip.layoutGeometry?.edge ?? .bottom,
                 backdrop: dock.panel.convertToScreen(dock.strip.convert(dock.strip.backdropFrame, to: nil)),
                 pointerInside: dock.panel.isVisible && dock.strip.containsInteractivePoint(local),
-                interacting: dock.strip.isInteracting || popupOpen || contextMenuScreen == id)
+                interacting: dock.strip.isInteracting || popupOpen || contextMenuScreen == id
+                    || tools?.keepsShelfOpen(on: dock.displayID) == true)
         }
     }
 
@@ -767,6 +835,7 @@ final class DisplayCoordinator {
             if snapshot.hidden.contains(id) {
                 for case let exit as DockDeparturePanel in dock.panel.childWindows ?? [] { exit.dismiss() }
                 if dock.panel.isVisible { dock.strip.resetMagnification() }
+                dock.strip.cancelPageMotion()
                 dock.panel.orderOut(nil)
                 dock.panel.setFullscreenOverlay(false)
                 if popupScreen == id || pendingPreviewScreen == id { dismissPopups() }
@@ -779,6 +848,7 @@ final class DisplayCoordinator {
                 dock.strip.updateMousePassthrough()
             }
         }
+        refreshToolVisibility()
     }
 
     private func organizationSource(window: NSWindow?) -> (CGDirectDisplayID, [String: CGPoint])? {

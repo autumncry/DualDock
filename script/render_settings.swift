@@ -14,7 +14,7 @@ import ScreenCaptureKit
     @MainActor static func main() throws {
         // The standalone renderer uses its own defaults domain. Never use the
         // installed app's preference domain, even when a capture fails.
-        precondition(Bundle.main.bundleIdentifier != "local.ronny.DualDock" &&
+        precondition(Bundle.main.bundleURL.pathExtension != "app" &&
                      ProcessInfo.processInfo.processName == "RenderSettings")
         if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--expect-language" {
             guard AppLanguage.current.rawValue == CommandLine.arguments[2] else { exit(1) }
@@ -149,14 +149,14 @@ import ScreenCaptureKit
             precondition(NSApp.sendAction(action, to: button.target, from: button))
             precondition(navigation.selected.category == category)
         }
-        for (query, expected) in [("badge size", SettingsSection.notifications), ("角标", .notifications),
+        for (query, expected) in [("badge size", SettingsSection.notifications), ("角标", .notifications), ("工具页", .tools), ("Tool cards", .tools),
                                   ("English", .general), ("辅助功能", .permissions)] {
             navigation.query = query
             precondition(navigation.visibleSections.contains(expected))
             navigation.show(expected)
             precondition(toolbar.selectedItemIdentifier?.rawValue == expected.category.rawValue && navigation.query.isEmpty)
         }
-        precondition(SettingsCategory.dock.sections == [.appearance, .displays, .groupAppearance])
+        precondition(SettingsCategory.dock.sections == [.appearance, .displays, .groupAppearance, .tools])
         for query in ["文件夹外观", "背景颜色", "背景透明度", "folder style", "background opacity"] {
             navigation.query = query
             precondition(navigation.visibleSections.contains(.groupAppearance))

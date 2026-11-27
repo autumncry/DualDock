@@ -7,8 +7,11 @@ xcrun swiftc -swift-version 5 -O -emit-module -emit-library -module-name DualDoc
   "$ROOT_DIR"/Sources/DualDockCore/*.swift \
   -emit-module-path "$CHECK_DIR/DualDockCore.swiftmodule" \
   -module-cache-path "$CHECK_DIR/module-cache" -o "$CHECK_DIR/libDualDockCore.dylib"
+# Read the applied fullscreen membership in the fixture only. Keep all geometry
+# expectations independent of the production placement calculation.
+cat "$ROOT_DIR/Sources/DualDock/DisplayCoordinator.swift" "$ROOT_DIR/Tests/DockPlacementChecks.swift" > "$CHECK_DIR/CoordinatorWithChecks.swift"
 xcrun swiftc -swift-version 5 -O \
-  "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$ROOT_DIR/Sources/DualDock/DisplayCoordinator.swift" \
+  "$ROOT_DIR/Sources/DualDock/AppLanguage.swift" "$CHECK_DIR/CoordinatorWithChecks.swift" \
   "$ROOT_DIR/Sources/DualDock/WeChatBrowserWindowRouter.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionService.swift" "$ROOT_DIR/Sources/DualDock/WindowInteractionBackend.swift" \
   "$ROOT_DIR/Sources/DualDock/DockVisibilityController.swift" "$ROOT_DIR/Sources/DualDock/WindowObstructionService.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowPreviewCardView.swift" \
@@ -19,7 +22,6 @@ xcrun swiftc -swift-version 5 -O \
   "$ROOT_DIR/Sources/DualDock/IconArtworkBounds.swift" "$ROOT_DIR/Sources/DualDock/AppStore.swift" "$ROOT_DIR/Sources/DualDock/ApplicationActivationService.swift" \
   "$ROOT_DIR/Sources/DualDock/WindowService.swift" "$ROOT_DIR/Sources/DualDock/FullscreenFallbackService.swift" \
   "$ROOT_DIR/Sources/DualDock/SystemDockService.swift" "$ROOT_DIR/Sources/DualDock/DockBadgeService.swift" \
-  "$ROOT_DIR/Tests/DockPlacementChecks.swift" \
   -I "$CHECK_DIR" -L "$CHECK_DIR" -lDualDockCore -Xlinker -rpath -Xlinker "$CHECK_DIR" \
   -module-cache-path "$CHECK_DIR/module-cache" -o "$CHECK_DIR/DockPlacementChecks"
 "$CHECK_DIR/DockPlacementChecks" "$CHECK_DIR/configuration"

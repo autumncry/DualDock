@@ -18,7 +18,11 @@ struct FourEdgeViewChecks {
         }
         func near(_ a: CGFloat, _ b: CGFloat, tolerance: CGFloat = 0.001) -> Bool { abs(a - b) < tolerance }
         func checkIndicator(_ tile: DockTile, edge: DockEdge) {
-            let icon = tile.visualIconBounds, dot = tile.runningIndicatorBounds
+            let canvas = tile.visualIconBounds, dot = tile.runningIndicatorBounds
+            let content = tile.store.contentBounds(for: [tile.entry])[0]
+            let icon = NSRect(x: canvas.minX + content.minX * canvas.width,
+                              y: canvas.minY + content.minY * canvas.height,
+                              width: content.width * canvas.width, height: content.height * canvas.height)
             let gap: CGFloat
             switch edge {
             case .bottom: gap = icon.minY - dot.maxY
@@ -26,7 +30,7 @@ struct FourEdgeViewChecks {
             case .left: gap = icon.minX - dot.maxX
             case .right: gap = dot.minX - icon.maxX
             }
-            check(gap >= -0.001 && gap <= 3.001, "Running dot detached from icon on \(edge): \(gap)")
+            check(gap >= 1.999 && gap <= 3.001, "Running dot detached from icon on \(edge): \(gap)")
             check(near(edge.isHorizontal ? icon.midX : icon.midY,
                        edge.isHorizontal ? dot.midX : dot.midY), "Running dot is not centered on icon")
         }

@@ -108,11 +108,13 @@ public enum DockOpticalSpacingPolicy {
         }
     }
 
-    static func dotFrames(contents: [CGRect]) -> [CGRect] {
-        contents.map { content in
-            let side = min(4, max(0, content.minY - 1))
-            return CGRect(x: content.midX - side / 2, y: max(0, content.minY - side - 3),
-                          width: side, height: side)
-        }
+    static func dotFrame(content: CGRect) -> CGRect {
+        let outerMargin = min(3, max(0, content.minY))
+        let available = max(0, content.minY - outerMargin)
+        // Preserve a compact but visible dot before spending the last point
+        // on its usual 3 pt separation from the artwork.
+        let diameter = max(0, min(4, max(min(3, available - 2), available - 3)))
+        let y = max(outerMargin, content.minY - diameter - 3)
+        return CGRect(x: content.midX - diameter / 2, y: y, width: diameter, height: diameter)
     }
 }

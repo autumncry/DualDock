@@ -73,11 +73,15 @@ struct GeneralSettingsView: View {
     private var systemDock: some View {
         Group {
             SettingsSwitchRow(title: localize("隐藏系统 Dock", "Hide the system Dock"),
-                              detail: localize("正常退出 DualDock 时恢复原设置。全屏时，在屏幕边缘停留可唤出 DualDock。",
-                                               "Quitting DualDock restores your settings. In full screen, hold the pointer at the edge to reveal DualDock."),
+                              detail: store.waitingForSystemDock
+                                ? localize("系统 Dock 已隐藏。如果它恢复显示，DualDock 会接手隐藏。",
+                                           "The system Dock is already hidden. DualDock will hide it if it becomes visible again.")
+                                : localize("在所有屏幕上隐藏 macOS Dock。关闭开关或退出 DualDock 时，恢复本应用更改的设置。",
+                                           "Hide the macOS Dock on all displays. Turning this off or quitting DualDock restores the settings this app changed."),
                               isOn: Binding(get: { store.configuration.hideSystemDock }, set: { store.setSystemDockHidden($0) }))
             Divider()
             Button(localize("恢复系统 Dock", "Restore System Dock")) { store.restoreSystemDock() }
+                .disabled(!store.configuration.hideSystemDock && !store.systemDock.hasRecoveryRecord)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }

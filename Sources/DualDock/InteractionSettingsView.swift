@@ -30,6 +30,7 @@ struct InteractionSettingsView: View {
                 detail: localize("即使关闭上方的自动隐藏，窗口铺满工作区时也会收起。使用分组、预览或菜单时保持显示。",
                                  "Hide when a window fills the work area, even if auto-hide is off. The Dock stays visible while you use a group, preview, or menu."),
                 symbol: "rectangle.expand.vertical", isOn: binding(\.autoHideWhenMaximized))
+                .disabled(store.configuration.autoHideDock)
             Divider()
             SettingsSwitchRow(
                 title: localize("悬停显示窗口预览", "Show window previews on hover"),

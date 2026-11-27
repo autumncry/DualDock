@@ -18,6 +18,16 @@ extension DisplayCoordinator {
     }
 }
 
+@MainActor
+private final class FixtureTools: DockShelfToolsProviding {
+    var detailOnDisplay: String?
+    func makeSurface(on displayID: String, presentation: DockPresentation) -> DockShelfSurface {
+        DockShelfSurface(view: NSView(), update: { _, _ in })
+    }
+    func setShelfVisible(_ visible: Bool, on displayID: String) {}
+    func keepsShelfOpen(on displayID: String) -> Bool { detailOnDisplay == displayID }
+}
+
 @main
 struct FullscreenDockIntegrationChecks {
     @MainActor static func main() throws {
@@ -35,10 +45,13 @@ struct FullscreenDockIntegrationChecks {
         config.dockWidth = 600.37
         config.entries = [DockEntry(name: "Fixture group", apps: apps, isGroup: true), DockEntry(name: "Fixture app", apps: [apps[0]])]
         try JSONEncoder().encode(config).write(to: directory.appendingPathComponent("configuration.json"))
-        let store = AppStore(directory: directory)
+        let store = AppStore(directory: directory, runningAppsProvider: { apps },
+                             permissionsProvider: { (false, false) }, managesSystemDock: false)
         store.stopBackgroundServices()
+        let tools = FixtureTools()
         let coordinator = DisplayCoordinator(store: store, presentsPanels: false,
-            windowInteractions: WindowInteractionService(environment: .init(read: { _ in .available([]) }, perform: { _, _, _ in .unsupported })))
+            windowInteractions: WindowInteractionService(environment: .init(read: { _ in .available([]) }, perform: { _, _, _ in .unsupported })),
+            tools: tools)
         defer { coordinator.stop(); store.stopBackgroundServices() }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
         guard let dock = coordinator.docks.values.sorted(by: { $0.displayID < $1.displayID }).first else {
@@ -121,6 +134,27 @@ struct FullscreenDockIntegrationChecks {
                 coordinator.dismissPopups()
             }
         }
+        // Exercise the actual panel owner and paging host across ordinary edge
+        // hides, then a fullscreen edge hide. Detail interaction belongs only
+        // to the display on which the popover was opened.
+        dock.strip.setShelfPage(.tools, animated: false)
+        tools.detailOnDisplay = dock.displayID
+        check(coordinator.interactingDisplays == [id],
+              "An open tool detail must keep precisely its own display engaged")
+        tools.detailOnDisplay = nil
+        check(coordinator.interactingDisplays.isEmpty,
+              "Dismissing the tool detail left its Dock engaged")
+        for fullscreen: Set<CGDirectDisplayID> in [[], [id]] {
+            coordinator.applySnapshotForChecks(.init(hidden: [id], fullscreen: fullscreen))
+            check(dock.strip.page == .tools && !isOverlay(dock.panel),
+                  "Auto-hiding lost the tools page or retained fullscreen overlay membership")
+            coordinator.applySnapshotForChecks(.init(hidden: [], fullscreen: fullscreen))
+            check(dock.strip.page == .tools && isOverlay(dock.panel) == fullscreen.contains(id),
+                  "Revealing lost the tools page or used the wrong desktop/fullscreen membership")
+            check(coordinator.docks.filter { $0.key != id }.values.allSatisfy { $0.strip.page == .apps },
+                  "Revealing the tool shelf changed another display's page")
+        }
+
         check(NSApp.windows.allSatisfy { !$0.isVisible }, "Fixture presented a visible window")
         print("Fullscreen Dock integration: \(checks) checks, \(failures.count) failures, \(coordinator.docks.count) displays; hidden panels only")
         failures.forEach { print("FAIL: \($0)") }

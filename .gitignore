@@ -4,3 +4,11 @@ dist/
 .superpowers/
 Validation/
 .impeccable/review/
+
+# Local preview bundle, per-user configuration and build evidence
+DualDock 3.app/
+LocalData/
+.build-prototype-work/
+# Local visual mockups include system artwork and are kept with the trial checkout.
+Design/DualDock-3.0-交互原型.html
+Design/Prototype/

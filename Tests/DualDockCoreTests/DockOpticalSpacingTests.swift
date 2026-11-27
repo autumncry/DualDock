@@ -35,7 +35,14 @@ final class DockOpticalSpacingTests: XCTestCase {
         for edge in DockEdge.allCases {
             let old = geometry(edge: edge, percent: nil, bounds: Array(repeating: CGRect(x: 0, y: 0, width: 1, height: 1), count: 4))
             let measured = geometry(edge: edge, percent: nil, bounds: mixed)
-            XCTAssertEqual(old, measured)
+            // Optical metrics now also anchor the running dot in legacy mode.
+            // They must still leave legacy spacing, hit ownership and focus intact.
+            XCTAssertEqual(old.canonicalIconFrames, measured.canonicalIconFrames)
+            XCTAssertEqual(old.canonicalTileFrames, measured.canonicalTileFrames)
+            XCTAssertEqual(old.canonicalHitFrames, measured.canonicalHitFrames)
+            XCTAssertEqual(old.canonicalFocusFrames, measured.canonicalFocusFrames)
+            XCTAssertEqual(old.canonicalCanvasSize, measured.canonicalCanvasSize)
+            XCTAssertEqual(old.canonicalBackdropRect, measured.canonicalBackdropRect)
             XCTAssertEqual(old.canonicalContentFrames, old.canonicalIconFrames)
             XCTAssertEqual(old.canonicalHitFrames, old.canonicalTileFrames)
         }

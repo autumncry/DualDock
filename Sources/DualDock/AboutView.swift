@@ -25,19 +25,23 @@ struct AboutView: View {
 
             VStack(spacing: 0) {
                 detailRow(localize("版本", "Version")) {
-                    HStack(spacing: 8) {
-                        Text(versionDescription).textSelection(.enabled)
-                        Spacer(minLength: 2)
-                        Button {
-                            updates.check()
-                        } label: {
-                            Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
-                        }.controlSize(.small).disabled(!updates.canCheck)
-                    }
-                    if let error = updates.startupError {
-                        Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
-                            .font(.callout).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if !updates.supportsUpdates {
+                        Text(versionDescription + localize(" · 开发构建", " · Development build")).textSelection(.enabled)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text(versionDescription).textSelection(.enabled)
+                            Spacer(minLength: 2)
+                            Button {
+                                updates.check()
+                            } label: {
+                                Label(localize("检查更新…", "Check for Updates…"), systemImage: "arrow.triangle.2.circlepath")
+                            }.controlSize(.small).disabled(!updates.canCheck)
+                        }
+                        if let error = updates.startupError {
+                            Text(localize("无法启动更新检查。", "Could not start the update check.") + " " + error)
+                                .font(.callout).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 Divider()
@@ -65,7 +69,7 @@ struct AboutView: View {
                 Divider()
                 detailRow(localize("版本与下载", "Releases")) {
                     Link(destination: releasesURL) {
-                        Label(localize("查看发布版本", "View Releases"), systemImage: "arrow.down.circle")
+                        Label(localize("查看最新发布版本", "View Latest Release"), systemImage: "arrow.down.circle")
                     }
                 }
                 Divider()

@@ -303,6 +303,7 @@ struct DockCoordinatorRefreshChecks {
         // Repeated shutdown must not remove an AppKit event monitor twice.
         playback.stop()
         try DisplayCoordinator.checkLifecycleNotifications(directory: directory.appendingPathComponent("lifecycle-notifications"), check: check)
+        try checkShelfPaging(directory: directory.appendingPathComponent("shelf-pages"), check: check)
         print("Coordinator refresh: \(checks) checks, \(failures.count) failures")
         failures.prefix(12).forEach { print("FAIL: \($0)") }
         if !failures.isEmpty { exit(1) }
@@ -392,6 +393,151 @@ private extension DockCoordinatorRefreshChecks {
     }
 }
 
+/// A real panel and scroll receiver with isolated settings and a synthetic
+/// contact stream. The fixture never posts events to the user's desktop.
+private final class FixtureShelfEvent: NSEvent {
+    var contact: NSEvent.Phase = .began
+    var inertia: NSEvent.Phase = []
+    var pointer: NSPoint = .zero
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+    var natural = true
+    override var type: NSEvent.EventType { .scrollWheel }
+    override var phase: NSEvent.Phase { contact }
+    override var momentumPhase: NSEvent.Phase { inertia }
+    override var hasPreciseScrollingDeltas: Bool { true }
+    override var isDirectionInvertedFromDevice: Bool { natural }
+    override var scrollingDeltaX: CGFloat { x }
+    override var scrollingDeltaY: CGFloat { y }
+    override var locationInWindow: NSPoint { pointer }
+    override var modifierFlags: NSEvent.ModifierFlags { [] }
+}
+
+private extension DockCoordinatorRefreshChecks {
+    @MainActor final class FixtureTools: DockShelfToolsProviding {
+        var surfaces: [String:NSButton] = [:]
+        var active: Set<String> = []
+        func makeSurface(on displayID: String, presentation: DockPresentation) -> DockShelfSurface {
+            let button = NSButton(title: "Fixture Tool", target: nil, action: nil)
+            surfaces[displayID] = button
+            return DockShelfSurface(view: button, update: { _, _ in })
+        }
+        func setShelfVisible(_ visible: Bool, on displayID: String) {
+            if visible { active.insert(displayID) } else { active.remove(displayID) }
+        }
+        func keepsShelfOpen(on displayID: String) -> Bool { false }
+    }
+
+    @MainActor static func checkShelfPaging(directory: URL, check: (Bool, String) -> Void) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var configuration = DockConfiguration()
+        configuration.showBadges = false
+        configuration.showPreviews = false
+        configuration.hideSystemDock = false
+        configuration.entries = (0..<8).map { index in
+            DockEntry(name:"Fixture", apps:[.init(id:"page." + String(index), name:"Notes", path:"/System/Applications/Notes.app")])
+        }
+        configuration.merge(appID: "page.1", into: configuration.entries[0].id)
+        configuration.customSizing = .visualDefault
+        try JSONEncoder().encode(configuration).write(to: directory.appendingPathComponent("configuration.json"))
+        let store = AppStore(directory: directory, runningAppsProvider: { [] })
+        store.stopBackgroundServices()
+        let tools = FixtureTools()
+        let coordinator = DisplayCoordinator(store: store, presentsPanels: false, tools: tools, pageStateDirectory: directory)
+        defer { coordinator.stop() }
+        guard let first = coordinator.docks.values.first, let button = tools.surfaces[first.displayID] else {
+            fatalError("A fixture display is required")
+        }
+        let strip = first.strip
+        let previousFrame = first.panel.frame
+        let previousOffset = strip.scrollOffset
+        let oldTiles = strip.tiles
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let event = FixtureShelfEvent()
+        let inside = NSPoint(x: strip.backdropFrame.midX, y: strip.backdropFrame.midY)
+        event.pointer = strip.convert(inside, to:nil)
+        for (phase, delta): (NSEvent.Phase, CGFloat) in [(.began, -12), (.changed, -80), (.ended, 0)] {
+            event.contact = phase
+            if strip.presentation!.edge.isHorizontal { event.y = delta } else { event.x = delta }
+            first.panel.sendEvent(event)
+        }
+        check(strip.page == .tools && strip.scroll.isHidden && !button.isHidden, "Cross-axis gesture did not expose tools")
+        check(!coordinator.docks.values.contains { $0.displayID != first.displayID && $0.strip.page == .tools },
+              "A gesture on one display changed another display")
+        check(strip.hitTest(strip.superview?.convert(inside, from:strip) ?? inside) === button,
+              "A hidden app tile intercepted a tool action")
+        check(strip.tiles.map(ObjectIdentifier.init) == oldTiles.map(ObjectIdentifier.init) &&
+              abs(strip.scrollOffset - previousOffset) < 0.01 && first.panel.frame == previousFrame,
+              "Paging changed app layout, scroll position, or the window frame")
+        event.contact = []; event.inertia = .changed; event.y = 100
+        first.panel.sendEvent(event)
+        check(strip.page == .tools, "Momentum flipped the page twice")
+        check(NSWorkspace.shared.frontmostApplication?.processIdentifier == front, "Shelf paging changed app activation")
+        check(tools.active.isEmpty, "Hidden tools subscribed their data providers")
+
+        store.update { $0.folderAppearance.style = .glass }
+        let groupIndex = strip.tiles.firstIndex(where: { $0.entry.isGroup })!
+        let expectedBounds = DockFolderArtwork.contentBounds(for: .glass)
+        let redrawDeadline = Date(timeIntervalSinceNow: 1)
+        while strip.presentation?.style.contentBounds.dropFirst(groupIndex).first != expectedBounds
+                && Date() < redrawDeadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+        }
+        check(strip.presentation?.style.contentBounds.dropFirst(groupIndex).first == expectedBounds,
+              "Changing folder style left the app page's group geometry stale")
+        check(strip.page == .tools && strip.scroll.isHidden && !button.isHidden
+              && strip.tiles.map(ObjectIdentifier.init) == oldTiles.map(ObjectIdentifier.init),
+              "Changing folder style switched pages or rebuilt tiles beneath the tools shelf")
+
+        coordinator.refreshDisplays()
+        check(strip.page == .tools && strip.scroll.isHidden && tools.surfaces[first.displayID] === button,
+              "Refreshing panels lost the page or recreated the tools host")
+        let restoredTools = FixtureTools()
+        let restored = DisplayCoordinator(store: store, presentsPanels: false, tools: restoredTools, pageStateDirectory: directory)
+        defer { restored.stop() }
+        let restoredStrip = restored.docks.values.first { $0.displayID == first.displayID }?.strip
+        check(restoredStrip?.page == .tools, "Relaunch did not restore this display's page")
+        restoredStrip?.setShelfPage(.apps, animated:false)
+        check(restoredStrip?.scroll.isHidden == false, "App tiles were not restored")
+        for edge in DockEdge.allCases {
+            store.setEdge(edge, for:first.displayID)
+            let deadline = Date(timeIntervalSinceNow: 1)
+            while strip.presentation?.edge != edge && Date() < deadline {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+            }
+            check(strip.presentation?.edge == edge, "Display setting was not applied before gesture replay")
+            let body = strip.backdropFrame
+            event.pointer = strip.convert(NSPoint(x:body.midX, y:body.midY), to:nil)
+            event.inertia = []
+            for natural in [false, true] {
+                strip.setShelfPage(.apps, animated:false)
+                event.natural = natural
+                let signed: CGFloat = natural ? -1 : 1
+                for (phase, cross): (NSEvent.Phase, CGFloat) in [(.began, 0), (.changed, 110), (.ended, 0)] {
+                    event.contact = phase
+                    event.x = edge.isHorizontal ? 0 : cross * signed
+                    event.y = edge.isHorizontal ? cross * signed : 0
+                    _ = strip.routeShelfScroll(event)
+                }
+                if strip.page != .tools {
+                    print("Shelf input diagnostic:", edge, "presentation", strip.presentation!.edge,
+                          "natural", natural, "body", strip.backdropFrame, "event", event.pointer,
+                          "local", strip.convert(event.pointer, from:nil), "buttons", NSEvent.pressedMouseButtons,
+                          "resize", strip.isInteracting, "current", coordinator.docks.values.contains { $0.strip === strip })
+                }
+                check(strip.page == .tools, "Cross-axis direction failed on " + edge.rawValue)
+                event.contact = .began
+                event.x = edge.isHorizontal ? 120 : 0
+                event.y = edge.isHorizontal ? 0 : 120
+                check(!strip.routeShelfScroll(event), "Paging intercepted long-axis scroll on " + edge.rawValue)
+                event.contact = .ended
+                _ = strip.routeShelfScroll(event)
+            }
+        }
+        print("Verified independent pages, gestures across four edges and two scrolling preferences, native momentum, hit ownership, rebuild and restore")
+    }
+}
+
 // Shares a source unit with DisplayCoordinator in this isolated executable.
 private extension DisplayCoordinator {
     var fixtureCurrentGroup: DockStripView? { groupPanel?.contentView as? DockStripView }
@@ -476,9 +622,12 @@ private extension DockCoordinatorRefreshChecks {
             let release = target.convert(NSPoint(x: target.visualIconBounds.midX, y: target.visualIconBounds.midY), to: nil)
             let drag = try OrganizationFixtureDrag(window: dock.panel, point: release, tile: tile(incoming))
             check(target.draggingEntered(drag) == .move, "Dock tile rejected the incoming app")
-            drain(target.entry.isGroup ? 0.19 : 0.66)
+            let dwellDeadline = Date(timeIntervalSinceNow: 1.5)
+            while !target.mergeReady && Date() < dwellDeadline { drain(0.01) }
+            check(target.mergeReady, "Center drop did not arm within the group dwell deadline")
             check(target.performDragOperation(drag), "Dropping after the group dwell failed")
-            drain()
+            let rebuildDeadline = Date(timeIntervalSinceNow: 0.5)
+            while !tile(apps[0]).entry.apps.contains(incoming) && Date() < rebuildDeadline { drain(0.005) }
             let folder = tile(apps[0])
             check(folder.entry.isGroup && folder.entry.apps.count == index + 2 && folder.entry.apps.contains(incoming),
                   "Creating or extending a group failed")

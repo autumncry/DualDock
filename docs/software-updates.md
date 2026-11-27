@@ -22,3 +22,14 @@ cmp /tmp/dualdock-public-appcast.xml dist/appcast.xml
 ```
 
 若上传中断，先核对已发布附件并从中断处继续。保留之前有效的在线清单，直至新附件可用。清单签名覆盖具体字节，手工修改版本说明、链接或排版后需重新生成签名。
+
+
+## 上一版安装验收
+
+在发布前，以已校验签名的上一版应用为来源，对本次正式构建运行：
+
+```sh
+python3 script/check_sparkle_roundtrip.py --from-app "/path/to/previous/DualDock.app" --to-app dist/release/DualDock.app
+```
+
+脚本核对正式签名要求、更新地址、公钥及递增构建号。它把两个应用复制到临时目录，用独立测试标识和临时更新密钥验证 Sparkle 的实际安装流程，再逐字节比对安装后的程序。单独运行 `python3 script/check_sparkle_roundtrip.py` 可验证正确签名、清单篡改和 DMG 签名错误三条路径。发布包自身的签名和校验值由 `script/check_signed_update.sh` 验证。

@@ -23,7 +23,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     static let minimumContentSize = NSSize(width: 740, height: 320)
 
     init(store: AppStore, navigation supplied: SettingsNavigation? = nil,
-         launchAtLoginService: LaunchAtLoginService? = nil) {
+         launchAtLoginService: LaunchAtLoginService? = nil, tools: DockToolsStore? = nil) {
         self.store = store
         let navigation = supplied ?? SettingsNavigation()
         self.navigation = navigation
@@ -35,7 +35,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         window.collectionBehavior = [.moveToActiveSpace]
         super.init(window: window)
         let content = NSHostingController(rootView: SettingsView(store: store,
-            launchAtLoginService: launchAtLoginService, navigation: navigation))
+            launchAtLoginService: launchAtLoginService, navigation: navigation, tools: tools))
         // The window owns its frame. Controls and translations reflow inside the detail scroll view.
         content.sizingOptions = []
         window.contentViewController = content
@@ -86,7 +86,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         if let category = SettingsCategory(rawValue: sender.itemIdentifier.rawValue) { navigation.show(category) }
     }
 
-    func show() {
+    func show(section: SettingsSection? = nil) {
+        if let section { navigation.show(section) }
         guard let window else { return }
         if let previous = NSWorkspace.shared.frontmostApplication,
            previous.processIdentifier != ProcessInfo.processInfo.processIdentifier {
@@ -100,6 +101,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         store.refreshPermissions()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        NotificationCenter.default.post(name: .dualDockSettingsDidOpen, object: self)
         publishVisibility()
     }
 
@@ -120,6 +122,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     func windowWillClose(_ notification: Notification) {
+        NotificationCenter.default.post(name: .dualDockSettingsDidClose, object: self)
         publishVisibility(false)
         if NSApp.isActive, let previousApplication, !previousApplication.isTerminated {
             previousApplication.activate(options: [])

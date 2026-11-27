@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise Sparkle's actual installer on an isolated A→B app in a macOS GUI session."""
 
+import argparse
 import base64
 import functools
 import http.server
@@ -89,11 +90,11 @@ def make_app(parent, number, tools, public_key, feed_url, log_directory, identif
     return app
 
 
-def write_feed(archive, base_url, sign, archive_signature, tamper=False):
+def write_feed(archive, base_url, sign, archive_signature, tamper=False, build="2", marketing="2.0"):
     xml = f'''<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-<channel><title>Fixture</title><item><title>Fixture 2.0</title>
-<sparkle:version>2</sparkle:version><sparkle:shortVersionString>2.0</sparkle:shortVersionString>
+<channel><title>Fixture</title><item><title>Fixture {marketing}</title>
+<sparkle:version>{build}</sparkle:version><sparkle:shortVersionString>{marketing}</sparkle:shortVersionString>
 <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
 <enclosure url="{base_url}/release.dmg" sparkle:edSignature="{archive_signature}" length="{archive.stat().st_size}" type="application/octet-stream"/>
 </item></channel></rss>'''
@@ -116,14 +117,15 @@ def await_event(log_file, expected, timeout=60):
             "start-error" in events
             or "executable-version-mismatch" in events
             or "not-found" in events
-            or (expected == "updated-executable-ran" and "error " in events)
+            or "missing-target" in events
+            or (expected in {"updated-executable-ran", "updated-target-verified"} and "error " in events)
         ):
             break
         time.sleep(0.1)
     raise RuntimeError(f"Expected {expected!r}. Fixture events:\n{events}")
 
 
-def exercise(root, tools, server, web):
+def exercise(root, tools, server, web, previous=None, candidate=None):
     seed = base64.b64encode(os.urandom(32)).decode() + "\n"
     run(
         "xcrun",
@@ -143,6 +145,9 @@ def exercise(root, tools, server, web):
 
     base_url = f"http://127.0.0.1:{server.server_port}"
     identifier = "local.dualdock.updatefixture." + uuid.uuid4().hex
+    if previous is not None:
+        exercise_artifact_update(root, web, tools, base_url, sign, public_key, identifier, previous, candidate)
+        return
     parameters = (tools, public_key, base_url + "/appcast.xml", root, identifier)
     installed = make_app(root / "installed", 1, *parameters)
     staged = make_app(root / "stage", 2, *parameters)
@@ -210,7 +215,70 @@ def exercise(root, tools, server, web):
     )
 
 
+def exercise_artifact_update(root, web, tools, base_url, sign, public_key, identifier, previous, candidate):
+    """Test real app binaries with isolated identities; only our driver launches."""
+    metadata = "Contents/Info.plist"
+    originals = []
+    for path in (previous, candidate):
+        if path.name != "DualDock.app":
+            raise ValueError(f"Expected a production DualDock.app: {path}")
+        run("codesign", "--verify", "--strict", "--deep", path)
+        originals.append(plistlib.loads((path / metadata).read_bytes()))
+    old, new = originals
+    # Exercise the exact designated requirement trusted by existing installs,
+    # including the code identity macOS uses when tracking application access.
+    sig = subprocess.run(["codesign", "-d", "-r-", previous], capture_output=True, text=True, check=True)
+    requirement = next(line[len("designated => "):] for line in (sig.stdout + sig.stderr).splitlines()
+                       if line.startswith("designated => "))
+    run("codesign", "--verify", "--strict", "-R=" + requirement, candidate)
+    expected_feed = "https://raw.githubusercontent.com/autumncry/DualDock/main/updates/appcast.xml"
+    assert old["CFBundleIdentifier"] == new["CFBundleIdentifier"] == "local.ronny.DualDock"
+    assert old["SUFeedURL"] == new["SUFeedURL"] == expected_feed
+    assert old["SUPublicEDKey"] == new["SUPublicEDKey"]
+    assert old["CFBundleExecutable"] == new["CFBundleExecutable"] == "DualDock"
+    assert old["SURequireSignedFeed"] and new["SURequireSignedFeed"]
+    assert old["SUVerifyUpdateBeforeExtraction"] and new["SUVerifyUpdateBeforeExtraction"]
+    assert int(old["CFBundleVersion"]) < int(new["CFBundleVersion"])
+    target = root / "installed" / previous.name
+    staged = root / "stage" / candidate.name
+    for source, app, info in zip((previous, candidate), (target, staged), originals):
+        app.parent.mkdir()
+        run("ditto", source, app)
+        manifest = dict(info, CFBundleIdentifier=identifier, SUPublicEDKey=public_key, SUFeedURL=base_url + "/appcast.xml")
+        (app / metadata).write_bytes(plistlib.dumps(manifest))
+        run("codesign", "--force", "--sign", "-", "--identifier", identifier, "--requirements",
+            f'=designated => identifier "{identifier}"', app)
+        run("codesign", "--verify", "--strict", "--deep", app)
+    controller = make_app(root / "controller", 1, tools, public_key, base_url + "/appcast.xml",
+                          root, identifier + ".controller")
+    control_info = plistlib.loads((controller / metadata).read_bytes())
+    control_info.update(FixtureExpectedBuild=new["CFBundleVersion"], FixtureTargetPath=str(target))
+    (controller / metadata).write_bytes(plistlib.dumps(control_info))
+    run("codesign", "--force", "--sign", "-", controller)
+    (staged.parent / "Applications").symlink_to("/Applications")
+    archive = web / "release.dmg"
+    run("hdiutil", "create", "-volname", "DualDock", "-srcfolder", staged.parent, "-fs", "HFS+", "-format", "UDZO", archive)
+    write_feed(archive, base_url, sign, sign(archive), build=new["CFBundleVersion"],
+               marketing=new["CFBundleShortVersionString"])
+    run("open", "-g", "-n", controller)
+    events = await_event(root / "events.txt", "updated-target-verified", timeout=120)
+    assert "offered " + new["CFBundleVersion"] in events and "install-confirmed" in events
+    assert (target / metadata).read_bytes() == (staged / metadata).read_bytes()
+    executable = "Contents/MacOS/DualDock"
+    assert (target / executable).read_bytes() == (staged / executable).read_bytes()
+    run("codesign", "--verify", "--strict", "--deep", target)
+    print(f"PASS real {old['CFBundleShortVersionString']} (build {old['CFBundleVersion']}) → "
+          f"{new['CFBundleShortVersionString']} (build {new['CFBundleVersion']}) payload installed by Sparkle. "
+          "The installer targeted only temporary copies and relaunched only the isolated controller.")
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--from-app", type=Path, help="read-only source of a previous production DualDock.app")
+    parser.add_argument("--to-app", type=Path, help="read-only current packaged DualDock.app")
+    args = parser.parse_args()
+    if bool(args.from_app) != bool(args.to_app):
+        parser.error("provide both --from-app and --to-app")
     tools = Path(run("bash", ROOT / "script/sparkle_tools.sh"))
     with tempfile.TemporaryDirectory(
         prefix="dualdock-sparkle-test-", dir="/private/tmp"
@@ -224,11 +292,12 @@ def main():
         with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
             threading.Thread(target=server.serve_forever, daemon=True).start()
             try:
-                exercise(root, tools, server, web)
+                exercise(root, tools, server, web, args.from_app, args.to_app)
             finally:
                 server.shutdown()
                 # A failed or interrupted test can leave its own fixture process alive.
-                fixture = str(root / "installed" / APP_NAME / "Contents/MacOS/Fixture")
+                location = "controller" if args.from_app else "installed"
+                fixture = str(root / location / APP_NAME / "Contents/MacOS/Fixture")
                 for line in run("ps", "-axo", "pid=,comm=").splitlines():
                     fields = line.strip().split(None, 1)
                     if len(fields) == 2 and fields[1] == fixture:

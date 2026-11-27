@@ -92,6 +92,17 @@ public struct DockGeometry: Equatable, Sendable {
         return CGRect(x: desired.x - body.minX, y: desired.y - body.minY, width: canvasSize.width, height: canvasSize.height)
     }
 
+    /// Start with the centered icon canvas. Use its transparent outer margin
+    /// for the indicator. Only a nearly opaque, tightly filled bar needs a
+    /// smaller canvas to fit 3 pt of outer clearance, a 2 pt dot and 2 pt gap.
+    private static func crossLayout(thickness: CGFloat, requested: CGFloat, bounds: [CGRect]) -> (side: CGFloat, inset: CGFloat) {
+        let clearFraction = bounds.map(\.minY).min() ?? 0
+        let lane = min(7, max(0, thickness - 1))
+        let largestSide = (thickness - lane) / max(0.001, 1 - clearFraction)
+        let side = min(thickness, requested, max(1, largestSide))
+        return (side, max((thickness - side) / 2, lane - clearFraction * side))
+    }
+
     public static func make(count: Int, edge: DockEdge, style: DockGeometryStyle,
                             maximumLength: CGFloat, fixedLength: CGFloat? = nil,
                             focusIndex: CGFloat? = nil, dividerIndex: Int? = nil,
@@ -106,7 +117,10 @@ public struct DockGeometry: Equatable, Sendable {
         let n = max(0, count)
         let limit = max(1, finite(maximumLength, fallback: 1))
         let thickness = max(1, finite(style.barThickness, fallback: 66))
-        let side = min(thickness, max(1, finite(style.iconSize, fallback: 48)))
+        let bounds = style.contentBounds.isEmpty ? [] :
+            DockOpticalSpacingPolicy.canonicalBounds(style.contentBounds, count: n, edge: edge)
+        let (side, outerInset) = crossLayout(thickness: thickness,
+            requested: max(1, finite(style.iconSize, fallback: 48)), bounds: bounds)
         var gap = max(0, finite(style.gap, fallback: 0))
         let leading = max(0, finite(style.leadingPadding, fallback: 0))
         let trailing = max(0, finite(style.trailingPadding, fallback: 0))
@@ -145,12 +159,6 @@ public struct DockGeometry: Equatable, Sendable {
         let baseLeading = fits ? endMargin + leading + alignmentOffset : leading
         let offset = min(max(0, finite(scrollOffset, fallback: 0)), max(0, documentLength - viewport.width))
         let focus = focusIndex.flatMap { $0.isFinite && n > 0 ? min(CGFloat(n - 1), max(0, $0)) : nil }
-        let outerInset = max(0, (thickness - side) / 2)
-        let dotSide = min(4, max(0, outerInset - 1))
-        // Indicators belong to the icon, not the edge of a taller backdrop.
-        // Keep a 3pt gap where space allows, reducing it only for compact bars.
-        let dotOriginV = max(0, outerInset - dotSide - 3)
-
         var baseIcons: [CGRect] = []
         var icons: [CGRect] = []
         var tiles: [CGRect] = []
@@ -171,8 +179,8 @@ public struct DockGeometry: Equatable, Sendable {
             baseIcons.append(CGRect(x: baseU, y: outerInset, width: side, height: side))
             icons.append(CGRect(x: waveU, y: outerInset, width: size, height: size))
             tiles.append(CGRect(x: waveU - gap / 2, y: 0, width: size + gap, height: thickness + size - side))
-            dots.append(CGRect(x: waveU + size / 2 - dotSide / 2, y: dotOriginV,
-                               width: dotSide, height: dotSide))
+            let body = bounds.isEmpty ? icons[index] : DockOpticalSpacingPolicy.contentFrame(icon: icons[index], bound: bounds[index])
+            dots.append(DockOpticalSpacingPolicy.dotFrame(content: body))
             waveU += size + gap
             baseU += side + gap
         }
@@ -212,14 +220,14 @@ public struct DockGeometry: Equatable, Sendable {
         let count = max(0, count)
         let limit = max(1, finite(maximumLength, fallback: 1))
         let thickness = max(1, finite(style.barThickness, fallback: 66))
-        let side = min(thickness, max(1, finite(style.iconSize, fallback: 48)))
         let leading = max(0, finite(style.leadingPadding, fallback: 0))
         let trailing = max(0, finite(style.trailingPadding, fallback: 0))
         let percent = DockOpticalSpacingPolicy.fraction(style.spacingPercent ?? 0) * 100
         let separator = dividerIndex.map { $0 > 0 && $0 < count
             ? max(0, finite(style.separatorLength, fallback: 0)) : 0 } ?? 0
         let contentBounds = DockOpticalSpacingPolicy.canonicalBounds(style.contentBounds, count: count, edge: edge)
-        let outerInset = max(0, (thickness - side) / 2)
+        let (side, outerInset) = crossLayout(thickness: thickness,
+            requested: max(1, finite(style.iconSize, fallback: 48)), bounds: contentBounds)
         let base = DockOpticalSpacingPolicy.row(sizes: Array(repeating: side, count: count),
             bounds: contentBounds, spacingPercent: percent, outerInset: outerInset,
             separatorLength: separator, dividerIndex: dividerIndex)
@@ -276,7 +284,7 @@ public struct DockGeometry: Equatable, Sendable {
         let hits = DockOpticalSpacingPolicy.hitFrames(icons: icons, contents: contents,
             thickness: thickness, baseIconSize: side, separatorLength: separator, dividerIndex: dividerIndex)
         let tiles = zip(icons, hits).map { $0.union($1) }
-        let dots = DockOpticalSpacingPolicy.dotFrames(contents: contents)
+        let dots = contents.map(DockOpticalSpacingPolicy.dotFrame(content:))
         let divider = wave.dividerX.map { CGRect(x: $0 + shift - 0.5,
             y: max(2, thickness * 0.15), width: 1, height: max(1, thickness * 0.7)) }
         return DockGeometry(edge: edge,
@@ -372,7 +380,7 @@ public struct DockGeometry: Equatable, Sendable {
                 canonicalDocumentSize: canonicalDocumentSize, canonicalBackdropRect: canonicalBackdropRect,
                 canonicalViewportRect: canonicalViewportRect, canonicalTileFrames: tiles,
                 canonicalIconFrames: icons, canonicalContentFrames: contents, canonicalHitFrames: hits,
-                canonicalDotFrames: DockOpticalSpacingPolicy.dotFrames(contents: contents),
+                canonicalDotFrames: contents.map(DockOpticalSpacingPolicy.dotFrame(content:)),
                 canonicalDividerFrame: divider, bodyLength: bodyLength, barThickness: barThickness,
                 opticalContext: context)
         }
@@ -397,8 +405,13 @@ public struct DockGeometry: Equatable, Sendable {
             return CGRect(x: icon.minX - left, y: icon.minY - bottom,
                           width: icon.width + left + right, height: icon.height + bottom + top)
         }
-        let dots = zip(frames(canonicalDotFrames, target.canonicalDotFrames), icons).map { dot, icon in
-            CGRect(x: icon.midX - dot.width / 2, y: dot.minY, width: dot.width, height: dot.height)
+        let dots = icons.indices.map { index -> CGRect in
+            let dot = rect(canonicalDotFrames[index], target.canonicalDotFrames[index])
+            // The visible artwork can be asymmetric even with legacy canvas spacing.
+            let targetIcon = target.canonicalIconFrames[index]
+            let anchor = (target.canonicalDotFrames[index].midX - targetIcon.minX) / targetIcon.width
+            return CGRect(x: icons[index].minX + anchor * icons[index].width - dot.width / 2,
+                          y: dot.minY, width: dot.width, height: dot.height)
         }
         return DockGeometry(edge: edge, canonicalCanvasSize: canonicalCanvasSize,
             canonicalDocumentSize: canonicalDocumentSize, canonicalBackdropRect: canonicalBackdropRect,

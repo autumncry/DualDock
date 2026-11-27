@@ -179,6 +179,20 @@ struct WindowObstructionServiceChecks {
             let fixture = ObstructionReaderFixture([a])
             let gate = fixture.block(call: 1)
             let service = WindowObstructionService(reader: { fixture.read() })
+            service.refresh()
+            await waitUntil { fixture.calls == 1 }
+            service.invalidate()
+            service.invalidate(clear: true) // Switched to unconditional hiding.
+            gate.signal()
+            await settle()
+            check(fixture.calls == 1 && service.frames.isEmpty,
+                  "Disabling maximized-window monitoring scheduled another window scan")
+            service.stop()
+        }
+        do {
+            let fixture = ObstructionReaderFixture([a])
+            let gate = fixture.block(call: 1)
+            let service = WindowObstructionService(reader: { fixture.read() })
             var updates = 0
             service.onUpdate = { updates += 1 }
             service.refresh()

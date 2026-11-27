@@ -23,6 +23,8 @@ final class AppStore: ObservableObject {
     }
     @Published var accessibilityGranted = AXIsProcessTrusted()
     @Published var captureGranted = CGPreflightScreenCaptureAccess()
+    @Published private(set) var waitingForSystemDock = false
+    let managesSystemDock: Bool
     let systemDock: SystemDockService
     let windows = WindowService()
     private let badgeService: DockBadgeService
@@ -50,13 +52,16 @@ final class AppStore: ObservableObject {
     init(directory: URL,
          runningAppsProvider: (() -> [AppReference])? = nil,
          permissionsProvider: (() -> (accessibility: Bool, capture: Bool))? = nil,
-         badgeService: DockBadgeService? = nil) {
+         badgeService: DockBadgeService? = nil, systemDockEnvironment: SystemDockService.Environment? = nil,
+         managesSystemDock: Bool = true,
+         initialPinnedApps: (() -> [AppReference])? = nil) {
+        self.managesSystemDock = managesSystemDock
         self.badgeService = badgeService ?? DockBadgeService()
         self.directory = directory
         self.runningAppsProvider = runningAppsProvider
         self.permissionsProvider = permissionsProvider
         configURL = directory.appendingPathComponent("configuration.json")
-        systemDock = SystemDockService(directory: directory)
+        systemDock = SystemDockService(directory: directory, environment: systemDockEnvironment ?? .system)
         var initial = DockConfiguration()
         var issue: LocalizedNotice?
         do {
@@ -76,13 +81,14 @@ final class AppStore: ObservableObject {
                     issue = LocalizedNotice("配置来自较新的 DualDock，当前版本以只读方式打开。", "This configuration was saved by a newer version of DualDock and is open in read-only mode.")
                 }
             } else {
-                initial.insert(SystemDockService.importPinnedApps())
+                initial.insert(initialPinnedApps?() ?? SystemDockService.importPinnedApps())
                 initial.customSizing = .visualDefault
             }
         } catch {
             readOnly = true
             issue = LocalizedNotice("无法读取配置，原文件已保留。请打开配置目录检查。", "Could not read the configuration. Open the configuration folder to inspect the original file.").appending(.init(verbatim: error.localizedDescription), separator: "\n")
         }
+        if !managesSystemDock { initial.hideSystemDock = false }
         initial.normalizeAppearance()
         configuration = initial
         if let permissions = permissionsProvider?() {
@@ -91,9 +97,21 @@ final class AppStore: ObservableObject {
         }
         notice = issue
         do {
-            try systemDock.recoverIfNeeded()
-            if initial.hideSystemDock && !readOnly { try systemDock.setHidden(true) }
-        } catch { notice = LocalizedNotice("系统 Dock 恢复失败", "Could not restore the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
+            if managesSystemDock {
+                if initial.hideSystemDock && !readOnly {
+                    try systemDock.setHidden(true)
+                    waitingForSystemDock = !systemDock.hasRecoveryRecord
+                } else {
+                    try systemDock.recoverIfNeeded()
+                }
+            }
+        } catch {
+            if !readOnly, initial.hideSystemDock, !systemDock.hasRecoveryRecord {
+                configuration.hideSystemDock = false
+            }
+            notice = LocalizedNotice("未能应用系统 Dock 设置", "Could not apply the system Dock settings")
+                .appending(SystemDockService.ServiceError.notice(for: error))
+        }
         observeRunningApps()
         refreshRunningApps()
         updateDisplays(DockDisplayInfo.current())
@@ -789,18 +807,38 @@ final class AppStore: ObservableObject {
     }
 
     func setSystemDockHidden(_ hidden: Bool) {
-        guard !readOnly else { return }
+        guard managesSystemDock, !readOnly else { return }
         do {
             try systemDock.setHidden(hidden)
+            waitingForSystemDock = hidden && !systemDock.hasRecoveryRecord
             update { $0.hideSystemDock = hidden }
-        } catch { notice = LocalizedNotice("无法更改系统 Dock", "Could not change the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
+        } catch {
+            // A deferred request was already saved as enabled. After a successful
+            // rollback it owns no changes; expose the failure and allow a fresh click.
+            if hidden, !systemDock.hasRecoveryRecord {
+                waitingForSystemDock = false
+                update { $0.hideSystemDock = false }
+            }
+            notice = LocalizedNotice("无法更改系统 Dock", "Could not change the system Dock")
+                .appending(SystemDockService.ServiceError.notice(for: error))
+        }
     }
 
     func restoreSystemDock() {
+        guard managesSystemDock else { return }
         do {
             try systemDock.restore()
+            waitingForSystemDock = false
             if !readOnly { update { $0.hideSystemDock = false } }
         } catch { notice = LocalizedNotice("系统 Dock 恢复失败", "Could not restore the system Dock").appending(SystemDockService.ServiceError.notice(for: error)) }
+    }
+
+    /// Called from the existing workspace reconciliation loop. Only a deferred
+    /// request reads preferences here; an owned or disabled Dock does no work.
+    func reconcileDeferredSystemDock() {
+        guard waitingForSystemDock, !systemDock.isSuppressed else { return }
+        waitingForSystemDock = false
+        setSystemDockHidden(true)
     }
 
     func importPins() {
@@ -934,6 +972,7 @@ final class AppStore: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.observers.isEmpty else { return }
             self.runningRefreshScheduled = false
+            self.reconcileDeferredSystemDock()
             self.refreshRunningApps()
         }
     }

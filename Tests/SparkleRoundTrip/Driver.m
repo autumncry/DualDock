@@ -22,7 +22,15 @@ static void quit(void) {
     report([NSString stringWithFormat:@"launched %@ %@ %d", version, bundle.bundlePath, getpid()]);
     if (version.integerValue != FIXTURE_BUILD) { report(@"executable-version-mismatch"); quit(); return; }
     if (FIXTURE_BUILD == 2) { report(@"updated-executable-ran"); quit(); return; }
-    self.updater = [[SPUUpdater alloc] initWithHostBundle:bundle applicationBundle:bundle userDriver:self delegate:self];
+    NSString *targetPath = [bundle objectForInfoDictionaryKey:@"FixtureTargetPath"];
+    NSBundle *target = targetPath ? [NSBundle bundleWithPath:targetPath] : bundle;
+    NSString *expected = [bundle objectForInfoDictionaryKey:@"FixtureExpectedBuild"];
+    if (!target) { report(@"missing-target"); quit(); return; }
+    if (expected && [[target objectForInfoDictionaryKey:@"CFBundleVersion"] isEqual:expected]) {
+        report(@"updated-target-verified"); quit(); return;
+    }
+    // For release artifacts only the test controller is allowed to relaunch.
+    self.updater = [[SPUUpdater alloc] initWithHostBundle:target applicationBundle:bundle userDriver:self delegate:self];
     NSError *error=nil;
     if (![self.updater startUpdater:&error]) {
         report([NSString stringWithFormat:@"start-error %@ %td %@",error.domain,error.code,error.localizedDescription]); quit(); return;
@@ -36,7 +44,8 @@ static void quit(void) {
 - (void)showUserInitiatedUpdateCheckWithCancellation:(void (^)(void))cancellation { report(@"checking"); }
 - (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)item state:(SPUUserUpdateState *)state reply:(void (^)(SPUUserUpdateChoice))reply {
     report([NSString stringWithFormat:@"offered %@",item.versionString]);
-    reply([item.versionString isEqual:@"2"] ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss);
+    NSString *expected = [NSBundle.mainBundle objectForInfoDictionaryKey:@"FixtureExpectedBuild"] ?: @"2";
+    reply([item.versionString isEqual:expected] ? SPUUserUpdateChoiceInstall : SPUUserUpdateChoiceDismiss);
 }
 - (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)data {}
 - (void)showUpdateReleaseNotesFailedToDownloadWithError:(NSError *)error {}

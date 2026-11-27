@@ -15,6 +15,7 @@ let package = Package(
             dependencies: ["DualDockCore", .product(name: "Sparkle", package: "Sparkle")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
-        .testTarget(name: "DualDockCoreTests", dependencies: ["DualDockCore"])
+        .testTarget(name: "DualDockCoreTests", dependencies: ["DualDockCore"]),
+        .testTarget(name: "DualDockPreviewTests", dependencies: ["DualDock", "DualDockCore"])
     ]
 )

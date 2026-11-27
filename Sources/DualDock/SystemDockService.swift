@@ -73,9 +73,12 @@ final class SystemDockService {
 
     private let journalURL: URL
     private let environment: Environment
+    // A native Dock with an ordinary auto-hide delay still appears at the edge.
+    // A long delay is the convention used to keep it out of the way entirely.
+    private static let hiddenDelay = 1000.0
     private static let appliedValues: [(key: String, value: NSNumber)] = [
         ("autohide", NSNumber(value: true)),
-        ("autohide-delay", NSNumber(value: 1000.0))
+        ("autohide-delay", NSNumber(value: hiddenDelay))
     ]
 
     init(directory: URL) {
@@ -90,6 +93,12 @@ final class SystemDockService {
 
     var hasRecoveryRecord: Bool {
         FileManager.default.fileExists(atPath: journalURL.path)
+    }
+
+    var isSuppressed: Bool {
+        guard (environment.read("autohide") as? NSNumber)?.boolValue == true,
+              let delay = environment.read("autohide-delay") as? NSNumber else { return false }
+        return delay.doubleValue >= Self.hiddenDelay
     }
 
     func setHidden(_ hidden: Bool) throws {
@@ -114,6 +123,10 @@ final class SystemDockService {
             try restore()
         }
 
+        // The user or another utility may already enforce the same policy.
+        // Taking a snapshot of that temporary state would leave a long delay
+        // behind after both owners exit. Acquire only when a change is needed.
+        guard !isSuppressed else { return }
         let changes = try Self.appliedValues.map { setting in
             PreferenceChange(
                 key: setting.key,
@@ -163,6 +176,15 @@ final class SystemDockService {
             (key: change.key,
              original: try change.originalValue.map(Self.decodeValue),
              applied: try Self.decodeValue(change.appliedValue))
+        }
+
+        if isSuppressed, let delay = decoded.first(where: { $0.key == "autohide-delay" }),
+           let currentDelay = environment.read(delay.key),
+           !Self.equal(currentDelay, delay.applied), !Self.equal(currentDelay, delay.original) {
+            // Another utility or the user has installed a different suppression
+            // delay. Its enabled flag belongs to the same newer preference pair.
+            try FileManager.default.removeItem(at: journalURL)
+            return
         }
 
         for setting in decoded {

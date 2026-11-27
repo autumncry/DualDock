@@ -6,8 +6,7 @@
 
 ### Apps neatly organized. A Dock on every display.
 
-A native macOS Dock for multiple displays. Organize related apps into horizontal groups,
-preview their windows, and keep the same layout on your MacBook and external monitors.
+Group your apps on every display, then swipe the Dock to reach music, your calendar, system stats and AI quotas without leaving the window you are working in.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#requirements)
@@ -34,6 +33,18 @@ When your workspace extends beyond a laptop, your everyday apps should stay with
 - **Source you can change.** Built with Swift, AppKit, and SwiftUI, and released under the MIT license.
 
 ## Features
+
+### Swipe between your apps and tools
+
+With the pointer over a horizontal Dock, swipe up with two fingers to open Tools and down to return to Apps. On a left or right Dock, swipe horizontally. Each display remembers its own page. With a mouse, use the menu bar command to switch the page on the current display.
+
+<img src="docs/images/tools-shelf.png" width="620" alt="Native DualDock tools page with music, calendar and a shortcut (sample data)">
+
+Open **Settings → Dock → Tools Page → Edit**. Drag cards from the library, rearrange them, choose a width of 1–4 slots, or stack cards in one slot. Choose **Done** to apply the layout across displays.
+
+- **Music and calendar.** Open Now Playing to view the current track, scrub, change tracks or pick a song from the Music app’s current playlist. Switch between week and month in the calendar, then select a date to see events you have granted access to.
+- **System and shortcuts.** Check CPU, RAM, swap, battery, storage and weather, start a focus timer, or open an app, file, URL or macOS shortcut.
+- **Four AI quota cards.** Codex uses the signed-in Codex CLI. Gemini reads the Antigravity quota. Claude reads subscription windows from Claude Code’s `/usage`; the CLI may reuse cached values. Cursor offers the legacy CLI usage screen (experimental) or the shared pool for the same X Subscription. Remaining allowances and reset times are shown when the provider supplies them. [Connection and plan details](docs/tools.en.md)
 
 ### A Dock on each display
 
@@ -121,7 +132,7 @@ Enable **Hide the Dock for maximized windows** in Interaction to hide a display'
 
 The Dock stays available while you use a group, preview, context menu, or drag operation, then hides after you leave. Fullscreen apps also support edge reveal; fullscreen auto-hiding is independent of this toggle. The maximized-window option is off by default and does not resize other apps' windows.
 
-### Sidebar settings
+### Settings window
 
 Use the **Dock**, **Interaction**, **General**, and **Support** toolbar tabs, then choose a setting in the sidebar. Press **⌘F** to search both languages across categories, including terms such as “badge size”. All pages share one resizable window. Switching pages or languages and expanding advanced settings preserve the window frame. Related sections in Interaction and General share a scrollable form. Select a sidebar entry to jump to that section. The window follows the system appearance. About includes the version, MIT license, and project links.
 
@@ -139,6 +150,10 @@ Enable **Launch at Login** in General to start DualDock after signing into macOS
 - **System Dock management:** optionally hide the system Dock. The preferences changed by DualDock are restored on normal exit, or recovered at the next launch after an interruption; later manual changes are preserved. A manual restore command is also available in the menu bar.
 - **Quick access to Settings:** right-click a blank area of the Dock, or use the overlapping-rectangles icon in the menu bar.
 - **Local configuration:** groups, order, and preferences live in `~/Library/Application Support/DualDock/`, with migration backups created when needed.
+
+### Upgrading from 2.x or the preview
+
+v3.0.0 keeps the original **DualDock.app** identity and update channel. Existing release settings carry forward. When a preview configuration is found, its app groups, display positions and tools layout take precedence. The previous release configuration is backed up in `~/Library/Application Support/DualDock Backups/`, and the original preview files remain available.
 
 ## Download and install
 
@@ -198,7 +213,7 @@ This is a Swift Package Manager project; no Xcode project needs to be created. T
 ### Requirements
 
 - Runtime: macOS 14 or later. The distributed DMG is built for Apple Silicon (arm64).
-- The current app interface is in Simplified Chinese.
+- The interface is available in Simplified Chinese and English.
 - Build tools: Xcode or command-line tools supporting Swift tools version 5.9 and the corresponding macOS SDK.
 
 ### Build and validation commands
@@ -225,6 +240,8 @@ swift test -c release                 # Model, layout, and window-policy tests
 The build-and-run script also supports `--logs`, `--telemetry`, and `--debug`. Test instances can use the `.app` launch arguments `--config-dir <directory>` for isolated configuration and `--diagnostics <JSON path>` for layout diagnostics.
 
 ## Documentation
+
+- [Getting started with the tools page and AI quotas](docs/tools.en.md)
 
 - [Installation notes](docs/installation.txt) (Chinese)
 - [Validation records and known limitations](docs/validation.md) (Chinese)

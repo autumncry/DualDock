@@ -3,10 +3,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIGURATION="${1:-release}"
+if [[ $# -gt 2 ]]; then echo "usage: $0 [debug|release] [--with-update-feed]" >&2; exit 2; fi
 case "$CONFIGURATION" in
   debug) APP_BUNDLE="$ROOT_DIR/dist/DualDock.app" ;;
   release) APP_BUNDLE="$ROOT_DIR/dist/release/DualDock.app" ;;
-  *) echo "usage: $0 [debug|release]" >&2; exit 2 ;;
+  *) echo "usage: $0 [debug|release] [--with-update-feed]" >&2; exit 2 ;;
+esac
+case "${2:-}" in
+  "") ;;
+  --with-update-feed) ;;
+  *) echo "usage: $0 [debug|release] [--with-update-feed]" >&2; exit 2 ;;
 esac
 cd "$ROOT_DIR"
 
@@ -30,6 +36,10 @@ codesign --verify --deep --strict "$FRAMEWORK" >&2
 otool -L "$STAGED_APP/Contents/MacOS/DualDock" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle ' >/dev/null
 otool -l "$STAGED_APP/Contents/MacOS/DualDock" | grep -F 'path @executable_path/../Frameworks ' >/dev/null
 cp "$ROOT_DIR/Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
+# A release always joins the existing stable channel. Development builds are offline by default.
+if [[ "$CONFIGURATION" = debug && "${2:-}" != --with-update-feed ]]; then
+  /usr/libexec/PlistBuddy -c 'Delete :SUFeedURL' "$STAGED_APP/Contents/Info.plist"
+fi
 for LANGUAGE_DIR in "$ROOT_DIR"/Resources/*.lproj; do
   ditto "$LANGUAGE_DIR" "$STAGED_APP/Contents/Resources/$(basename "$LANGUAGE_DIR")"
 done

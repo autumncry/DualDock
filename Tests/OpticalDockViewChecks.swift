@@ -121,7 +121,7 @@ struct OpticalDockViewChecks {
                       "\(tag) original drawing canvas was cropped or stretched")
                 let dot = geometry.documentTransform.rectToCanonical(strip.document.convert(tile.runningIndicatorBounds, from: tile))
                 check(near(dot.midX, canonical[index].midX), "\(tag) running dot not centered on visible body")
-                check(canonical[index].minY - dot.maxY >= -0.00001 && canonical[index].minY - dot.maxY <= 3.00001,
+                check(dot.minY >= 2.99999 && canonical[index].minY - dot.maxY >= 1.99999 && canonical[index].minY - dot.maxY <= 3.00001,
                       "\(tag) running dot detached from visible body")
                 let body = tile.visibleContentBounds
                 checkDropZones(tile, edge: edge, tag: tag + "-drop-\(index)")
@@ -321,9 +321,38 @@ struct OpticalDockViewChecks {
             tile.applyGeometry(frame: canvas, iconFrame: canvas, dotFrame: .zero,
                                baseIconSize: 128, edge: .bottom)
             return NSImage(size: canvas.size, flipped: false) { _ in
-                tile.draw(canvas)
+                tile.drawSnapshot()
                 return true
             }
+        }
+        // Compare actual compositor pixels with the bitmap used for dragging.
+        // The two renderers can resample at different resolutions, but they
+        // must show the same upright artwork and the same occupied region.
+        if let app = members.first {
+            let tile = DockTile(entry: DockEntry(name: app.name, apps: [app]), groupID: nil,
+                                store: legacy, size: 48)
+            let size = CGSize(width: 66, height: 66)
+            let tileFrame = CGRect(origin: .zero, size: size)
+            let iconFrame = CGRect(x: 9, y: 9, width: 48, height: 48)
+            tile.applyGeometry(frame: tileFrame, iconFrame: iconFrame,
+                               dotFrame: CGRect(x: 31, y: 3, width: 3, height: 3),
+                               baseIconSize: 48, edge: .bottom)
+            let image = bitmap(size, scale: 2) { tile.drawSnapshot() }
+            let layers = bitmap(size, scale: 2) {
+                tile.layer?.render(in: NSGraphicsContext.current!.cgContext)
+            }
+            let count = image.pixelsWide * 4
+            var difference = 0, visible = 0
+            for y in 0..<image.pixelsHigh {
+                let a = image.bitmapData!.advanced(by: y * image.bytesPerRow)
+                let b = layers.bitmapData!.advanced(by: y * layers.bytesPerRow)
+                for x in 0..<count {
+                    difference += abs(Int(a[x]) - Int(b[x]))
+                    if x % 4 == 3, b[x] > 128 { visible += 1 }
+                }
+            }
+            let error = Double(difference) / Double(image.pixelsHigh * count)
+            check(visible > 1000 && error < 18, "Composited icon or dot missing/misoriented (mean pixel difference \(error), visible pixels \(visible))")
         }
         let three = renderFolder(3), four = renderFolder(4), five = renderFolder(5)
         for group in [three, four, five] {
@@ -415,7 +444,7 @@ struct OpticalDockViewChecks {
                     let frame = geometry.tileFrames[index]
                     NSGraphicsContext.current!.cgContext.translateBy(x: origin.x + frame.minX, y: origin.y + frame.minY)
                     NSGraphicsContext.current!.cgContext.clip(to: tile.bounds)
-                    tile.draw(tile.bounds)
+                    tile.drawSnapshot()
                     NSGraphicsContext.restoreGraphicsState()
                 }
                 check(!panel.isVisible, "Visual fixture became visible")

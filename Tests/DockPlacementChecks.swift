@@ -1,6 +1,12 @@
 import AppKit
 import DualDockCore
 
+private extension DisplayCoordinator {
+    func fixtureIsFullscreen(_ id: CGDirectDisplayID) -> Bool {
+        visibilitySnapshot.fullscreen.contains(id)
+    }
+}
+
 /// Exercises real AppStore -> coordinator -> NSWindow placement. All windows
 /// stay hidden; no desktop input or user configuration is read or modified.
 @main
@@ -47,7 +53,13 @@ struct DockPlacementChecks {
                 // This is the same conversion used by visibility, popup anchors
                 // and pointer hit-testing, rather than the ideal geometry alone.
                 let actual = dock.panel.convertToScreen(dock.strip.convert(dock.strip.backdropFrame, to: nil))
-                let desiredPanel = geometry.panelFrame(in: display.visibleFrame)
+                let frame = dock.screen.frame
+                let safe = dock.screen.safeAreaInsets
+                let fullArea = CGRect(x: frame.minX + safe.left, y: frame.minY + safe.bottom,
+                                      width: frame.width - safe.left - safe.right,
+                                      height: frame.height - safe.bottom - safe.top)
+                let area = coordinator.fixtureIsFullscreen(display.runtimeID) ? fullArea : display.visibleFrame
+                let desiredPanel = geometry.panelFrame(in: area)
                 let expected = geometry.backdropRect.offsetBy(dx: desiredPanel.minX, dy: desiredPanel.minY)
                 check(dock.panel.frame.contains(desiredPanel), "\(context): window clipped the fractional canvas")
                 check(abs(dock.strip.frame.minX + dock.panel.frame.minX - desiredPanel.minX) < 0.000001

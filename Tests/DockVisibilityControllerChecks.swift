@@ -41,9 +41,10 @@ struct DockVisibilityControllerChecks {
         var activeTarget = true
         var secondaryTarget = false
         var secondaryInteracting = false
+        var secondaryOnRight = false
+        var autoHideDock = false
         var applied: [(TimeInterval, DockVisibilityController.Snapshot)] = []
         var pointer = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
-        var autoHideDock = false
         var pointerInside = false
         var interacting = false
         var targetFrame = screen.visibleFrame
@@ -54,8 +55,11 @@ struct DockVisibilityControllerChecks {
                 backdrop: CGRect(x: frame.midX - 200, y: frame.minY + 8, width: 400, height: 60),
                 pointerInside: pointerInside, interacting: interacting)]
             if secondaryTarget {
-                targets.append(.init(id: secondaryID, screen: screen, visibleFrame: frame, edge: .bottom,
-                    backdrop: CGRect(x: frame.midX - 200, y: frame.minY + 8, width: 400, height: 60),
+                let secondaryBackdrop = secondaryOnRight
+                    ? CGRect(x: frame.maxX - 68, y: frame.midY - 200, width: 60, height: 400)
+                    : CGRect(x: frame.midX - 200, y: frame.minY + 8, width: 400, height: 60)
+                targets.append(.init(id: secondaryID, screen: screen, visibleFrame: frame,
+                    edge: secondaryOnRight ? .right : .bottom, backdrop: secondaryBackdrop,
                     pointerInside: false, interacting: secondaryInteracting))
             }
             return targets
@@ -90,6 +94,66 @@ struct DockVisibilityControllerChecks {
         check(applied.count == 1 && applied.last?.1.hidden.isEmpty == true, "Initial forced visible state missing")
         controller.refresh()
         check(applied.count == 1, "Unchanged state needlessly reapplied")
+
+        // Two distinct edges on a shared screen snapshot create disjoint pointer
+        // targets even on a single-monitor machine. Only the primary is on a
+        // normal desktop; the secondary is in a fullscreen Space throughout.
+        secondaryTarget = true
+        secondaryOnRight = true
+        windows.fullscreen = [secondaryID]
+        controller.refresh(force: true)
+        check(applied.last?.1.hidden == [secondaryID], "Default desktop visibility changed")
+        autoHideDock = true
+        controller.refresh()
+        check(applied.last?.1.hidden == [id, secondaryID] && applied.last?.1.fullscreen == [secondaryID],
+              "Enabling pointer auto-hide should hide both idle bars without marking the desktop fullscreen")
+        pointer = NSPoint(x: targetFrame.midX, y: targetFrame.minY + 38)
+        _ = pump(for: 0.3)
+        check(applied.last?.1.hidden == [id, secondaryID], "Hovering the old, hidden Dock body triggered an edge reveal")
+
+        pointer = NSPoint(x: targetFrame.midX, y: targetFrame.minY + 1)
+        controller.refresh()
+        check(applied.last?.1.hidden.contains(id) == true, "Desktop Dock appeared before edge dwell")
+        _ = pump(for: 0.4) { applied.last?.1.hidden == [secondaryID] }
+        check(applied.last?.1.hidden == [secondaryID], "Desktop reveal changed the fullscreen peer")
+        pointer = NSPoint(x: targetFrame.midX, y: targetFrame.minY + 5)
+        _ = pump(for: 0.42)
+        check(applied.last?.1.hidden == [secondaryID],
+              "Dock disappeared while moving slowly over the inset between its trigger and backdrop")
+        pointerInside = true
+        pointer.y = targetFrame.minY + 25
+        controller.refresh()
+        pointerInside = false
+        interacting = true
+        pointer = NSPoint(x: targetFrame.midX, y: targetFrame.midY)
+        _ = pump(for: 0.42)
+        check(applied.last?.1.hidden == [secondaryID], "An active tool card or popup lost its desktop Dock")
+        interacting = false
+        controller.refresh()
+        check(applied.last?.1.hidden == [secondaryID], "Leaving the Dock skipped its departure grace period")
+        _ = pump(for: 0.55) { applied.last?.1.hidden == [id, secondaryID] }
+        check(applied.last?.1.hidden == [id, secondaryID], "Leaving the desktop Dock did not hide it")
+
+        let physicalRight = DockVisibilityController.fullscreenBounds(for: screen)
+        pointer = NSPoint(x: physicalRight.maxX - 1, y: targetFrame.midY)
+        controller.refresh()
+        _ = pump(for: 0.4) { applied.last?.1.hidden == [id] }
+        check(applied.last?.1.hidden == [id], "Fullscreen reveal leaked to the ordinary desktop")
+        secondaryInteracting = true
+        pointer = NSPoint(x: targetFrame.midX, y: targetFrame.midY)
+        controller.refresh()
+        autoHideDock = false
+        controller.refresh()
+        check(applied.last?.1.hidden.isEmpty == true && applied.last?.1.fullscreen == [secondaryID],
+              "Disabling desktop auto-hide dismissed a fullscreen interaction or failed to restore the desktop")
+        secondaryInteracting = false
+        _ = pump(for: 0.55) { applied.last?.1.hidden == [secondaryID] }
+        check(applied.last?.1.hidden == [secondaryID],
+              "Fullscreen auto-hide must continue after the ordinary desktop option is turned off")
+        secondaryTarget = false
+        secondaryOnRight = false
+        windows.fullscreen = []
+        controller.refresh(force: true)
 
         expectState(true, in: .default, "Default-mode hide")
         expectState(false, in: .default, "Default-mode reveal")
