@@ -9,12 +9,13 @@ final class AIQuotaService: ObservableObject {
         var claudeSettings: URL
         var executable: URL?
         var captureDirectory: URL? = nil
+        var antigravity: @Sendable () async throws -> AIQuotaSnapshot = { throw AIQuotaError.unavailable }
         static var system: Self {
             Self(codex: { path in
                 guard let bin = AIQuotaCodex.executable(override:path) else { throw AIQuotaError.notInstalled }
                 return try await AIQuotaCodex.read(binary:bin)
             }, claudeSettings:AIQuotaClaudeBridge.settingsFile, executable:Bundle.main.executableURL,
-               captureDirectory:AIQuotaClaudeBridge.runtimeDirectory)
+               captureDirectory:AIQuotaClaudeBridge.runtimeDirectory, antigravity: { try await AIQuotaAntigravity.read() })
         }
     }
 
@@ -22,6 +23,7 @@ final class AIQuotaService: ObservableObject {
         var codexEnabled = false
         var codexPath: String?
         var pins: [String:String] = [:]
+        // Build 45 and earlier stored manually imported Gemini CLI readings here.
         var gemini: AIQuotaSnapshot?
     }
 
@@ -32,6 +34,9 @@ final class AIQuotaService: ObservableObject {
     @Published private(set) var snapshots: [AIQuotaProvider:AIQuotaSnapshot] = [:]
     @Published private(set) var issues: [AIQuotaProvider:AIQuotaError] = [:]
     @Published private(set) var codexBusy = false
+    @Published private(set) var antigravityBusy = false
+    var importedGeminiSnapshot: AIQuotaSnapshot? { settings.gemini }
+    private var antigravityTask: Task<Void, Never>?
     @Published private(set) var claudeToken: UUID?
     @Published private var revision = 0
     private var visible: [String:Set<AIQuotaProvider>] = [:]
@@ -54,7 +59,6 @@ final class AIQuotaService: ObservableObject {
                 settings = Settings(); savingAllowed = false
             }
         } else { settings = Settings() }
-        snapshots[.gemini] = settings.gemini
         claudeToken = AIQuotaClaudeBridge.connection(in:directory)?.token
     }
 
@@ -62,7 +66,7 @@ final class AIQuotaService: ObservableObject {
         switch provider {
         case .codex: return settings.codexEnabled
         case .claude: return claudeToken != nil
-        case .gemini: return settings.gemini != nil
+        case .gemini: return snapshots[.gemini] != nil
         }
     }
 
@@ -100,6 +104,7 @@ final class AIQuotaService: ObservableObject {
     func stop() {
         visible.removeAll();details.removeAll()
         clock?.cancel();clock = nil;cancelCodex()
+        cancelAntigravity()
     }
     private func cancelCodex() { generation &+= 1; task?.cancel();task = nil;codexBusy = false }
 
@@ -158,21 +163,42 @@ final class AIQuotaService: ObservableObject {
         snapshots[.claude] = result;issues[.claude] = nil
     }
 
-    @discardableResult func importGemini(_ pasted:String) -> Bool {
-        do {
-            let reading = try AIQuotaParser.gemini(pasted,now:env.now())
-            var next = settings;next.gemini = reading
-            guard persist(next,for:.gemini) else { return false }
-            snapshots[.gemini] = reading;issues[.gemini] = nil;sync()
-            return true
-        } catch { issues[.gemini] = .invalid;return false }
+    /// Only a deliberate click starts a query. All displays share the pending read.
+    func refreshAntigravity() {
+        guard !antigravityBusy else { return }
+        antigravityBusy = true
+        issues[.gemini] = nil
+        let read = env.antigravity
+        antigravityTask = Task { [weak self] in
+            let result: Result<AIQuotaSnapshot, Error>
+            do { result = .success(try await read()) }
+            catch { result = .failure(error) }
+            guard let self, !Task.isCancelled else { return }
+            switch result {
+            case .success(let snapshot):
+                snapshots[.gemini] = snapshot
+            case .failure(let error):
+                // The signed-in account may have changed between clicks.
+                snapshots[.gemini] = nil
+                issues[.gemini] = error as? AIQuotaError ?? .unavailable
+            }
+            antigravityTask = nil
+            antigravityBusy = false
+            sync()
+        }
+    }
+
+    private func cancelAntigravity() {
+        antigravityTask?.cancel()
+        antigravityTask = nil
+        antigravityBusy = false
     }
 
     func disconnect(_ provider:AIQuotaProvider) {
-        var next = settings;next.pins[provider.rawValue] = nil
+        var next = settings;next.pins[pinKey(for: provider)] = nil
         switch provider {
         case .codex: next.codexEnabled = false;next.codexPath = nil
-        case .gemini: next.gemini = nil
+        case .gemini: cancelAntigravity()
         case .claude:
             if let token = claudeToken {
                 do { try AIQuotaClaudeBridge.remove(from:env.claudeSettings,directory:directory,token:token) }
@@ -185,13 +211,18 @@ final class AIQuotaService: ObservableObject {
         snapshots[provider] = nil;issues[provider] = nil;sync()
     }
 
+    // Keep the old Gemini CLI model pin separate from Antigravity quota buckets.
+    private func pinKey(for provider: AIQuotaProvider) -> String {
+        provider == .gemini ? "antigravity" : provider.rawValue
+    }
+
     func selected(_ provider:AIQuotaProvider) -> AIQuotaWindow? {
         guard let rows = snapshots[provider]?.windows else { return nil }
-        return rows.first { $0.id == settings.pins[provider.rawValue] } ?? rows.first
+        return rows.first { $0.id == settings.pins[pinKey(for: provider)] } ?? rows.first
     }
     func pin(_ id:String, for provider:AIQuotaProvider) {
         guard snapshots[provider]?.windows.contains(where:{$0.id == id}) == true else { return }
-        var next=settings;next.pins[provider.rawValue]=id; _ = persist(next,for:provider)
+        var next=settings;next.pins[pinKey(for: provider)]=id; _ = persist(next,for:provider)
     }
 
     func isExpired(_ window:AIQuotaWindow) -> Bool { window.reset.map { $0 <= env.now() } ?? false }

@@ -68,7 +68,7 @@ enum ToolLibraryItem: Hashable, Identifiable {
         case .widget(.focusTimer): return l("开始或暂停专注倒计时", "Start or pause a focus timer")
         case .widget(.codexQuota): return l("查看套餐窗口余量与重置时间", "Plan limits and reset times")
         case .widget(.claudeQuota): return l("查看短周期与每周余量", "Session and weekly limits")
-        case .widget(.geminiQuota): return l("从 Gemini CLI 导入模型余量", "Import model quotas from Gemini CLI")
+        case .widget(.geminiQuota): return l("点击刷新 Gemini 剩余额度与重置时间", "Refresh Gemini limits and reset times")
         case .widget(.music): return l("查看正在播放的音乐与播放列表", "Now Playing and the current playlist")
         case .widget(.weather): return l("查看所选城市的天气", "Forecast for a city")
         case .widget(.calendar): return l("月视图、周视图与日程", "Month, week and upcoming events")
@@ -84,7 +84,7 @@ enum ToolLibraryItem: Hashable, Identifiable {
         switch self {
         case .widget(.codexQuota): return l("本机 Codex 的账号限额", "Account limits from local Codex")
         case .widget(.claudeQuota): return l("Claude Code 状态行", "Claude Code status line")
-        case .widget(.geminiQuota): return l("Gemini CLI 的模型配额", "Model quotas from Gemini CLI")
+        case .widget(.geminiQuota): return l("本机登录的 Google Antigravity CLI", "Your local Google Antigravity CLI")
         case .widget(.music): return l("本机音乐 App，按需授权", "Music app with your permission")
         case .widget(.weather): return "MET Norway / Open-Meteo"
         case .widget(.calendar): return l("系统日期，日程需日历访问权限", "System date and optional calendar access")
@@ -267,19 +267,15 @@ struct DockToolsLibrary: View {
     }
 
     @ViewBuilder private func quotaSample(_ entry: ToolLibraryItem) -> some View {
-        if entry == .widget(.geminiQuota) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("—").font(.caption)
-                Text(language("待连接", "Not connected")).font(.caption).foregroundStyle(.secondary)
-            }.frame(width: 98, alignment: .leading)
-        } else {
-            let fraction = entry == .widget(.codexQuota) ? 0.68 : 0.24
-            VStack(alignment: .leading, spacing: 3) {
-                Text(language("余量 ", "Remaining ") + fraction.formatted(.percent)).font(.caption)
-                ProgressView(value: fraction).tint(entry.color).frame(width: 98)
-                Text(entry == .widget(.codexQuota) ? language("2 小时后重置", "Resets in 2h") : language("周五重置", "Resets Friday"))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+        let (fraction, reset): (Double, String) = switch entry {
+        case .widget(.geminiQuota): (0.72, language("1 小时后重置", "Resets in 1h"))
+        case .widget(.codexQuota): (0.68, language("2 小时后重置", "Resets in 2h"))
+        default: (0.24, language("周五重置", "Resets Friday"))
+        }
+        VStack(alignment: .leading, spacing: 3) {
+            Text(language("余量 ", "Remaining ") + fraction.formatted(.percent)).font(.caption)
+            ProgressView(value: fraction).tint(entry.color).frame(width: 98)
+            Text(reset).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

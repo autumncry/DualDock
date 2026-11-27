@@ -7,7 +7,7 @@ enum AIQuotaProvider: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .codex: return "Codex"
         case .claude: return "Claude Code"
-        case .gemini: return "Gemini CLI"
+        case .gemini: return "Gemini"
         }
     }
 }
@@ -22,13 +22,15 @@ struct AIQuotaWindow: Identifiable, Equatable, Codable {
     var reset: Date?
     var roundedByCLI: Bool?
 
-    var title: String {
+    var title: String { title(in: .current) }
+
+    func title(in language: AppLanguage) -> String {
         guard let minutes else { return label }
         let period: String
-        if minutes == 10080 { period = L("7 天", "7 days") }
-        else if minutes.isMultiple(of: 1440) { period = L("\(minutes / 1440) 天", "\(minutes / 1440) days") }
-        else if minutes.isMultiple(of: 60) { period = L("\(minutes / 60) 小时", "\(minutes / 60) hours") }
-        else { period = L("\(minutes) 分钟", "\(minutes) min") }
+        if minutes == 10080 { period = language("7 天", "7 days") }
+        else if minutes.isMultiple(of: 1440) { period = language("\(minutes / 1440) 天", "\(minutes / 1440) days") }
+        else if minutes.isMultiple(of: 60) { period = language("\(minutes / 60) 小时", "\(minutes / 60) hours") }
+        else { period = language("\(minutes) 分钟", "\(minutes) min") }
         return label.isEmpty ? period : "\(label) · \(period)"
     }
 
@@ -51,10 +53,15 @@ struct AIQuotaSnapshot: Codable, Equatable {
 
 enum AIQuotaError: Error, Equatable {
     case unavailable, signIn, notInstalled, timeout, invalid, conflict, writeFailed
+    case antigravityMissing, antigravityOutdated
 
     var text: String {
         switch self {
         case .signIn: return L("请先在客户端登录支持配额查询的订阅账号。", "Sign in to a supported subscription in the client.")
+        case .antigravityMissing:
+            return L("未找到 Antigravity CLI（agy）。", "Antigravity CLI (agy) was not found.")
+        case .antigravityOutdated:
+            return L("请将 Antigravity CLI 更新到 1.1.11 或更高版本。", "Update Antigravity CLI to version 1.1.11 or later.")
         case .notInstalled: return L("未找到 Codex CLI。请先安装，或在详情中选择可执行文件。", "Install the Codex CLI or select its executable here.")
         case .timeout: return L("客户端响应超时，请稍后刷新。", "The client timed out. Refresh to retry.")
         case .invalid: return L("未识别到额度记录。请使用包含限额的统计结果。", "No quota rows were found. Use a result that contains limits.")
@@ -108,99 +115,5 @@ enum AIQuotaParser {
     private static func date(_ time: Double?) -> Date? {
         guard let t = time, t.isFinite, t > 0, t < 32_503_680_000 else { return nil }
         return Date(timeIntervalSince1970:t)
-    }
-
-    static func gemini(_ data: String, now: Date) throws -> AIQuotaSnapshot {
-        guard !data.isEmpty, data.utf8.count <= 128*1024 else { throw AIQuotaError.invalid }
-        var windows: [AIQuotaWindow] = []
-        func insert(_ win: AIQuotaWindow) {
-            if !windows.contains(where: { $0.id == win.id }) { windows.append(win) }
-        }
-        let text = data.trimmingCharacters(in:.whitespacesAndNewlines)
-        if text.hasPrefix("{") {
-            struct Bucket: Decodable {
-                let modelId, tokenType, resetTime: String?
-                let remainingFraction: Double?
-                let remainingAmount: Int?
-
-                private enum CodingKeys: String, CodingKey { case modelId, tokenType, resetTime, remainingFraction, remainingAmount }
-                init(from decoder:Decoder) throws {
-                    let c = try decoder.container(keyedBy:CodingKeys.self)
-                    modelId = try c.decodeIfPresent(String.self,forKey:.modelId)
-                    tokenType = try c.decodeIfPresent(String.self,forKey:.tokenType)
-                    resetTime = try c.decodeIfPresent(String.self,forKey:.resetTime)
-                    remainingFraction = try c.decodeIfPresent(Double.self,forKey:.remainingFraction)
-                    // The Code Assist schema encodes this integer as a string.
-                    if let string = try? c.decode(String.self,forKey:.remainingAmount) {
-                        remainingAmount = Int(string)
-                    } else { remainingAmount = try c.decodeIfPresent(Int.self,forKey:.remainingAmount) }
-                }
-            }
-            struct Response: Decodable { let buckets: [Bucket] }
-            let buckets: [Bucket]
-            do { buckets = try JSONDecoder().decode(Response.self, from:Data(text.utf8)).buckets }
-            catch { throw AIQuotaError.invalid }
-            for bucket in buckets {
-                guard let model = bucket.modelId, !model.isEmpty, model.count <= 100 else { continue }
-                let percent = bucket.remainingFraction.flatMap { (0...1).contains($0) ? $0*100 : nil }
-                let count = bucket.remainingAmount.flatMap { $0 >= 0 ? $0 : nil }
-                guard percent != nil || count != nil else { continue }
-                let unit = bucket.tokenType
-                let iso = ISO8601DateFormatter()
-                let reset = bucket.resetTime.flatMap { ts -> Date? in
-                    if let t = iso.date(from:ts) { return t }
-                    iso.formatOptions.insert(.withFractionalSeconds)
-                    return iso.date(from:ts)
-                }
-                insert(.init(id:model+"/"+(unit ?? ""), label:model, remainingPercent:percent,
-                             remainingCount:count, unit:unit, reset:reset))
-            }
-        } else {
-            // Distinguish legacy "Usage left" from modern "Model usage" (a USED bar).
-            // Token, cache hit and tool-success percentages from other sections must never match.
-            let clear = text.replacingOccurrences(of:"\\x1B\\[[0-?]*[ -/]*[@-~]", with:"", options:.regularExpression)
-            enum Format { case left, usedBars }
-            var format: Format?
-            for raw in clear.components(separatedBy:.newlines) {
-                let line = raw.trimmingCharacters(in: CharacterSet(charactersIn:" │┃\t\r"))
-                if line.localizedCaseInsensitiveContains("Usage left") { format = .left; continue }
-                if line.lowercased() == "model usage" { format = .usedBars; continue }
-                if let used = matches(#"^([0-9]+(?:\.[0-9]+)?)%\s+used(?:\s*\(Limit resets in ([^)]+)\))?$"#,line),
-                   let pct = Double(used[0]), (0...100).contains(pct) {
-                    insert(.init(id:"shared",label:L("共享配额","Shared quota"),remainingPercent:100-pct,reset:relative(used[1],now:now),roundedByCLI:true))
-                    continue
-                }
-                if let hit = matches(#"^Limit reached(?:, resets in (.+))?$"#,line) {
-                    insert(.init(id:"shared",label:L("共享配额","Shared quota"),remainingPercent:0,reset:relative(hit[0],now:now)))
-                    continue
-                }
-                guard let mode = format else { continue }
-                let pattern = mode == .left
-                    ? #"^((?:gemini-[A-Za-z0-9._-]+|Pro|Flash(?: Lite)?))\s+(?:[\d,]+\s+)?([0-9]+(?:\.[0-9]+)?)%\s*(.*)$"#
-                    : #"^((?:gemini-[A-Za-z0-9._-]+|Pro|Flash(?: Lite)?))\s+[▬━─█▓▒░▉▊▋▌▍▎▏▰▱●○· ]*\s+([0-9]+(?:\.[0-9]+)?)%\s*(.*)$"#
-                guard let groups = matches(pattern,line), let pct = Double(groups[1]), (0...100).contains(pct) else { continue }
-                insert(.init(id:groups[0],label:groups[0],remainingPercent:mode == .left ? pct : 100-pct,
-                             reset:relative(groups[2],now:now),roundedByCLI:true))
-            }
-        }
-        guard !windows.isEmpty else { throw AIQuotaError.invalid }
-        return .init(windows:windows,updated:now)
-    }
-
-    private static func matches(_ pattern:String, _ text:String) -> [String]? {
-        guard let re = try? NSRegularExpression(pattern:pattern,options:[.caseInsensitive]),
-              let m = re.firstMatch(in:text,range:NSRange(text.startIndex...,in:text)) else { return nil }
-        return (1..<m.numberOfRanges).map { Range(m.range(at:$0),in:text).map { String(text[$0]) } ?? "" }
-    }
-
-    private static func relative(_ text:String, now:Date) -> Date? {
-        // Accept the duration only; a formatted local clock is ambiguous across dates/zones.
-        let duration = text.components(separatedBy:"(").last?.trimmingCharacters(in:CharacterSet(charactersIn:" )")) ?? ""
-        let trimmed = duration.replacingOccurrences(of:"(?i)^(?:resets?\\s+in|resets?:)\\s*",with:"",options:.regularExpression)
-        guard let m = matches(#"^\s*(?:(\d+)d\s*)?(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s\s*)?$"#,trimmed),
-              m.contains(where:{ !$0.isEmpty }) else { return nil }
-        let seconds = zip(m,[86400.0,3600,60,1]).reduce(0.0) { $0 + (Double($1.0) ?? 0)*$1.1 }
-        guard seconds.isFinite, seconds > 0, seconds < 366*86400 else { return nil }
-        return now.addingTimeInterval(seconds)
     }
 }

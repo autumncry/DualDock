@@ -271,7 +271,7 @@ extension ShelfLayout.Kind {
         case .focusTimer: return language("专注计时", "Focus Timer")
         case .codexQuota: return language("Codex 余量", "Codex Quota")
         case .claudeQuota: return language("Claude Code 余量", "Claude Code Quota")
-        case .geminiQuota: return language("Gemini CLI 余量", "Gemini CLI Quota")
+        case .geminiQuota: return language("Gemini 额度 · Antigravity", "Gemini Quota · Antigravity")
         }
     }
 

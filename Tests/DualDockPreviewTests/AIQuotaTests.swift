@@ -26,24 +26,6 @@ final class AIQuotaTests: XCTestCase {
         XCTAssertTrue(try AIQuotaParser.claude(Data(#"{"context_window":{"remaining_percentage":99}}"#.utf8),now:now).windows.isEmpty)
     }
 
-    func testGeminiTextOnlyConsumesUnambiguousLimitSections() throws {
-        let modern=try AIQuotaParser.gemini("Model usage\nPro         ▬▬▬▬▬▬▬    25%  Resets: 1:30 PM (1h 30m)\nFlash Lite    ▬▬▬    90%  Resets: 2 PM (2h)",now:now)
-        XCTAssertEqual(modern.windows.map(\.remainingPercent),[75,10])
-        XCTAssertEqual(modern.windows.first?.reset,now.addingTimeInterval(5400))
-        let legacy=try AIQuotaParser.gemini("│ Model Usage             Reqs              Usage left  │\n│ gemini-2.5-pro             3                 7.5% (resets in 1h) │",now:now)
-        XCTAssertEqual(legacy.windows.first?.remainingPercent,7.5);XCTAssertEqual(legacy.windows.first?.reset,now.addingTimeInterval(3600))
-        XCTAssertThrowsError(try AIQuotaParser.gemini("Cache Hits 98%\nTokens Total: 881,042",now:now))
-        XCTAssertEqual(try AIQuotaParser.gemini("32% used (Limit resets in 2h 40m)\nUsage limit: 1,000",now:now).windows.first?.remainingPercent,68)
-        XCTAssertEqual(try AIQuotaParser.gemini("Limit reached, resets in 1m",now:now).windows.first?.remainingPercent,0)
-    }
-
-    func testGeminiBucketsKeepUnitsAndRejectInvalidOrUnavailableMetrics() throws {
-        let r=try AIQuotaParser.gemini(#"{"buckets":[{"modelId":"Pro","remainingFraction":0.68,"resetTime":"2027-01-01T12:00:00.000Z"},{"modelId":"Flash","remainingAmount":"121","tokenType":"REQUESTS"},{"modelId":"no-value"},{"modelId":"invalid","remainingFraction":-1}]}"#,now:now)
-        XCTAssertEqual(r.windows.map(\.label),["Pro","Flash"]);XCTAssertEqual(r.windows[0].remainingPercent,68)
-        XCTAssertNotNil(r.windows[0].reset);XCTAssertEqual(r.windows[1].remainingCount,121);XCTAssertNil(r.windows[1].remainingPercent)
-        XCTAssertThrowsError(try AIQuotaParser.gemini(#"{"buckets":[{"modelId":"unknown"}]}"#,now:now))
-    }
-
     func testClaudeWrapperPreservesOutputStdinPermissionsOtherSettingsAndUninstalls() throws {
         let base=try scratch(),file=base.appendingPathComponent("settings.json"), dir=base.appendingPathComponent("LocalData")
         let exe=base.appendingPathComponent("helper with ' quote")
@@ -139,7 +121,7 @@ final class AIQuotaTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start),3)
     }
 
-    @MainActor func testConsentSharedAcrossDisplaysAndManualPersistence() async throws {
+    @MainActor func testCodexConsentSharedAcrossDisplaysAndRestoredWithoutStaleReadings() async throws {
         let base=try scratch();let moment=now
         actor Count { var value=0;func add(){value+=1} }
         let calls=Count()
@@ -155,11 +137,9 @@ final class AIQuotaTests: XCTestCase {
         for _ in 0..<60 where service.codexBusy {try await Task.sleep(for:.milliseconds(10))}
         let one=await calls.value;XCTAssertEqual(one,1)
         XCTAssertEqual(service.selected(.codex)?.remainingPercent,78)
-        XCTAssertTrue(service.importGemini("Model usage\nFlash    ▬▬    35%  Resets: 1 PM (1h)"))
         service.stop()
         let restored=AIQuotaService(directory:base,environment:env)
-        XCTAssertEqual(restored.selected(.gemini)?.remainingPercent,65)
         XCTAssertTrue(restored.isConnected(.codex));XCTAssertNil(restored.selected(.codex))
-        restored.disconnect(.gemini);XCTAssertNil(restored.selected(.gemini));restored.stop()
+        restored.stop()
     }
 }
