@@ -8,21 +8,27 @@
 
 </div>
 
-## A Dock on each display
+## A Dock on every display
 
-DualDock shows a Dock on your Mac’s built-in screen and external displays at the same time. Your MacBook can show apps along the bottom while an external monitor shows music and calendar events on its right edge. Each display remembers its Dock position and current page. Displays share the same app groups and tools layout.
+Use the Dock on your built-in screen and external monitors at the same time. Choose a screen edge for each Dock and adjust its size independently in manual mode. Each display remembers whether it shows Apps or Tools. App groups and the tools layout are shared.
 
-When an app goes full screen, the Dock hides on that display. Hold the pointer at its edge to bring it back.
+<img src="docs/images/multi-display.png" width="900" alt="The same app icons in the Dock at the bottom of the built-in screen and on the right edge of the external monitor">
 
-<img src="docs/images/dualdock-overview.png" width="820" alt="Apps page with an expanded app group and a window preview">
+<sub>Simultaneous demo captures, shown side by side. The same apps appear along the bottom of the built-in display and the right edge of the external monitor.</sub>
 
-## Apps and tools
+## App groups and window previews
 
-On the **Apps page**, drag apps together to group them. Hover over an app to preview its windows, then click a thumbnail to bring that window forward.
+Drag one app onto another to create a group. Click the folder to expand it. Hover over a running app to preview its windows, then click a thumbnail to bring that window forward.
 
-The **Tools page** holds music, calendar, weather, system stats, shortcuts, and quota cards for Codex, Gemini, Claude and Cursor. Swipe with two fingers over the Dock to switch pages. Swipe up or down on a horizontal Dock, or left or right on a vertical Dock. You can also switch from the menu bar. [Tool settings and quota sources](docs/tools.en.md)
+<img src="docs/images/app-groups-preview.png" width="560" alt="Two TextEdit window thumbnails above an expanded app group in the Dock">
 
-<img src="docs/images/tools-shelf.png" width="620" alt="Tools page with music, calendar, a focus timer, Gemini quota and Shortcuts">
+## Swipe to the tools page
+
+Swipe up with two fingers over a horizontal Dock to open Tools, then down to return to Apps. On a side Dock, swipe left or right. You can also switch pages from the menu bar.
+
+Add music, calendar, system stats, shortcuts, or quota cards for Codex, Gemini, Claude and Cursor. Choose **Settings → Dock → Tools Page → Edit** to reorder and resize cards. [Tools guide](docs/tools.en.md)
+
+<img src="docs/images/tools-page.png" width="654" alt="The Now Playing panel open above a tools page with calendar, focus timer, Gemini quota and Shortcuts cards">
 
 ## Download and install
 
