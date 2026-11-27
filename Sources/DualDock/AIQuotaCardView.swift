@@ -31,6 +31,7 @@ struct AIQuotaPreviewView: View {
         if let w = service.selected(provider) {
             return service.isExpired(w) ? L("等待更新","Awaiting update") : w.amount
         }
+        if provider == .gemini { return L("待导入","Import quota") }
         if service.issues[provider] != nil { return L("暂不可用","Unavailable") }
         if service.codexBusy && provider == .codex { return L("查询中","Loading") }
         if service.isConnected(provider) { return L("等待数据","Awaiting data") }
@@ -44,6 +45,7 @@ struct AIQuotaPreviewView: View {
             if span >= 3, let reset = win.reset { return quotaReset(reset) }
             return win.title
         }
+        if provider == .gemini { return L("点按查看步骤", "Show import steps") }
         return provider.name
     }
     var body: some View {
@@ -107,9 +109,6 @@ private struct AIQuotaDetail: View {
     let provider: AIQuotaProvider
     @ObservedObject var service: AIQuotaService
     @State private var confirmingClaude = false
-    @State private var paste = ""
-    @State private var importing = false
-    @State private var hasPasteError = false
 
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
@@ -144,7 +143,9 @@ private struct AIQuotaDetail: View {
                      reading.updated.formatted(date:.abbreviated,time:.shortened))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if let issue = service.issues[provider] { Text(issue.text).font(.callout).foregroundStyle(.secondary) }
+            if let issue = service.issues[provider], provider != .gemini || issue != .invalid {
+                Text(issue.text).font(.callout).foregroundStyle(.secondary)
+            }
             switch provider {
             case .codex:
                 Text(L("来源：本机 Codex CLI 的 ChatGPT 账号限额。", "Source: ChatGPT limits from your local Codex CLI."))
@@ -173,32 +174,13 @@ private struct AIQuotaDetail: View {
                     }
                 } else { Button(L("连接 Claude Code 状态行…","Connect Claude Code Status Line…")) { confirmingClaude = true } }
             case .gemini:
-                Text(L("来源：手动导入 Gemini CLI 的额度统计。复制 /stats 或 /stats model 中的配额段落。",
-                       "Source: imported Gemini CLI quota. Copy the quota section from /stats or /stats model."))
-                    .font(.caption).foregroundStyle(.secondary)
-                if importing {
-                    TextEditor(text:$paste).font(.system(size:11,design:.monospaced)).frame(height:56)
-                        .accessibilityLabel(L("Gemini CLI 统计结果","Gemini CLI quota output"))
-                    HStack {
-                        Button(L("粘贴","Paste")) {
-                            paste = NSPasteboard.general.string(forType:.string) ?? ""
-                        }
-                        Button(L("导入","Import")) {
-                            if service.importGemini(paste) { paste="";importing=false;hasPasteError=false }
-                            else { hasPasteError=true }
-                        }.disabled(paste.isEmpty)
-                        Button(L("取消","Cancel")) { paste="";importing=false;hasPasteError=false }
-                    }
-                    if hasPasteError {
-                        Text(L("只接受限额窗口或模型额度表。会话 Token 数不能换算成余量。",
-                               "Use a quota window or a model quota table. Session token totals cannot be converted into an allowance."))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                } else { Button(L("导入额度快照…","Import quota snapshot…")) { importing=true } }
+                GeminiQuotaImportView(service: service)
             }
             if service.isConnected(provider) {
                 Divider()
-                Button(L("断开连接并清除读数","Disconnect and clear readings")) { service.disconnect(provider) }
+                Button(provider == .gemini ? L("清除快照", "Clear Snapshot") : L("断开连接并清除读数","Disconnect and clear readings")) {
+                    service.disconnect(provider)
+                }
                     .buttonStyle(.link).font(.caption)
             }
         }
