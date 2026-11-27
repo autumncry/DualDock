@@ -17,7 +17,7 @@ enum AIQuotaClaudeBridge {
     static var runtimeDirectory: URL {
         LocalPreviewConfiguration.isPreview
             ? Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("LocalData")
-            : FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("DualDock")
+            : LocalPreviewConfiguration.releaseDataDirectory
     }
 
     static func connection(in directory:URL) -> Connection? {

@@ -21,40 +21,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             terminationSignals.append(source)
         }
         let preview = LocalPreviewConfiguration.isPreview
-        let bundleID = preview ? LocalPreviewConfiguration.bundleID : LocalPreviewConfiguration.releaseBundleID
-        let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            .first { $0.processIdentifier != getpid() }
-        if let existing {
+        if let bundleID = Bundle.main.bundleIdentifier,
+           let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+                .first(where: { $0.processIdentifier != getpid() }) {
             existing.activate(options: [])
             NSApp.terminate(nil)
             return
         }
         let args = ProcessInfo.processInfo.arguments
         let directory: URL
-        let firstLaunch: Bool
         let override = args.firstIndex(of: "--config-dir").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
-        let stableDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("DualDock")
-        if preview {
-            do {
-                directory = try LocalPreviewConfiguration.directory(bundle: Bundle.main.bundleURL, override: override)
-                firstLaunch = !FileManager.default.fileExists(atPath: directory.appendingPathComponent("configuration.json").path)
-                let original = override == nil ? stableDirectory.appendingPathComponent("configuration.json") : nil
-                try LocalPreviewConfiguration.seed(directory: directory, originalURL: original,
-                                                  displayIDs: DockDisplayInfo.current().map(\.id))
-            } catch {
-                let alert = NSAlert(error: error)
-                alert.messageText = L("无法打开本地试用配置", "Cannot open local preview configuration")
-                alert.runModal()
-                NSApp.terminate(nil)
-                return
-            }
-            AppLanguage.useLocalSettings(in: directory)
-        } else {
-            directory = override.map { URL(fileURLWithPath: $0) } ?? stableDirectory
-            firstLaunch = !FileManager.default.fileExists(atPath: directory.appendingPathComponent("configuration.json").path)
+        do {
+            directory = try LocalPreviewConfiguration.directory(bundle: Bundle.main.bundleURL,
+                                                                override: override, preview: preview)
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.messageText = L("无法打开 DualDock 3 配置目录", "Could not open the DualDock 3 settings folder")
+            alert.runModal()
+            NSApp.terminate(nil)
+            return
         }
-        store = AppStore(directory: directory, managesSystemDock: !preview)
+        let firstLaunch = !FileManager.default.fileExists(atPath: directory.appendingPathComponent("configuration.json").path)
+        AppLanguage.useLocalSettings(in: directory)
+        store = AppStore(directory: directory)
         if !preview {
             SoftwareUpdateService.shared.beforeRelaunch = { [weak self] in self?.store?.flushPendingSave() }
         }

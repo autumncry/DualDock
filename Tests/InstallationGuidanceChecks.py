@@ -12,8 +12,8 @@ import unittest
 REPOSITORY = Path(__file__).resolve().parents[1]
 GUARD = REPOSITORY / "script/check_installation_guidance.py"
 DOCUMENTS = ("README.md", "README.en.md", "docs/installation.txt")
-QUARANTINE_COMMAND = 'xattr -dr com.apple.quarantine "/Applications/DualDock.app"'
-LAUNCH_COMMAND = 'open "/Applications/DualDock.app"'
+QUARANTINE_COMMAND = 'xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"'
+LAUNCH_COMMAND = 'open "/Applications/DualDock 3.app"'
 
 
 class InstallationGuidanceChecks(unittest.TestCase):
@@ -113,7 +113,7 @@ class InstallationGuidanceChecks(unittest.TestCase):
         contents = document.read_text()
         for replacement in (
             "sudo " + QUARANTINE_COMMAND,
-            QUARANTINE_COMMAND + '\nxattr -cr "/Applications/DualDock.app"',
+            QUARANTINE_COMMAND + '\nxattr -cr "/Applications/DualDock 3.app"',
             QUARANTINE_COMMAND + "\nsudo spctl --master-disable",
         ):
             with self.subTest(replacement=replacement):

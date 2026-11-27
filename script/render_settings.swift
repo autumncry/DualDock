@@ -14,7 +14,7 @@ import ScreenCaptureKit
     @MainActor static func main() throws {
         // The standalone renderer uses its own defaults domain. Never use the
         // installed app's preference domain, even when a capture fails.
-        precondition(Bundle.main.bundleIdentifier != "local.ronny.DualDock" &&
+        precondition(Bundle.main.bundleURL.pathExtension != "app" &&
                      ProcessInfo.processInfo.processName == "RenderSettings")
         if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--expect-language" {
             guard AppLanguage.current.rawValue == CommandLine.arguments[2] else { exit(1) }

@@ -9,14 +9,14 @@ import sys
 MARKER_START = "<!-- first-launch-guidance:start -->"
 MARKER_END = "<!-- first-launch-guidance:end -->"
 TERMINAL_COMMANDS = (
-    'xattr -dr com.apple.quarantine "/Applications/DualDock.app"',
-    'open "/Applications/DualDock.app"',
+    'xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"',
+    'open "/Applications/DualDock 3.app"',
 )
 COMMON = (
     "Apple Developer ID",
     "Open Anyway",
     "SHA-256",
-    "https://github.com/autumncry/DualDock/releases/latest",
+    "https://github.com/autumncry/DualDock/releases?q=v3.",
     "https://github.com/autumncry/DualDock/issues",
     "https://support.apple.com/en-us/102445",
     "https://support.apple.com/en-gb/guide/mac-help/mh40617/mac",

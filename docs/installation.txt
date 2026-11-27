@@ -4,7 +4,7 @@ DualDock 3.0.0
 macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。
 
 安装
-1. 将 DualDock.app 拖到本窗口的 Applications 文件夹。
+1. 将 DualDock 3.app 拖到本窗口的 Applications 文件夹。
 2. 从“应用程序”打开 DualDock。首次验证的图文步骤和复制命令按钮位于本磁盘的“首次安装 - First Launch.html”。安装完成后弹出磁盘映像。
 
 首次启动：Apple 无法验证或无法验证开发者
@@ -12,7 +12,7 @@ macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。
 首次打开可能提示“Apple 无法验证 DualDock 是否包含恶意软件”或“无法验证开发者”。
 仅当安装包来自本项目官方 Releases、你确认来源可信且文件未被篡改，并决定继续时，
 按以下步骤允许这一个应用：
-https://github.com/autumncry/DualDock/releases/latest
+https://github.com/autumncry/DualDock/releases?q=v3.
 
 1. 将应用复制到“应用程序”后，先尝试打开 DualDock，再关闭验证提示。
 2. 打开“系统设置 → 隐私与安全性”，向下滚动到“安全性”，找到 DualDock 的阻止记录，
@@ -23,10 +23,10 @@ https://github.com/autumncry/DualDock/releases/latest
 
 可选：使用终端打开
 选择命令行方式前，请确认应用来自上方官方 Releases、来源可信且未被篡改，
-并已复制到 /Applications/DualDock.app。打开“终端”，依次执行：
+并已复制到 /Applications/DualDock 3.app。打开“终端”，依次执行：
 
-xattr -dr com.apple.quarantine "/Applications/DualDock.app"
-open "/Applications/DualDock.app"
+xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"
+open "/Applications/DualDock 3.app"
 
 第一条命令仅移除这个应用包及其内部文件的 com.apple.quarantine 隔离属性，
 不清除其他扩展属性，也不关闭系统整体的 Gatekeeper。第二条启动应用。
@@ -62,31 +62,13 @@ https://support.apple.com/en-gb/guide/mac-help/mh40617/mac
 布局示例使用五个固定图标，随设置变化，不反映实际打开的应用。
 
 后续更新
-2.8.0 起，打开“设置 → 支持 → 关于 DualDock”，点击“检查更新”。有新版本时可查看变更，确认下载并安装重启。使用 2.7.0 或更早版本时，请先从官方 Releases 手动安装一次本版。
-
-版本说明
-2.9.2（构建 42）在应用切换 Dock 显示资格时安全刷新活动区，保留微信独立浏览器的收起和还原修复。
-2.9.1（构建 41）改进微信独立浏览器窗口的收起与还原，并修复后台应用转为普通应用后活动图标延迟出现的问题。
-2.9.0（构建 40）加入五种应用组图标风格，可在“Dock → 应用组外观”中自定义背景颜色和不透明度。普通桌面支持按需开启自动隐藏，鼠标停留在 Dock 所在边缘即可唤出。
-2.8.7（构建 39）支持从活动应用的右键菜单直接加入已有应用组，并更新应用组图标。
-2.8.6（构建 38）合并“多屏和显示内容”设置入口，保留屏幕位置与显示内容两个分区。
-2.8.5（构建 37）将“点击应用图标”的说明移至“支持 → 使用方法”。
-2.8.4（构建 36）调整设置页字号。
-2.8.3（构建 35）修复从 Dock 点击应用后，目标窗口仍被其他应用遮挡的问题。
-2.8.2（构建 34）统一各设置页的窗口大小，放大选项与说明文字，为图标固定、入组和应用启停增加过渡效果。
-2.8.1（构建 33）将设置窗口的高度适配到当前页面，并重新排列各页控件。
-2.8.0（构建 32）加入 Sparkle 应用内更新和双语首次安装指南。
-2.7.0（构建 31）新增原生设置分类工具栏及可搜索的侧栏，改进窗口激活。可从预览安全关闭的窗口会显示“×”。
-2.6.0（构建 30）新增“交互 → 消息提醒 → 角标大小”，可将应用数字角标和分组叹号从 75% 连续调整到 200%，默认 100%。
-在“通用 → 显示语言”可选择简体中文或 English，切换后立即生效。
-“外观与尺寸 → 高级设置”中的高度滑块现显示为“Dock 高度”。
-首次登记登录项时可直接点击“登录时启动”。需要系统批准时，按提示打开系统登录项。
+本地试用版从 3.0 分支重新构建。正式包启用 3.x 更新通道后，可在“设置 → 支持 → 关于 DualDock”点击“检查更新”，查看变更并确认安装。
 
 源码、版本说明和 SHA-256 校验文件
-https://github.com/autumncry/DualDock/releases/latest
+https://github.com/autumncry/DualDock/releases?q=v3.
 仓库及发布包公开提供。
 
-配置保存在 ~/Library/Application Support/DualDock/。
+配置保存在 ~/Library/Application Support/DualDock 3/。
 正常退出会恢复由 DualDock 修改的系统 Dock 设置。
 窗口截图只在本机内存中缓存。
 

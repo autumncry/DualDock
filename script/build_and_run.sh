@@ -13,8 +13,8 @@ case "$mode" in
     builder="$root/script/package_preview.sh"
     ;;
   --release-dev|--verify|--logs|--telemetry|--debug)
-    name=DualDock
-    destination="$root/dist/DualDock.app"
+    name=DualDock3
+    destination="$root/dist/DualDock 3.app"
     builder="$root/script/package_app.sh"
     ;;
   *) echo "usage: $0 [run|--preview|--build-only|--release-dev|--verify|--logs|--telemetry|--debug]" >&2; exit 2 ;;
@@ -46,7 +46,7 @@ case "$mode" in
   --debug) exec lldb -- "$app/Contents/MacOS/$name" ;;
   --logs|--telemetry)
     open "$app"
-    /usr/bin/log stream --info --style compact --predicate 'process == "DualDock"'
+    /usr/bin/log stream --info --style compact --predicate 'process == "DualDock3"'
     ;;
   --verify)
     open "$app"; sleep 2

@@ -3,7 +3,7 @@ import QuartzCore
 import DualDockCore
 
 struct DockDrag: Codable {
-    static let pasteboardType = NSPasteboard.PasteboardType((Bundle.main.bundleIdentifier ?? "local.ronny.DualDock") + ".item")
+    static let pasteboardType = NSPasteboard.PasteboardType((Bundle.main.bundleIdentifier ?? "local.ronny.DualDock3") + ".item")
     var appID: String?
     var entryID: UUID
     var groupID: UUID?

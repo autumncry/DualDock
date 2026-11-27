@@ -5,7 +5,8 @@ struct AboutView: View {
     @Environment(\.dualDockLanguage) private var localize
     @ObservedObject private var updates = SoftwareUpdateService.shared
     private let projectURL = URL(string: "https://github.com/autumncry/DualDock")!
-    private let releasesURL = URL(string: "https://github.com/autumncry/DualDock/releases/latest")!
+    private let releasesURL = URL(string: "https://github.com/autumncry/DualDock/releases?q=v3.")!
+    private let branchURL = URL(string: "https://github.com/autumncry/DualDock/tree/feature/dualdock-3.0")!
     private let issuesURL = URL(string: "https://github.com/autumncry/DualDock/issues")!
 
     var body: some View {
@@ -25,7 +26,7 @@ struct AboutView: View {
 
             VStack(spacing: 0) {
                 detailRow(localize("版本", "Version")) {
-                    if LocalPreviewConfiguration.isPreview {
+                    if !updates.supportsUpdates {
                         Text(versionDescription + localize(" · 本地试用版", " · Local preview")).textSelection(.enabled)
                     } else {
                         HStack(spacing: 8) {
@@ -68,8 +69,14 @@ struct AboutView: View {
                 }
                 Divider()
                 detailRow(localize("版本与下载", "Releases")) {
-                    Link(destination: releasesURL) {
-                        Label(localize("查看发布版本", "View Releases"), systemImage: "arrow.down.circle")
+                    if updates.supportsUpdates {
+                        Link(destination: releasesURL) {
+                            Label(localize("查看 3.x 发布版本", "View 3.x Releases"), systemImage: "arrow.down.circle")
+                        }
+                    } else {
+                        Link(destination: branchURL) {
+                            Label(localize("查看 3.0 试用分支", "View the 3.0 Preview Branch"), systemImage: "arrow.triangle.branch")
+                        }
                     }
                 }
                 Divider()

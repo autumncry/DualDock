@@ -3,42 +3,33 @@ import DualDockCore
 @testable import DualDock
 
 final class LocalPreviewTests: XCTestCase {
-    @MainActor func testSeedCopiesGroupsOnceAndSeparatesBothDisplays() async throws {
+    @MainActor func testFirstLaunchUsesNativePinsAndSubsequentLaunchUsesOnlySavedSettings() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let originalURL = root.appendingPathComponent("stable.json")
-        let dataDirectory = root.appendingPathComponent("LocalData")
-        let trialURL = dataDirectory.appendingPathComponent("configuration.json")
-        var stable = DockConfiguration()
-        stable.entries = [DockEntry(name: "Editors", apps: [
-            AppReference(id: "test.editor", name: "Editor", path: "/example/Editor.app"),
-            AppReference(id: "test.notes", name: "Notes", path: "/example/Notes.app")
-        ], isGroup: true)]
-        stable.folderAppearance = DockFolderAppearance(style: .glass,
-            backgroundColor: DockFolderColor(red: 0.2, green: 0.6, blue: 0.7), backgroundOpacity: 0.46)
-        stable.autoHideDock = true
-        stable.autoHideWhenMaximized = false
-        stable.displaySettings["internal"] = DockDisplaySettings(edge: .right)
-        stable.hideSystemDock = true
-        let initial = try JSONEncoder().encode(stable)
-        try initial.write(to: originalURL)
-        try LocalPreviewConfiguration.seed(directory: dataDirectory, originalURL: originalURL, displayIDs: ["internal","external"])
-        let copy = try Data(contentsOf: trialURL)
-        let imported = try JSONDecoder().decode(DockConfiguration.self, from: copy)
-        XCTAssertEqual(imported.version, DockConfiguration.currentVersion)
-        XCTAssertEqual(imported.entries, stable.entries)
-        XCTAssertEqual(imported.folderAppearance, stable.folderAppearance)
-        XCTAssertTrue(imported.autoHideDock)
-        XCTAssertFalse(imported.autoHideWhenMaximized)
-        XCTAssertEqual(imported.displaySettings["internal"]?.edge, .left)
-        XCTAssertEqual(imported.displaySettings["external"]?.edge, .top)
-        XCTAssertFalse(imported.hideSystemDock)
-        XCTAssertEqual(try Data(contentsOf: originalURL), initial)
-        stable.entries = []
-        try JSONEncoder().encode(stable).write(to: originalURL)
-        try LocalPreviewConfiguration.seed(directory: dataDirectory, originalURL: originalURL, displayIDs: ["external"])
-        XCTAssertEqual(try Data(contentsOf: trialURL), copy)
+        let directory = root.appendingPathComponent("LocalData")
+        let pin = AppReference(id: "test.native", name: "Native pin", path: "/example/Native.app")
+        var imports = 0
+        func launch() -> AppStore {
+            AppStore(directory: directory, runningAppsProvider: { [] },
+                     permissionsProvider: { (false, false) }, managesSystemDock: false,
+                     initialPinnedApps: { imports += 1; return [pin] })
+        }
+        let first = launch()
+        XCTAssertEqual(first.configuration.entries.flatMap(\.apps), [pin])
+        XCTAssertFalse(first.configuration.hideSystemDock)
+        XCTAssertEqual(first.edge(for: "new-display"), .bottom)
+        first.update { config in
+            config.displaySettings["internal"] = DockDisplaySettings(edge: .right)
+            config.autoHideDock = true
+        }
+        first.stopBackgroundServices()
+
+        let reopened = launch()
+        defer { reopened.stopBackgroundServices() }
+        XCTAssertEqual(imports, 1)
+        XCTAssertEqual(reopened.configuration.entries.flatMap(\.apps), [pin])
+        XCTAssertEqual(reopened.edge(for: "internal"), .right)
+        XCTAssertTrue(reopened.configuration.autoHideDock)
     }
 
     @MainActor func testExistingV11TrialUpgradesWithoutReseedingGroupsOrTools() async throws {
@@ -69,13 +60,6 @@ final class LocalPreviewTests: XCTestCase {
         let pages = Data(#"{"fixture-A":"apps","fixture-B":"tools"}"#.utf8)
         try pages.write(to: pagesURL)
 
-        let stableURL = directory.appendingPathComponent("stable.json")
-        var stable = DockConfiguration()
-        stable.folderAppearance = DockFolderAppearance(style: .skeuomorphic)
-        let stableData = try JSONEncoder().encode(stable)
-        try stableData.write(to: stableURL)
-        try LocalPreviewConfiguration.seed(directory: directory, originalURL: stableURL, displayIDs: ["fixture-A"])
-
         let store = AppStore(directory: directory, runningAppsProvider: { [] },
                              permissionsProvider: { (false, false) }, managesSystemDock: false)
         store.stopBackgroundServices()
@@ -88,14 +72,17 @@ final class LocalPreviewTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("configuration-before-v12.json")), original)
         XCTAssertEqual(try Data(contentsOf: toolsURL), layout)
         XCTAssertEqual(try Data(contentsOf: pagesURL), pages)
-        XCTAssertEqual(try Data(contentsOf: stableURL), stableData)
     }
 
     func testConfigurationDirectoryIsUnderProject() throws {
         let bundle = URL(fileURLWithPath: "/example/Preview/DualDock 3.app")
-        XCTAssertEqual(try LocalPreviewConfiguration.directory(bundle: bundle, override: nil).path,
+        XCTAssertEqual(try LocalPreviewConfiguration.directory(bundle: bundle, override: nil, preview: true).path,
                        "/example/Preview/LocalData")
-        XCTAssertThrowsError(try LocalPreviewConfiguration.directory(bundle: bundle, override: "/example/Stable"))
-        XCTAssertThrowsError(try LocalPreviewConfiguration.directory(bundle: bundle, override: "/example/Preview/../Stable"))
+        XCTAssertThrowsError(try LocalPreviewConfiguration.directory(bundle: bundle, override: "/example/Stable", preview: true))
+        XCTAssertThrowsError(try LocalPreviewConfiguration.directory(bundle: bundle, override: "/example/Preview/../Stable", preview: true))
+        let installed = try LocalPreviewConfiguration.directory(bundle: bundle, override: nil, preview: false)
+        XCTAssertEqual(installed, LocalPreviewConfiguration.releaseDataDirectory)
+        XCTAssertEqual(installed.lastPathComponent, "DualDock 3")
+        XCTAssertNotEqual(LocalPreviewConfiguration.releaseBundleID, LocalPreviewConfiguration.bundleID)
     }
 }

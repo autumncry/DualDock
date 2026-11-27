@@ -70,18 +70,18 @@ struct GeneralSettingsView: View {
         }
     }
 
-    @ViewBuilder private var systemDock: some View {
-        if !store.managesSystemDock {
-            Text(localize("本地试用版与 2.x 可同时运行。系统 Dock 由原版或系统设置管理。",
-                          "The local preview and 2.x can run together. Manage the system Dock in 2.x or System Settings."))
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-        } else {
+    private var systemDock: some View {
+        Group {
             SettingsSwitchRow(title: localize("隐藏系统 Dock", "Hide the system Dock"),
-                              detail: localize("正常退出 DualDock 时恢复原设置。全屏时，在屏幕边缘停留可唤出 DualDock。",
-                                               "Quitting DualDock restores your settings. In full screen, hold the pointer at the edge to reveal DualDock."),
+                              detail: store.waitingForSystemDock
+                                ? localize("系统 Dock 已隐藏。如果它恢复显示，DualDock 3 会接手隐藏。",
+                                           "The system Dock is already hidden. DualDock 3 will hide it if it becomes visible again.")
+                                : localize("在所有屏幕上隐藏 macOS Dock。关闭开关或退出 DualDock 3 时，恢复本应用更改的设置。",
+                                           "Hide the macOS Dock on all displays. Turning this off or quitting DualDock 3 restores the settings this app changed."),
                               isOn: Binding(get: { store.configuration.hideSystemDock }, set: { store.setSystemDockHidden($0) }))
             Divider()
             Button(localize("恢复系统 Dock", "Restore System Dock")) { store.restoreSystemDock() }
+                .disabled(!store.configuration.hideSystemDock && !store.systemDock.hasRecoveryRecord)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
@@ -109,11 +109,11 @@ struct GeneralSettingsView: View {
     private var loginDescription: String {
         switch launchAtLogin.status {
         case .notRegistered, .notFound:
-            return localize("登录 macOS 后自动打开 DualDock。", "Open DualDock when you sign in to macOS.")
+            return localize("登录 macOS 后自动打开 DualDock 3。", "Open DualDock 3 when you sign in to macOS.")
         case .enabled:
             return localize("已开启，下次登录 macOS 时生效。", "Enabled for your next macOS login.")
         case .requiresApproval:
-            return localize("等待批准，请在系统登录项中允许 DualDock。", "Approval pending. Allow DualDock in Login Items.")
+            return localize("等待批准，请在系统登录项中允许 DualDock 3。", "Approval pending. Allow DualDock 3 in Login Items.")
         case .unknown:
             return localize("暂时无法读取登录项状态，请稍后重试。", "Login item status is unavailable. Try again later.")
         }

@@ -17,12 +17,11 @@ preview their windows, and keep the same layout on your MacBook and external mon
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#requirements)
-[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases/latest)
-[![Release](https://img.shields.io/github/v/release/autumncry/DualDock)](https://github.com/autumncry/DualDock/releases/latest)
+[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases?q=v3.)
 
 [简体中文](README.md) &nbsp;·&nbsp; **English**
 
-[**Download**](https://github.com/autumncry/DualDock/releases/latest) &nbsp;·&nbsp; [**Build from source**](#building-from-source) &nbsp;·&nbsp; [**Report an issue**](https://github.com/autumncry/DualDock/issues)
+[**3.x releases**](https://github.com/autumncry/DualDock/releases?q=v3.) &nbsp;·&nbsp; [**Build from source**](#building-from-source) &nbsp;·&nbsp; [**Report an issue**](https://github.com/autumncry/DualDock/issues)
 
 </div>
 
@@ -144,13 +143,13 @@ Enable **Launch at Login** in General to start DualDock after signing into macOS
 - **Notification badges:** individual apps show the labels supplied by the system; a group shows a red **!** when a member has an unread indicator. In Interaction → Notifications, use **Badge size** to scale counts and exclamation marks from 75% to 200% (default 100%). The setting applies to every display and open group. A global switch disables badges. Only badge state is read, not notification text. Some apps may not provide a usable label.
 - **System Dock management:** optionally hide the system Dock. The preferences changed by DualDock are restored on normal exit, or recovered at the next launch after an interruption; later manual changes are preserved. A manual restore command is also available in the menu bar.
 - **Quick access to Settings:** right-click a blank area of the Dock, or use the overlapping-rectangles icon in the menu bar.
-- **Local configuration:** groups, order, and preferences live in `~/Library/Application Support/DualDock/`, with migration backups created when needed.
+- **Local configuration:** the local preview stores groups, order, and preferences in `LocalData/` beside the app. Release bundles use `~/Library/Application Support/DualDock 3/`, with migration backups created when needed.
 
 ## Download and install
 
-Download the latest `DualDock-<version>-arm64.dmg` and optional SHA-256 checksum from [Releases](https://github.com/autumncry/DualDock/releases/latest).
+Build the current 3.0 preview [from this branch](#building-from-source). When 3.x releases are available, download the matching `DualDock-<version>-arm64.dmg` and optional SHA-256 checksum from [Releases](https://github.com/autumncry/DualDock/releases?q=v3.).
 
-1. Open the DMG and drag `DualDock.app` into `Applications`.
+1. Open the DMG and drag `DualDock 3.app` into `Applications`.
 2. Launch DualDock and grant **Screen Recording** and **Accessibility** access in its Permissions settings.
 3. Choose the display mode, adaptive or manual sizing, and each display’s position in Settings, then organize app groups with drag-and-drop. Hiding the system Dock is off by default and can be enabled when desired.
 
@@ -161,12 +160,12 @@ Screen Recording provides window thumbnails; Accessibility identifies, activates
 
 Open **首次安装 - First Launch.html** inside the DMG for an offline guide in English and Chinese. Its **Copy commands** button copies the optional Terminal commands for you to review and run.
 
-**Updates:** From 2.8.0 onward, open **Settings → Support → About DualDock → Check for Updates**. If a newer version is available, review it and confirm the download, installation, and relaunch. Install this first updater-enabled version manually if upgrading from 2.7.0 or earlier.
+**Updates:** Rebuild the local preview from this branch. Releases with the 3.x update channel enabled can check for updates from **Settings → Support → About DualDock**.
 
 <!-- first-launch-guidance:start -->
 ### First launch: Apple cannot verify the app or developer
 
-The current release is not Apple Developer ID signed or notarized. macOS may say that Apple cannot verify DualDock or that the developer cannot be verified. **Proceed only if you obtained the app from this project's [official Releases](https://github.com/autumncry/DualDock/releases/latest), trust its source, have checked that it was not tampered with, and choose to open it.** This approval applies to this app:
+The current release is not Apple Developer ID signed or notarized. macOS may say that Apple cannot verify DualDock or that the developer cannot be verified. **Proceed only if you obtained the app from this project's [official Releases](https://github.com/autumncry/DualDock/releases?q=v3.), trust its source, have checked that it was not tampered with, and choose to open it.** This approval applies to this app:
 
 1. After copying DualDock to Applications, try opening it once, then dismiss the verification alert.
 2. Open **System Settings → Privacy & Security**, scroll to Security, and find the blocked DualDock entry. Click **Open Anyway**; some macOS versions first show an **Open** entry.
@@ -175,11 +174,11 @@ The current release is not Apple Developer ID signed or notarized. macOS may say
 
 #### Optional: open from Terminal
 
-If you choose the command-line route, first confirm that the app came from the official Releases above, trust its source, check that it was not tampered with, and copy it to `/Applications/DualDock.app`. Open Terminal and run these commands in order:
+If you choose the command-line route, first confirm that the app came from the official Releases above, trust its source, check that it was not tampered with, and copy it to `/Applications/DualDock 3.app`. Open Terminal and run these commands in order:
 
 ```sh
-xattr -dr com.apple.quarantine "/Applications/DualDock.app"
-open "/Applications/DualDock.app"
+xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"
+open "/Applications/DualDock 3.app"
 ```
 
 The first command removes only the `com.apple.quarantine` attribute from this app bundle and its contents. It does not clear other extended attributes or disable Gatekeeper system-wide. The second command launches the app. This does not sign or notarize the app, or grant Accessibility or Screen Recording access; grant those permissions separately when using the app. Keep the complete path unchanged and do not add `sudo` by default. If you encounter a permission error, use the System Settings route above.

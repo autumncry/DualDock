@@ -144,11 +144,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private func installEditingMenuIfNeeded() {
         guard NSApp.mainMenu == nil || NSApp.mainMenu === editingMenu else { return }
         let menu = NSMenu()
-        let appItem = NSMenuItem(title: "DualDock", action: nil, keyEquivalent: "")
-        let appMenu = NSMenu(title: "DualDock")
+        let appItem = NSMenuItem(title: "DualDock 3", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu(title: "DualDock 3")
         appMenu.addItem(withTitle: L("设置…", "Settings…"), action: #selector(requestSettings(_:)), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: L("退出 DualDock", "Quit DualDock"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
+        appMenu.addItem(withTitle: L("退出 DualDock 3", "Quit DualDock 3"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
         appItem.submenu = appMenu
         menu.addItem(appItem)
         let fileItem = NSMenuItem(title: L("文件", "File"), action: nil, keyEquivalent: "")

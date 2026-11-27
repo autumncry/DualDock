@@ -17,12 +17,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#系统要求)
-[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases/latest)
-[![Release](https://img.shields.io/github/v/release/autumncry/DualDock)](https://github.com/autumncry/DualDock/releases/latest)
+[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases?q=v3.)
 
 **简体中文** &nbsp;·&nbsp; [English](README.en.md)
 
-[**下载最新版**](https://github.com/autumncry/DualDock/releases/latest) &nbsp;·&nbsp; [**从源码构建**](#从源码构建) &nbsp;·&nbsp; [**反馈问题**](https://github.com/autumncry/DualDock/issues)
+[**查看 3.x 发布**](https://github.com/autumncry/DualDock/releases?q=v3.) &nbsp;·&nbsp; [**从源码构建**](#从源码构建) &nbsp;·&nbsp; [**反馈问题**](https://github.com/autumncry/DualDock/issues)
 
 </div>
 
@@ -144,14 +143,14 @@
 - **消息角标：** 单个应用显示系统提供的数量或标签，组内有未读提醒时显示红色 **!**；在“交互 → 消息提醒 → 角标大小”中可从 75% 到 200% 连续调整数字和叹号，默认 100%。所有屏幕和已展开的分组同时更新。可统一关闭。只读取角标状态，不读取通知正文。部分应用可能不提供可用角标。
 - **系统 Dock 管理：** 可选择隐藏系统 Dock；正常退出时恢复由 DualDock 修改的设置，异常退出后在下次启动时恢复，并保留之后手动更改的项目。菜单栏也提供手动恢复入口。
 - **方便进入设置：** 右键 Dock 空白处，或点击菜单栏的双矩形图标。
-- **本地配置：** 分组、排列和设置保存在 `~/Library/Application Support/DualDock/`，升级时按需保留迁移前备份。
+- **本地配置：** 本地试用版的分组、排列和设置保存在应用同级的 `LocalData/`；正式包使用 `~/Library/Application Support/DualDock 3/`，升级时按需保留迁移前备份。
 
 ## 下载与安装
 
-前往 [Releases](https://github.com/autumncry/DualDock/releases/latest) 下载最新的 `DualDock-版本号-arm64.dmg`，以及可选的 SHA-256 校验文件。
+当前 3.0 试用版从[本分支源码](#从源码构建)构建。3.x 正式发布后，可前往 [Releases](https://github.com/autumncry/DualDock/releases?q=v3.) 下载最新的 `DualDock-版本号-arm64.dmg`，以及可选的 SHA-256 校验文件。
 
-1. 打开 DMG，将 `DualDock.app` 拖入 `Applications`。
-2. 从“应用程序”启动 DualDock，在“权限”页授予**屏幕录制**和**辅助功能**权限。
+1. 打开 DMG，将 `DualDock 3.app` 拖入 `Applications`。
+2. 从“应用程序”启动 DualDock 3，在“权限”页授予**屏幕录制**和**辅助功能**权限。
 3. 在设置中选择显示模式、自适应或手动尺寸，并为各屏设置位置，再通过拖拽整理应用组。系统 Dock 隐藏默认关闭，可按需启用。
 
 屏幕录制用于窗口缩略图；辅助功能用于匹配、切换和关闭窗口，以及读取系统 Dock 的布局和角标。权限变更后如未生效，请退出并重新打开 DualDock。更新时保留本地配置。
@@ -161,12 +160,12 @@
 
 DMG 附带 **首次安装 - First Launch.html**。双击后可离线查看中英文首次启动指南，点击“复制命令”后可将命令粘贴到终端。
 
-**后续更新**：从 2.8.0 起，在 **设置 → 支持 → 关于 DualDock** 点击 **检查更新**。有新版本时可查看变更，确认后下载、验证并重启安装。2.7.0 及更早版本需要先手动安装一次带更新器的版本。
+**后续更新**：本地试用版可用本分支的新源码重新构建。启用 3.x 更新通道的正式包可在 **设置 → 支持 → 关于 DualDock** 中检查更新。
 
 <!-- first-launch-guidance:start -->
 ### 首次启动：Apple 无法验证或无法验证开发者
 
-当前发布包尚未经过 Apple Developer ID 签名和公证，首次打开可能出现“Apple 无法验证 DualDock 是否包含恶意软件”或“无法验证开发者”。**仅当安装包来自本项目的[官方 Releases](https://github.com/autumncry/DualDock/releases/latest)，且你确认来源可信、文件未被篡改并决定继续时**，按以下步骤允许这一个应用：
+当前发布包尚未经过 Apple Developer ID 签名和公证，首次打开可能出现“Apple 无法验证 DualDock 是否包含恶意软件”或“无法验证开发者”。**仅当安装包来自本项目的[官方 Releases](https://github.com/autumncry/DualDock/releases?q=v3.)，且你确认来源可信、文件未被篡改并决定继续时**，按以下步骤允许这一个应用：
 
 1. 将应用拖入“应用程序”后，先尝试打开 DualDock；出现上述提示后关闭提示。
 2. 打开 **系统设置 → 隐私与安全性**，向下滚动到“安全性”，找到 DualDock 的阻止记录，点击 **仍要打开（Open Anyway）**；部分系统会先显示“打开”入口。
@@ -175,11 +174,11 @@ DMG 附带 **首次安装 - First Launch.html**。双击后可离线查看中英
 
 #### 可选：使用终端打开
 
-如果你选择命令行方式，请先确认应用来自上方官方 Releases、来源可信且未被篡改，并已复制到 `/Applications/DualDock.app`。打开“终端”，依次执行：
+如果你选择命令行方式，请先确认应用来自上方官方 Releases、来源可信且未被篡改，并已复制到 `/Applications/DualDock 3.app`。打开“终端”，依次执行：
 
 ```sh
-xattr -dr com.apple.quarantine "/Applications/DualDock.app"
-open "/Applications/DualDock.app"
+xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"
+open "/Applications/DualDock 3.app"
 ```
 
 第一条命令仅移除这个应用包及其内部文件的 `com.apple.quarantine` 隔离属性，不清除其他扩展属性，也不关闭系统整体的 Gatekeeper。第二条启动应用。这不会为应用签名或公证，也不会授予辅助功能或屏幕录制权限；这些权限仍在首次使用时单独授权。请保持完整路径不变，不要默认添加 `sudo`；如遇权限错误，可使用上方系统设置方式。
