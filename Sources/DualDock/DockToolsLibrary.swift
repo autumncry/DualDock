@@ -62,16 +62,16 @@ enum ToolLibraryItem: Hashable, Identifiable {
 
     func summary(_ l: AppLanguage) -> String {
         switch self {
-        case .widget(.systemStatus): return l("查看 CPU 使用率", "Current CPU use")
+        case .widget(.systemStatus): return l("CPU、内存和交换空间", "CPU, memory and swap")
         case .widget(.battery): return l("查看本机电池电量", "Mac battery charge")
         case .widget(.storage): return l("查看磁盘可用空间", "Available disk space")
         case .widget(.focusTimer): return l("开始或暂停专注倒计时", "Start or pause a focus timer")
         case .widget(.codexQuota): return l("查看套餐窗口余量与重置时间", "Plan limits and reset times")
         case .widget(.claudeQuota): return l("查看短周期与每周余量", "Session and weekly limits")
-        case .widget(.geminiQuota): return l("按模型查看可用配额", "Remaining quota by model")
+        case .widget(.geminiQuota): return l("从 Gemini CLI 导入模型余量", "Import model quotas from Gemini CLI")
         case .widget(.music): return l("查看正在播放的音乐与播放列表", "Now Playing and the current playlist")
         case .widget(.weather): return l("查看所选城市的天气", "Forecast for a city")
-        case .widget(.calendar): return l("日期与下一项日程", "Date and next calendar event")
+        case .widget(.calendar): return l("月视图、周视图与日程", "Month, week and upcoming events")
         case .destination(.application): return l("打开所选应用", "Launch a chosen app")
         case .destination(.file): return l("打开本机文件或目录", "Open a local item")
         case .destination(.website): return l("打开指定网页", "Open a web address")

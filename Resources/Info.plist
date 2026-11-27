@@ -22,7 +22,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>3.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>44</string>
+	<string>45</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>SUFeedURL</key>
@@ -52,6 +52,6 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>经你允许，DualDock 3 可以显示正在播放的曲目并控制音乐 App。</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>经你允许，DualDock 3 可以在工具页显示下一项日程。</string>
+	<string>DualDock 3 可在工具页显示下一项日程，并在周历或月历中显示所选日期的日程。</string>
 </dict>
 </plist>

@@ -93,7 +93,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     // and English labels with prepositions should be searchable as displayed.
     private var keywords: String {
         switch self {
-        case .tools: return "工具页 卡片 音乐 天气 日历 快捷指令 双指 翻页 堆栈 组件库 已添加 电池 磁盘 专注 额度 余量 查询 tools page music weather calendar shortcuts cards stack page gestures widgets library battery storage focus timer quota Codex Claude Gemini"
+        case .tools: return "工具页 卡片 音乐 天气 日历 快捷指令 双指 翻页 堆栈 组件库 已添加 CPU 内存 交换空间 电池 磁盘 专注 月视图 周视图 额度 余量 导入 查询 tools page music weather calendar shortcuts cards stack page gestures widgets library memory swap battery storage focus timer calendar month week quota import Codex Claude Gemini"
         case .appearance: return "大小 预设 图标间距 长度 Dock高度 两端留白 高级设置 尺寸模式 跟随系统Dock 恢复自动 同步各屏尺寸 放不下时先缩小图标 size preset icon spacing length Dock height end padding sizing mode advanced reset sync sizes across displays shrink icons before scrolling"
         case .groupAppearance: return "文件夹 文件夹外观 应用组图标 图标风格 背景颜色 背景透明度 背景不透明度 银灰 经典 扁平 拟物 皮革 玻璃 文件夹背景 恢复默认外观 风格原色 folder folders group icon style silver classic flat skeuomorphic leather glass background color colour tint opacity transparency reset restore default"
         case .displays: return "多屏和显示内容 外接显示器 方向 Dock位置 底部 顶部 左侧 右侧 调整所有屏幕尺寸 调整此屏幕尺寸 displays and content screen monitor display Dock position left right top bottom adjust size for all displays"
