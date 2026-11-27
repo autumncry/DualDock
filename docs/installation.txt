@@ -4,7 +4,7 @@ DualDock 3.0.0
 macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。
 
 安装
-1. 将 DualDock 3.app 拖到本窗口的 Applications 文件夹。
+1. 将 DualDock.app 拖到本窗口的 Applications 文件夹。
 2. 从“应用程序”打开 DualDock。首次验证的图文步骤和复制命令按钮位于本磁盘的“首次安装 - First Launch.html”。安装完成后弹出磁盘映像。
 
 首次启动：Apple 无法验证或无法验证开发者
@@ -12,7 +12,7 @@ macOS 14 或更新版本。此 arm64 安装包适用于 Apple Silicon Mac。
 首次打开可能提示“Apple 无法验证 DualDock 是否包含恶意软件”或“无法验证开发者”。
 仅当安装包来自本项目官方 Releases、你确认来源可信且文件未被篡改，并决定继续时，
 按以下步骤允许这一个应用：
-https://github.com/autumncry/DualDock/releases?q=v3.
+https://github.com/autumncry/DualDock/releases/latest
 
 1. 将应用复制到“应用程序”后，先尝试打开 DualDock，再关闭验证提示。
 2. 打开“系统设置 → 隐私与安全性”，向下滚动到“安全性”，找到 DualDock 的阻止记录，
@@ -23,10 +23,10 @@ https://github.com/autumncry/DualDock/releases?q=v3.
 
 可选：使用终端打开
 选择命令行方式前，请确认应用来自上方官方 Releases、来源可信且未被篡改，
-并已复制到 /Applications/DualDock 3.app。打开“终端”，依次执行：
+并已复制到 /Applications/DualDock.app。打开“终端”，依次执行：
 
-xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"
-open "/Applications/DualDock 3.app"
+xattr -dr com.apple.quarantine "/Applications/DualDock.app"
+open "/Applications/DualDock.app"
 
 第一条命令仅移除这个应用包及其内部文件的 com.apple.quarantine 隔离属性，
 不清除其他扩展属性，也不关闭系统整体的 Gatekeeper。第二条启动应用。
@@ -44,6 +44,11 @@ https://support.apple.com/en-us/102445
 https://support.apple.com/en-gb/guide/mac-help/mh40617/mac
 
 
+从现有版本升级
+已安装 DualDock 2.8.0 或更高版本时，可从“支持 → 关于 DualDock → 检查更新”直接升级。通过 DMG 安装时，请退出旧版，用本磁盘的 DualDock.app 替换“应用程序”中的同名应用。
+如果系统能找到旧试用配置，首次启动会先备份已有正式版配置，再导入试用版的应用组、屏幕设置和工具页排列。备份目录为 ~/Library/Application Support/DualDock Backups/。没有试用配置时继续使用原有设置。
+曾为独立试用版开启登录启动的用户，可在 macOS 的“登录项与扩展”检查并关闭旧试用项。
+
 首次使用
 1. 右键 Dock 空白处或点击菜单栏双矩形图标打开设置，在“权限”页授予屏幕录制与辅助功能。
 2. 在“外观与尺寸”选择“自定义”或“跟随系统 Dock”，在“多屏和显示内容”中为每块屏幕选择位置。
@@ -55,6 +60,11 @@ https://support.apple.com/en-gb/guide/mac-help/mh40617/mac
 7. 右键应用图标可选择窗口；后台窗口先前置，普通前台窗口再点最小化，继续点还原。
    全屏和最大化窗口只激活。动画由系统与原应用提供。
 
+应用页与工具页
+将指针放在 Dock 上，水平 Dock 用双指上下滑动切页，竖向 Dock 用双指左右滑动切页。每块屏幕记住自己的页面。也可从菜单栏选择“切换本屏应用页与工具页”。
+在“设置 → Dock → 工具页”点击“编辑”，从组件库拖入所需工具、排序或调整宽度，点击“确定”后在各屏生效。
+组件库提供系统状态、专注计时、音乐、天气、日历、快捷入口，以及 Codex、Gemini、Claude、Cursor 的额度卡。
+
 尺寸与位置
 大小决定图标。图标间距 0 表示可见边界贴合，100 表示约一个图标宽度；留白可在高级设置中独立调整。
 长度可贴合、占满或按比例固定。达到上限后可滚动；高度最多占适用屏幕短边的 12%。
@@ -62,13 +72,13 @@ https://support.apple.com/en-gb/guide/mac-help/mh40617/mac
 布局示例使用五个固定图标，随设置变化，不反映实际打开的应用。
 
 后续更新
-本地试用版从 3.0 分支重新构建。正式包启用 3.x 更新通道后，可在“设置 → 支持 → 关于 DualDock”点击“检查更新”，查看变更并确认安装。
+在“设置 → 支持 → 关于 DualDock”点击“检查更新”，查看变更并确认安装。已有 2.8.0 及以上正式版也可以从这个入口升级。
 
 源码、版本说明和 SHA-256 校验文件
-https://github.com/autumncry/DualDock/releases?q=v3.
+https://github.com/autumncry/DualDock/releases/latest
 仓库及发布包公开提供。
 
-配置保存在 ~/Library/Application Support/DualDock 3/。
+配置保存在 ~/Library/Application Support/DualDock/。
 正常退出会恢复由 DualDock 修改的系统 Dock 设置。
 窗口截图只在本机内存中缓存。
 

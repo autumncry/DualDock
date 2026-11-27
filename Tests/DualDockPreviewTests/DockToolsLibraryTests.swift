@@ -17,7 +17,7 @@ final class DockToolsLibraryTests: XCTestCase {
         XCTAssertEqual(ToolLibraryItem.matching(category: .system, query: "内存 swap"), [.widget(.systemStatus)])
         XCTAssertEqual(ToolLibraryItem.matching(category: .life, query: "月视图 week"), [.widget(.calendar)])
         XCTAssertTrue(ToolLibraryItem.matching(category: .system, query: "Gemini").isEmpty)
-        XCTAssertEqual(Set(ToolLibraryItem.matching(category: .ai, query: "")), [.widget(.codexQuota), .widget(.claudeQuota), .widget(.geminiQuota)])
+        XCTAssertEqual(Set(ToolLibraryItem.matching(category: .ai, query: "")), [.widget(.codexQuota), .widget(.claudeQuota), .widget(.geminiQuota), .widget(.cursorQuota)])
         for item in ToolLibraryItem.items { XCTAssertEqual(ToolLibraryItem(dragID: item.dragID), item) }
         XCTAssertNil(ToolLibraryItem(dragID: "../../../arbitrary"))
     }

@@ -15,7 +15,7 @@ enum ToolMusicCommand: Equatable, Sendable {
 /// All Apple events address an already-running PID. Reads never open Music or
 /// ask for permission. Explicit connection is the only operation that may prompt.
 final class ToolMusicClient: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "DualDock3.Music", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "DualDock.Music", qos: .userInitiated)
     // Accessed only on queue. The current artwork is never written to disk.
     private var lastArt: (id: String, data: Data?, checkedAt: Date)?
 

@@ -30,7 +30,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.initialFrameSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = L("DualDock 3 设置", "DualDock 3 Settings")
+        window.title = L("DualDock 设置", "DualDock Settings")
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
         super.init(window: window)
@@ -106,7 +106,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     }
 
     @objc private func updateLanguage() {
-        window?.title = L("DualDock 3 设置", "DualDock 3 Settings")
+        window?.title = L("DualDock 设置", "DualDock Settings")
         for item in window?.toolbar?.items ?? [] {
             if let category = SettingsCategory(rawValue: item.itemIdentifier.rawValue) { item.label = category.title }
         }
@@ -144,11 +144,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTo
     private func installEditingMenuIfNeeded() {
         guard NSApp.mainMenu == nil || NSApp.mainMenu === editingMenu else { return }
         let menu = NSMenu()
-        let appItem = NSMenuItem(title: "DualDock 3", action: nil, keyEquivalent: "")
-        let appMenu = NSMenu(title: "DualDock 3")
+        let appItem = NSMenuItem(title: "DualDock", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu(title: "DualDock")
         appMenu.addItem(withTitle: L("设置…", "Settings…"), action: #selector(requestSettings(_:)), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: L("退出 DualDock 3", "Quit DualDock 3"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
+        appMenu.addItem(withTitle: L("退出 DualDock", "Quit DualDock"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
         appItem.submenu = appMenu
         menu.addItem(appItem)
         let fileItem = NSMenuItem(title: L("文件", "File"), action: nil, keyEquivalent: "")

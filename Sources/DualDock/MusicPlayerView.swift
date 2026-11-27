@@ -123,7 +123,7 @@ struct MusicPlayerView: View {
         .frame(width: 302)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("DualDock3.Music.Player")
+        .accessibilityIdentifier("DualDock.Music.Player")
         .onAppear { data.setMusicPanelVisible(true, id: sessionID) }
         .onDisappear {
             data.setMusicPlaylistVisible(false, id: sessionID)
@@ -144,7 +144,7 @@ struct MusicPlayerView: View {
                 .frame(width: 26, height: 28).contentShape(Rectangle())
         }
         .buttonStyle(.plain).accessibilityLabel(label).help(label)
-        .accessibilityIdentifier("DualDock3.Music.Playlist")
+        .accessibilityIdentifier("DualDock.Music.Playlist")
     }
 
     private func transport(_ symbol: String, _ label: String, id: String,
@@ -154,7 +154,7 @@ struct MusicPlayerView: View {
                 .frame(width: 45, height: 35).contentShape(Rectangle())
         }
         .buttonStyle(.plain).accessibilityLabel(label).help(label)
-        .accessibilityIdentifier("DualDock3.Music." + id)
+        .accessibilityIdentifier("DualDock.Music." + id)
     }
 
     @ViewBuilder private var playlist: some View {

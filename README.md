@@ -1,9 +1,3 @@
-# DualDock 3.0 开发分支
-
-基线为 **v2.9.2**。用 `./script/package_preview.sh` 在本目录构建独立的 **DualDock 3.app**，双击即可试用。本地配置在同级的 `LocalData/`，已有的 3.0 工具排列会继续使用。[3.0 试用指南](./试用指南.md)
-
-下方是正式发行版的安装与使用说明。
-
 <div align="center">
 
 <img src="Resources/AppIcon.iconset/icon_128x128@2x.png" width="112" alt="DualDock 图标">
@@ -12,16 +6,16 @@
 
 ### 应用有序收纳，Dock 多屏同在。
 
-一款原生 macOS 多屏 Dock。把常用应用收进横向展开的应用组，悬停查看窗口，
-在 MacBook 和外接显示器上使用同一套布局。
+把常用应用收进分组，把音乐、日历、系统状态和 AI 额度放进工具栏。在任意屏幕的 Dock 上双指一滑，即可从应用页切到工具页，当前窗口继续工作。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#系统要求)
-[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases?q=v3.)
+[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-arm64-orange)](https://github.com/autumncry/DualDock/releases/latest)
+[![Release](https://img.shields.io/github/v/release/autumncry/DualDock)](https://github.com/autumncry/DualDock/releases/latest)
 
 **简体中文** &nbsp;·&nbsp; [English](README.en.md)
 
-[**查看 3.x 发布**](https://github.com/autumncry/DualDock/releases?q=v3.) &nbsp;·&nbsp; [**从源码构建**](#从源码构建) &nbsp;·&nbsp; [**反馈问题**](https://github.com/autumncry/DualDock/issues)
+[**下载最新版**](https://github.com/autumncry/DualDock/releases/latest) &nbsp;·&nbsp; [**从源码构建**](#从源码构建) &nbsp;·&nbsp; [**反馈问题**](https://github.com/autumncry/DualDock/issues)
 
 </div>
 
@@ -39,6 +33,18 @@
 - **公开且可修改。** 使用 Swift、AppKit 和 SwiftUI 构建，源码采用 MIT 协议。
 
 ## 功能
+
+### 双指滑动，切换应用页与工具页
+
+把指针移到水平 Dock 上，用触控板双指向上滑动打开工具页，向下滑动返回应用页。Dock 停靠在左侧或右侧时，沿横向切页。每块显示器分别记住当前页。使用鼠标时，可从菜单栏选择「切换本屏应用页与工具页」。
+
+<img src="docs/images/tools-shelf.png" width="620" alt="DualDock 原生工具页，显示音乐、日历和快捷入口（演示数据）">
+
+在 **设置 → Dock → 工具页 → 编辑** 中，从组件库拖入卡片，调整顺序和 1–4 格宽度，或把多张卡片叠放在同一位置。点「确定」后所有屏幕采用新排列。
+
+- **音乐与日历**。点击音乐卡片查看本机「音乐」App 的当前曲目、进度和播放列表，或切换上下曲。日历可切换周／月视图，点击日期查看授权读取的日程。
+- **系统与快捷入口**。查看 CPU、内存、Swap、电池和存储，使用专注计时器、城市天气，或打开文件、网址、应用和 macOS 快捷指令。
+- **四种 AI 额度卡**。Codex 读取本机 Codex CLI 的账号限额，Gemini 读取 Antigravity 的共享额度，Claude 从 Claude Code 的 `/usage` 读取订阅窗口。Cursor 支持旧版 Cursor CLI（试验性）和同一 X 订阅的共享额度池。卡片按服务返回值显示剩余额度与重置时间；未登录、无读数和额度耗尽分别显示。[连接方法与套餐限制](docs/tools.md)
 
 ### 每块屏幕都有 Dock
 
@@ -126,7 +132,7 @@
 
 使用应用夹、窗口预览、右键菜单或拖拽时保持显示，离开后再收起。全屏应用也支持边缘唤出；全屏自动隐藏独立于这个开关。该选项默认关闭，不调整其他应用的窗口尺寸。
 
-### 分页设置
+### 设置窗口
 
 设置顶部提供 **Dock、交互、通用、支持** 四个原生工具栏分类。左侧选择具体设置，按 **⌘F** 可跨分类搜索中英文名称和关键词，例如“角标大小”。设置页共用一个可调整大小的窗口。切换页面、展开高级选项或切换语言时，窗口保持原位，较长的内容在右侧滚动。“交互”和“通用”中的相关设置连续排列，点击侧栏可直接跳到对应位置。窗口与系统明暗外观同步。“关于”页提供版本、MIT 协议和项目链接。
 
@@ -143,14 +149,18 @@
 - **消息角标：** 单个应用显示系统提供的数量或标签，组内有未读提醒时显示红色 **!**；在“交互 → 消息提醒 → 角标大小”中可从 75% 到 200% 连续调整数字和叹号，默认 100%。所有屏幕和已展开的分组同时更新。可统一关闭。只读取角标状态，不读取通知正文。部分应用可能不提供可用角标。
 - **系统 Dock 管理：** 可选择隐藏系统 Dock；正常退出时恢复由 DualDock 修改的设置，异常退出后在下次启动时恢复，并保留之后手动更改的项目。菜单栏也提供手动恢复入口。
 - **方便进入设置：** 右键 Dock 空白处，或点击菜单栏的双矩形图标。
-- **本地配置：** 本地试用版的分组、排列和设置保存在应用同级的 `LocalData/`；正式包使用 `~/Library/Application Support/DualDock 3/`，升级时按需保留迁移前备份。
+- **本地配置：** 分组、排列和设置保存在 `~/Library/Application Support/DualDock/`，升级时按需保留迁移前备份。
+
+### 从 2.x 或试用版升级
+
+v3.0.0 延续原来的 **DualDock.app**、应用身份和更新通道。仅使用过正式版时继续使用现有设置。如果同时检测到试用版配置，会优先导入其应用分组、屏幕位置和工具排列；切换前的完整正式版配置保存在 `~/Library/Application Support/DualDock Backups/`。试用目录里的原文件会保留。
 
 ## 下载与安装
 
-当前 3.0 试用版从[本分支源码](#从源码构建)构建。3.x 正式发布后，可前往 [Releases](https://github.com/autumncry/DualDock/releases?q=v3.) 下载最新的 `DualDock-版本号-arm64.dmg`，以及可选的 SHA-256 校验文件。
+前往 [Releases](https://github.com/autumncry/DualDock/releases/latest) 下载最新的 `DualDock-版本号-arm64.dmg`，以及可选的 SHA-256 校验文件。
 
-1. 打开 DMG，将 `DualDock 3.app` 拖入 `Applications`。
-2. 从“应用程序”启动 DualDock 3，在“权限”页授予**屏幕录制**和**辅助功能**权限。
+1. 打开 DMG，将 `DualDock.app` 拖入 `Applications`。
+2. 从“应用程序”启动 DualDock，在“权限”页授予**屏幕录制**和**辅助功能**权限。
 3. 在设置中选择显示模式、自适应或手动尺寸，并为各屏设置位置，再通过拖拽整理应用组。系统 Dock 隐藏默认关闭，可按需启用。
 
 屏幕录制用于窗口缩略图；辅助功能用于匹配、切换和关闭窗口，以及读取系统 Dock 的布局和角标。权限变更后如未生效，请退出并重新打开 DualDock。更新时保留本地配置。
@@ -160,12 +170,12 @@
 
 DMG 附带 **首次安装 - First Launch.html**。双击后可离线查看中英文首次启动指南，点击“复制命令”后可将命令粘贴到终端。
 
-**后续更新**：本地试用版可用本分支的新源码重新构建。启用 3.x 更新通道的正式包可在 **设置 → 支持 → 关于 DualDock** 中检查更新。
+**后续更新**：从 2.8.0 起，在 **设置 → 支持 → 关于 DualDock** 点击 **检查更新**。有新版本时可查看变更，确认后下载、验证并重启安装。2.7.0 及更早版本需要先手动安装一次带更新器的版本。
 
 <!-- first-launch-guidance:start -->
 ### 首次启动：Apple 无法验证或无法验证开发者
 
-当前发布包尚未经过 Apple Developer ID 签名和公证，首次打开可能出现“Apple 无法验证 DualDock 是否包含恶意软件”或“无法验证开发者”。**仅当安装包来自本项目的[官方 Releases](https://github.com/autumncry/DualDock/releases?q=v3.)，且你确认来源可信、文件未被篡改并决定继续时**，按以下步骤允许这一个应用：
+当前发布包尚未经过 Apple Developer ID 签名和公证，首次打开可能出现“Apple 无法验证 DualDock 是否包含恶意软件”或“无法验证开发者”。**仅当安装包来自本项目的[官方 Releases](https://github.com/autumncry/DualDock/releases/latest)，且你确认来源可信、文件未被篡改并决定继续时**，按以下步骤允许这一个应用：
 
 1. 将应用拖入“应用程序”后，先尝试打开 DualDock；出现上述提示后关闭提示。
 2. 打开 **系统设置 → 隐私与安全性**，向下滚动到“安全性”，找到 DualDock 的阻止记录，点击 **仍要打开（Open Anyway）**；部分系统会先显示“打开”入口。
@@ -174,11 +184,11 @@ DMG 附带 **首次安装 - First Launch.html**。双击后可离线查看中英
 
 #### 可选：使用终端打开
 
-如果你选择命令行方式，请先确认应用来自上方官方 Releases、来源可信且未被篡改，并已复制到 `/Applications/DualDock 3.app`。打开“终端”，依次执行：
+如果你选择命令行方式，请先确认应用来自上方官方 Releases、来源可信且未被篡改，并已复制到 `/Applications/DualDock.app`。打开“终端”，依次执行：
 
 ```sh
-xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"
-open "/Applications/DualDock 3.app"
+xattr -dr com.apple.quarantine "/Applications/DualDock.app"
+open "/Applications/DualDock.app"
 ```
 
 第一条命令仅移除这个应用包及其内部文件的 `com.apple.quarantine` 隔离属性，不清除其他扩展属性，也不关闭系统整体的 Gatekeeper。第二条启动应用。这不会为应用签名或公证，也不会授予辅助功能或屏幕录制权限；这些权限仍在首次使用时单独授权。请保持完整路径不变，不要默认添加 `sudo`；如遇权限错误，可使用上方系统设置方式。
@@ -193,17 +203,17 @@ Apple 说明：[安全地打开 Mac 上的 App](https://support.apple.com/en-us/
 ## 从源码构建
 
 ```sh
-git clone --branch feature/dualdock-3.0 https://github.com/autumncry/DualDock.git
+git clone https://github.com/autumncry/DualDock.git
 cd DualDock
-./script/build_and_run.sh --preview
+./script/build_and_run.sh
 ```
 
-此命令构建并启动当前工作目录中的 `DualDock 3.app`，可与正式安装的 2.x 同时运行。维护者使用 `./script/package_app.sh release` 在 `dist/release/` 中构建正式身份的应用。
+这是一个 Swift Package Manager 项目，无需创建 Xcode 工程。脚本会先请求已运行的 DualDock 正常退出，再构建、打包、本地签名并启动 `dist/DualDock.app`。
 
 ### 系统要求
 
 - 运行环境：macOS 14 或更新版本；当前 DMG 为 Apple Silicon（arm64）构建。
-- 当前应用界面为简体中文。
+- 应用界面支持简体中文和 English，可在「通用」中切换。
 - 构建环境：支持 Swift tools version 5.9、包含相应 macOS SDK 的 Xcode 或命令行工具。
 
 ### 构建与检查命令
@@ -230,6 +240,8 @@ swift test -c release                 # 模型、布局和窗口策略回归
 构建运行脚本也支持 `--logs`、`--telemetry` 和 `--debug`。测试实例可通过 `.app` 启动参数 `--config-dir <目录>` 使用独立配置，或用 `--diagnostics <JSON 路径>` 输出布局诊断。
 
 ## 文档
+
+- [工具页与四种 AI 额度卡](docs/tools.md)
 
 - [安装说明](docs/installation.txt)
 - [验证记录与已知边界](docs/validation.md)

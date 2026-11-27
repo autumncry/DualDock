@@ -75,14 +75,14 @@ final class LocalPreviewTests: XCTestCase {
     }
 
     func testConfigurationDirectoryIsUnderProject() throws {
-        let bundle = URL(fileURLWithPath: "/example/Preview/DualDock 3.app")
+        let bundle = URL(fileURLWithPath: "/example/Preview/DualDock.app")
         XCTAssertEqual(try LocalPreviewConfiguration.directory(bundle: bundle, override: nil, preview: true).path,
                        "/example/Preview/LocalData")
         XCTAssertThrowsError(try LocalPreviewConfiguration.directory(bundle: bundle, override: "/example/Stable", preview: true))
         XCTAssertThrowsError(try LocalPreviewConfiguration.directory(bundle: bundle, override: "/example/Preview/../Stable", preview: true))
         let installed = try LocalPreviewConfiguration.directory(bundle: bundle, override: nil, preview: false)
         XCTAssertEqual(installed, LocalPreviewConfiguration.releaseDataDirectory)
-        XCTAssertEqual(installed.lastPathComponent, "DualDock 3")
+        XCTAssertEqual(installed.lastPathComponent, "DualDock")
         XCTAssertNotEqual(LocalPreviewConfiguration.releaseBundleID, LocalPreviewConfiguration.bundleID)
     }
 }

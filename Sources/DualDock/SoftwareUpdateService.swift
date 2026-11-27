@@ -10,12 +10,10 @@ import Sparkle
 final class SoftwareUpdateService: NSObject, ObservableObject {
     static let shared = SoftwareUpdateService()
 
-    /// A development build has no feed. An older channel must never register
-    /// an updater for this major version, even with the same publisher key.
+    /// Accept only the established HTTPS feed embedded in a production DualDock bundle.
     static func configuredFeed(bundleID: String?, info: [String: Any]?) -> String? {
-        let feed = "https://raw.githubusercontent.com/autumncry/DualDock/main/updates/3/appcast.xml"
+        let feed = "https://raw.githubusercontent.com/autumncry/DualDock/main/updates/appcast.xml"
         guard bundleID == LocalPreviewConfiguration.releaseBundleID,
-              let version = info?["CFBundleShortVersionString"] as? String, version.hasPrefix("3."),
               info?["SUFeedURL"] as? String == feed else { return nil }
         return feed
     }

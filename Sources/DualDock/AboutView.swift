@@ -5,8 +5,7 @@ struct AboutView: View {
     @Environment(\.dualDockLanguage) private var localize
     @ObservedObject private var updates = SoftwareUpdateService.shared
     private let projectURL = URL(string: "https://github.com/autumncry/DualDock")!
-    private let releasesURL = URL(string: "https://github.com/autumncry/DualDock/releases?q=v3.")!
-    private let branchURL = URL(string: "https://github.com/autumncry/DualDock/tree/feature/dualdock-3.0")!
+    private let releasesURL = URL(string: "https://github.com/autumncry/DualDock/releases/latest")!
     private let issuesURL = URL(string: "https://github.com/autumncry/DualDock/issues")!
 
     var body: some View {
@@ -16,7 +15,7 @@ struct AboutView: View {
                     .resizable().scaledToFit().frame(width: 56, height: 56)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("DualDock 3").font(.system(size: 18, weight: .semibold))
+                    Text("DualDock").font(.system(size: 18, weight: .semibold))
                     Text(localize("应用有序收纳，Dock 多屏同在。", "Organized apps. A Dock on every display."))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(localize("原生 macOS 多屏 Dock", "A native multi-display Dock for macOS"))
@@ -27,7 +26,7 @@ struct AboutView: View {
             VStack(spacing: 0) {
                 detailRow(localize("版本", "Version")) {
                     if !updates.supportsUpdates {
-                        Text(versionDescription + localize(" · 本地试用版", " · Local preview")).textSelection(.enabled)
+                        Text(versionDescription + localize(" · 开发构建", " · Development build")).textSelection(.enabled)
                     } else {
                         HStack(spacing: 8) {
                             Text(versionDescription).textSelection(.enabled)
@@ -69,14 +68,8 @@ struct AboutView: View {
                 }
                 Divider()
                 detailRow(localize("版本与下载", "Releases")) {
-                    if updates.supportsUpdates {
-                        Link(destination: releasesURL) {
-                            Label(localize("查看 3.x 发布版本", "View 3.x Releases"), systemImage: "arrow.down.circle")
-                        }
-                    } else {
-                        Link(destination: branchURL) {
-                            Label(localize("查看 3.0 试用分支", "View the 3.0 Preview Branch"), systemImage: "arrow.triangle.branch")
-                        }
+                    Link(destination: releasesURL) {
+                        Label(localize("查看最新发布版本", "View Latest Release"), systemImage: "arrow.down.circle")
                     }
                 }
                 Divider()

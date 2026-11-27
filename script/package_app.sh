@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIGURATION="${1:-release}"
 if [[ $# -gt 2 ]]; then echo "usage: $0 [debug|release] [--with-update-feed]" >&2; exit 2; fi
 case "$CONFIGURATION" in
-  debug) APP_BUNDLE="$ROOT_DIR/dist/DualDock 3.app" ;;
-  release) APP_BUNDLE="$ROOT_DIR/dist/release/DualDock 3.app" ;;
+  debug) APP_BUNDLE="$ROOT_DIR/dist/DualDock.app" ;;
+  release) APP_BUNDLE="$ROOT_DIR/dist/release/DualDock.app" ;;
   *) echo "usage: $0 [debug|release] [--with-update-feed]" >&2; exit 2 ;;
 esac
 case "${2:-}" in
@@ -21,9 +21,9 @@ swift build -c "$CONFIGURATION" >&2
 BIN_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
 STAGING_DIR="$(mktemp -d "$ROOT_DIR/.build/dualdock-package.XXXXXX")"
 trap 'rm -rf "$STAGING_DIR"' EXIT
-STAGED_APP="$STAGING_DIR/DualDock 3.app"
+STAGED_APP="$STAGING_DIR/DualDock.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
-cp "$BIN_DIR/DualDock" "$STAGED_APP/Contents/MacOS/DualDock3"
+cp "$BIN_DIR/DualDock" "$STAGED_APP/Contents/MacOS/DualDock"
 # Keep the released framework structure and its nested signed helpers intact.
 mkdir -p "$STAGED_APP/Contents/Frameworks"
 FRAMEWORK="$STAGED_APP/Contents/Frameworks/Sparkle.framework"
@@ -33,11 +33,11 @@ mv "$STAGING_DIR/vendor/LICENSE" "$STAGED_APP/Contents/Resources/Sparkle-LICENSE
 codesign --verify --deep --strict "$FRAMEWORK" >&2
 # Fail packaging if a test-only fallback was linked, or if the bundle could
 # only find its updater in the developer's build directory.
-otool -L "$STAGED_APP/Contents/MacOS/DualDock3" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle ' >/dev/null
-otool -l "$STAGED_APP/Contents/MacOS/DualDock3" | grep -F 'path @executable_path/../Frameworks ' >/dev/null
+otool -L "$STAGED_APP/Contents/MacOS/DualDock" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle ' >/dev/null
+otool -l "$STAGED_APP/Contents/MacOS/DualDock" | grep -F 'path @executable_path/../Frameworks ' >/dev/null
 cp "$ROOT_DIR/Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
-# Enable the dedicated 3.x feed only when staging an updater-enabled release.
-if [[ "${2:-}" != --with-update-feed ]]; then
+# A release always joins the existing stable channel. Development builds are offline by default.
+if [[ "$CONFIGURATION" = debug && "${2:-}" != --with-update-feed ]]; then
   /usr/libexec/PlistBuddy -c 'Delete :SUFeedURL' "$STAGED_APP/Contents/Info.plist"
 fi
 for LANGUAGE_DIR in "$ROOT_DIR"/Resources/*.lproj; do
@@ -49,8 +49,8 @@ if [ ! -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
   iconutil -c icns "$ROOT_DIR/Resources/AppIcon.iconset" -o "$ROOT_DIR/Resources/AppIcon.icns" >&2
 fi
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$STAGED_APP/Contents/Resources/AppIcon.icns"
-codesign --force --sign - --identifier local.ronny.DualDock3 \
-  --requirements '=designated => identifier "local.ronny.DualDock3"' "$STAGED_APP" >&2
+codesign --force --sign - --identifier local.ronny.DualDock \
+  --requirements '=designated => identifier "local.ronny.DualDock"' "$STAGED_APP" >&2
 codesign --verify --deep --strict "$STAGED_APP" >&2
 mkdir -p "$(dirname "$APP_BUNDLE")"
 rm -rf "$APP_BUNDLE"

@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 python3 "$ROOT_DIR/script/check_installation_guidance.py"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/Resources/Info.plist")"
-APP_PATH="$("$ROOT_DIR/script/package_app.sh" release "$@")"
-ARCH="$(lipo -archs "$APP_PATH/Contents/MacOS/DualDock3")"
+APP_PATH="$("$ROOT_DIR/script/package_app.sh" release)"
+ARCH="$(lipo -archs "$APP_PATH/Contents/MacOS/DualDock")"
 case "$ARCH" in
   arm64|x86_64) ARCH_SUFFIX="$ARCH" ;;
   *) echo "Unexpected release architecture: $ARCH" >&2; exit 1 ;;
@@ -26,13 +26,13 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$STAGING_DIR/volume"
-ditto "$APP_PATH" "$STAGING_DIR/volume/DualDock 3.app"
+ditto "$APP_PATH" "$STAGING_DIR/volume/DualDock.app"
 ln -s /Applications "$STAGING_DIR/volume/Applications"
 cp "$ROOT_DIR/docs/first-launch.html" "$STAGING_DIR/volume/首次安装 - First Launch.html"
 cp "$ROOT_DIR/docs/installation.txt" "$STAGING_DIR/volume/安装说明.txt"
 cp "$ROOT_DIR/LICENSE" "$STAGING_DIR/volume/LICENSE.txt"
-codesign --verify --strict "$STAGING_DIR/volume/DualDock 3.app" >&2
-hdiutil create -volname "DualDock 3" -srcfolder "$STAGING_DIR/volume" \
+codesign --verify --strict "$STAGING_DIR/volume/DualDock.app" >&2
+hdiutil create -volname "DualDock" -srcfolder "$STAGING_DIR/volume" \
   -fs HFS+ -format UDZO "$STAGING_DIR/$ASSET_NAME" >&2
 hdiutil verify "$STAGING_DIR/$ASSET_NAME" >&2
 mkdir -p "$MOUNT_POINT"

@@ -1,13 +1,14 @@
 import Foundation
 
 enum AIQuotaProvider: String, CaseIterable, Codable, Identifiable {
-    case codex, claude, gemini
+    case codex, claude, gemini, cursor
     var id: String { rawValue }
     var name: String {
         switch self {
         case .codex: return "Codex"
         case .claude: return "Claude Code"
         case .gemini: return "Gemini"
+        case .cursor: return "Cursor"
         }
     }
 }
@@ -20,6 +21,7 @@ struct AIQuotaWindow: Identifiable, Equatable, Codable {
     var remainingCount: Int?
     var unit: String?
     var reset: Date?
+    var resetDescription: String?
     var roundedByCLI: Bool?
 
     var title: String { title(in: .current) }
@@ -49,15 +51,24 @@ struct AIQuotaWindow: Identifiable, Equatable, Codable {
 struct AIQuotaSnapshot: Codable, Equatable {
     let windows: [AIQuotaWindow]
     let updated: Date
+    var sourceIsCached: Bool? = nil
 }
 
 enum AIQuotaError: Error, Equatable {
     case unavailable, signIn, notInstalled, timeout, invalid, conflict, writeFailed
     case antigravityMissing, antigravityOutdated
+    case claudeMissing, claudeUnsupported, claudeHookOwner, cursorMissing, cursorOutdated, grokMissing
 
     var text: String {
         switch self {
         case .signIn: return L("请先在客户端登录支持配额查询的订阅账号。", "Sign in to a supported subscription in the client.")
+        case .claudeMissing: return L("请先安装官方 Claude Code 并在终端登录。", "Install the official Claude Code CLI and sign in.")
+        case .claudeHookOwner:
+            return L("请在安装此状态行的旧 DualDock 中断开状态行，然后在这里重新连接。", "Disconnect the status line in the previous DualDock installation, then reconnect here.")
+        case .claudeUnsupported: return L("此版本尚未验证主动查询。可在 Claude Code 里运行 /usage，或启用状态行备用读数。", "This Claude Code version has not been verified. Use /usage in Claude Code or enable status-line readings.")
+        case .cursorMissing: return L("未找到独立的 Cursor CLI。请安装官方 cursor-agent 并登录。", "Install the official Cursor CLI and sign in with cursor-agent.")
+        case .cursorOutdated: return L("请更新 Cursor CLI 以读取交互用量页。", "Update Cursor CLI to read its usage screen.")
+        case .grokMissing: return L("未找到 Grok CLI。请先安装并用同一 X 订阅账户登录。", "Install Grok CLI and sign in with the same X subscription account.")
         case .antigravityMissing:
             return L("未找到 Antigravity CLI（agy）。", "Antigravity CLI (agy) was not found.")
         case .antigravityOutdated:

@@ -35,7 +35,7 @@ enum ToolLibraryItem: Hashable, Identifiable {
 
     static let items: [Self] = [
         .widget(.systemStatus), .widget(.focusTimer), .widget(.codexQuota), .widget(.music),
-        .widget(.weather), .widget(.calendar), .widget(.claudeQuota), .widget(.geminiQuota),
+        .widget(.weather), .widget(.calendar), .widget(.claudeQuota), .widget(.geminiQuota), .widget(.cursorQuota),
         .widget(.battery), .widget(.storage), .destination(.shortcut), .destination(.application),
         .destination(.website), .destination(.file)
     ]
@@ -43,7 +43,7 @@ enum ToolLibraryItem: Hashable, Identifiable {
     var category: ToolLibraryCategory {
         switch self {
         case .widget(.systemStatus), .widget(.battery), .widget(.storage): return .system
-        case .widget(.codexQuota), .widget(.claudeQuota), .widget(.geminiQuota): return .ai
+        case .widget(.codexQuota), .widget(.claudeQuota), .widget(.geminiQuota), .widget(.cursorQuota): return .ai
         case .widget(.music): return .media
         case .widget(.calendar), .widget(.weather): return .life
         case .widget(.focusTimer), .widget(.launcher), .destination: return .tools
@@ -68,6 +68,7 @@ enum ToolLibraryItem: Hashable, Identifiable {
         case .widget(.focusTimer): return l("开始或暂停专注倒计时", "Start or pause a focus timer")
         case .widget(.codexQuota): return l("查看套餐窗口余量与重置时间", "Plan limits and reset times")
         case .widget(.claudeQuota): return l("查看短周期与每周余量", "Session and weekly limits")
+        case .widget(.cursorQuota): return l("按套餐查询余量和重置时间", "Check allowance and reset time for your plan")
         case .widget(.geminiQuota): return l("点击刷新 Gemini 剩余额度与重置时间", "Refresh Gemini limits and reset times")
         case .widget(.music): return l("查看正在播放的音乐与播放列表", "Now Playing and the current playlist")
         case .widget(.weather): return l("查看所选城市的天气", "Forecast for a city")
@@ -83,7 +84,8 @@ enum ToolLibraryItem: Hashable, Identifiable {
     func source(_ l: AppLanguage) -> String {
         switch self {
         case .widget(.codexQuota): return l("本机 Codex 的账号限额", "Account limits from local Codex")
-        case .widget(.claudeQuota): return l("Claude Code 状态行", "Claude Code status line")
+        case .widget(.claudeQuota): return l("本机 Claude Code 的 /usage", "The local Claude Code /usage command")
+        case .widget(.cursorQuota): return l("Cursor CLI（试验性）或 X 订阅共享池", "Cursor CLI (experimental) or the shared X subscription pool")
         case .widget(.geminiQuota): return l("本机登录的 Google Antigravity CLI", "Your local Google Antigravity CLI")
         case .widget(.music): return l("本机音乐 App，按需授权", "Music app with your permission")
         case .widget(.weather): return "MET Norway / Open-Meteo"
@@ -110,6 +112,7 @@ enum ToolLibraryItem: Hashable, Identifiable {
         case .widget(.codexQuota): return .blue
         case .widget(.claudeQuota): return .orange
         case .widget(.geminiQuota): return .indigo
+        case .widget(.cursorQuota): return .primary
         case .widget(.music): return .pink
         case .widget(.focusTimer): return .blue
         case .widget(.weather): return .cyan

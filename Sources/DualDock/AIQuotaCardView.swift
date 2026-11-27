@@ -3,10 +3,10 @@ import AppKit
 
 extension AIQuotaProvider {
     var symbol: String {
-        switch self { case .codex: return "terminal"; case .claude: return "asterisk"; case .gemini: return "sparkles" }
+        switch self { case .codex: return "terminal"; case .claude: return "asterisk"; case .gemini: return "sparkles"; case .cursor: return "cursorarrow" }
     }
     var tint: Color {
-        switch self { case .codex: return .blue; case .claude: return .orange; case .gemini: return .purple }
+        switch self { case .codex: return .blue; case .claude: return .orange; case .gemini: return .purple; case .cursor: return .primary }
     }
 
     func quotaTitle(in language: AppLanguage) -> String {
@@ -40,10 +40,11 @@ struct AIQuotaPreviewView: View {
         if let w = service.selected(provider) {
             return service.isExpired(w) ? language("等待更新","Awaiting update") : w.amount
         }
-        if provider == .gemini {
-            if service.antigravityBusy { return language("查询中", "Loading") }
-            if service.issues[.gemini] == .signIn { return language("待登录", "Sign in") }
-            return service.issues[.gemini] == nil ? language("点击刷新", "Click to refresh")
+        if provider != .codex {
+            if provider == .cursor && service.cursorSource == nil { return language("选择套餐", "Choose plan") }
+            if service.isRefreshing(provider) { return language("查询中", "Loading") }
+            if service.issues[provider] == .signIn { return language("待登录", "Sign in") }
+            return service.issues[provider] == nil ? language("点击刷新", "Click to refresh")
                                                   : language("暂不可用", "Unavailable")
         }
         if service.issues[provider] != nil { return language("暂不可用","Unavailable") }
@@ -52,7 +53,7 @@ struct AIQuotaPreviewView: View {
         return language("待连接","Connect")
     }
     private var caption: String {
-        if provider == .gemini && service.antigravityBusy { return language("正在刷新", "Refreshing…") }
+        if provider != .codex && service.isRefreshing(provider) { return language("正在刷新", "Refreshing…") }
         if let win = service.selected(provider) {
             if service.isExpired(win) { return win.title(in: language) }
             if service.isStale(provider) { return language("上次读数","Last reading") }
@@ -100,13 +101,13 @@ struct AIQuotaCardView: View {
     @State private var detailID = UUID()
     var body: some View {
         Button {
-            if provider == .gemini { service.refreshAntigravity() }
+            if provider != .codex || service.isConnected(.codex) { service.refresh(provider) }
             open = true
         } label: {
             AIQuotaPreviewView(provider:provider,service:service,span:span,horizontal:horizontal)
                 .frame(maxWidth:.infinity,maxHeight:.infinity).contentShape(Rectangle())
         }.buttonStyle(.plain)
-        .accessibilityIdentifier("DualDock3.Quota.Card." + provider.rawValue)
+        .accessibilityIdentifier("DualDock.Quota.Card." + provider.rawValue)
         .help(provider == .gemini ? L("刷新 Antigravity 的 Gemini 额度", "Refresh Gemini quota from Antigravity")
                                   : L("查看 \(provider.name) 的剩余额度", "View remaining \(provider.name) quota"))
         .popover(isPresented:$open) {
@@ -133,21 +134,21 @@ struct AIQuotaDetail: View {
             HStack(spacing: 8) {
                 Label(provider.quotaTitle(in: language), systemImage: provider.symbol)
                     .font(.system(size: 15, weight: .semibold))
-                if provider == .gemini {
+                if provider != .codex && (provider != .cursor || service.cursorSource != nil) {
                     Spacer(minLength: 0)
-                    if service.antigravityBusy {
+                    if service.isRefreshing(provider) {
                         ProgressView().controlSize(.small)
                             .accessibilityLabel(language("正在查询额度", "Checking quota"))
                     }
                     Button {
-                        service.refreshAntigravity()
+                        service.refresh(provider)
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(service.antigravityBusy)
+                    .disabled(service.isRefreshing(provider))
                     .accessibilityLabel(language("刷新额度", "Refresh quota"))
-                    .accessibilityIdentifier("DualDock3.Quota.Antigravity.Refresh")
+                    .accessibilityIdentifier(provider == .gemini ? "DualDock.Quota.Antigravity.Refresh" : "DualDock.Quota." + provider.rawValue + ".Refresh")
                     .help(language("刷新额度", "Refresh quota"))
                 }
             }
@@ -159,7 +160,7 @@ struct AIQuotaDetail: View {
                                 HStack {
                                     Text(w.title(in: language))
                                     Spacer()
-                                    let amount = provider == .gemini ? language("剩余 " + w.amount, w.amount + " left") : w.amount
+                                    let amount = language("剩余 " + w.amount, w.amount + " left")
                                     Text(service.isExpired(w) ? language("等待更新", "Awaiting update") : amount)
                                         .monospacedDigit()
                                 }
@@ -169,7 +170,10 @@ struct AIQuotaDetail: View {
                                 if let reset = w.reset {
                                     Text(language("重置 ", "Resets ") + formattedDate(reset))
                                         .font(.caption).foregroundStyle(.secondary)
-                                } else if provider == .gemini {
+                                } else if let reset = w.resetDescription {
+                                    Text(language("重置日期 ", "Reset date ") + reset)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                } else if provider != .codex {
                                     Text(language("重置时间暂未提供", "Reset time unavailable"))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
@@ -186,10 +190,10 @@ struct AIQuotaDetail: View {
                 } else {
                     ScrollView { rows }.frame(height: 195)
                 }
-                Text(language("更新于 ", "Updated ") + formattedDate(reading.updated))
+                Text((provider == .claude ? language("读取于 ", "Read at ") : language("更新于 ", "Updated ")) + formattedDate(reading.updated))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if let issue = service.issues[provider], provider != .gemini {
+            if let issue = service.issues[provider], provider == .codex || provider == .claude {
                 Text(issue.text).font(.callout).foregroundStyle(.secondary)
             }
             switch provider {
@@ -206,23 +210,30 @@ struct AIQuotaDetail: View {
                     }
                 }
             case .claude:
-                if service.isConnected(.claude) {
-                    Text(L("来源：Claude Code 状态行。开始会话并收到一次回复后，这里会随状态行更新。",
-                           "Source: Claude Code status line. Readings arrive after Claude responds in a session."))
+                Text(service.claudeFromStatusLine ? L("上次状态行读数", "Last status-line reading")
+                     : (service.snapshots[.claude]?.sourceIsCached == true
+                        ? L("Claude Code 返回了上次记录的额度。", "Claude Code returned last-known usage.")
+                        : L("从官方 Claude Code 的 /usage 读取；CLI 可能复用近期缓存。", "Read from Claude Code /usage. The CLI may reuse a recent reading.")))
+                    .font(.caption).foregroundStyle(.secondary)
+                if service.claudeToken != nil {
+                    Text(L("已启用备用状态行。主动查询不可用时，可查看上次状态行读数。",
+                           "Status-line fallback is enabled. Its last reading can be shown when an active query is unavailable."))
                         .font(.caption).foregroundStyle(.secondary)
                 } else if confirmingClaude {
-                    Text(L("将为 Claude Code 的用户设置添加状态行回调，保留原状态行的命令与输出。只保存限额和重置时间。下次会话起效，可随时断开。",
-                           "Add a callback to Claude Code’s user status-line settings. Your existing command and output are preserved. Only limits and reset times are saved. Takes effect in a new session."))
+                    Text(L("连接后会保留你原有的状态行命令，并接替可验证的旧试用版回调。下次会话起只保存限额和重置时间。",
+                           "Keep your existing status-line command and replace a verified preview callback. Only limits and reset times are saved, starting with the next session."))
                         .font(.callout)
                     HStack {
                         Button(L("允许接入","Allow Connection")) { service.connectClaude();confirmingClaude = false }
                         Button(L("取消","Cancel")) { confirmingClaude = false }
                     }
-                } else { Button(L("连接 Claude Code 状态行…","Connect Claude Code Status Line…")) { confirmingClaude = true } }
+                } else { Button(L("启用备用状态行…","Connect Claude Code Status Line…")) { confirmingClaude = true } }
+            case .cursor:
+                CursorQuotaSourceView(service: service)
             case .gemini:
                 AntigravityQuotaStatusView(service: service)
             }
-            if provider != .gemini && service.isConnected(provider) {
+            if (provider == .codex && service.isConnected(.codex)) || (provider == .claude && service.claudeToken != nil) {
                 Divider()
                 Button(L("断开连接并清除读数", "Disconnect and clear readings")) {
                     service.disconnect(provider)
@@ -232,7 +243,7 @@ struct AIQuotaDetail: View {
         }
         .font(.system(size:13)).frame(width:285,alignment:.leading).padding(14)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("DualDock3.Quota.Detail." + provider.rawValue)
+        .accessibilityIdentifier("DualDock.Quota.Detail." + provider.rawValue)
     }
 
     private func formattedDate(_ date: Date) -> String {

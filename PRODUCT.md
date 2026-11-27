@@ -27,6 +27,8 @@ Keep apps organized in expandable groups and make the same Dock available on eve
 - Advanced settings expand from the complete 44 pt header button, including its chevron, title and whitespace.
 - General offers opt-in startup after macOS login through SMAppService.mainApp. System registration/approval state is authoritative; merely viewing settings must not enable it.
 
+The Dock has an Apps page and a Tools page on each display. Switching pages preserves the active app window. Shared tool layouts are edited in Settings; live cards include Music, Calendar, system metrics, launchers and quotas for Codex, Claude Code, Gemini (Antigravity) and Cursor. Cursor sources are selected explicitly to distinguish a legacy Cursor billing cycle from the shared X Subscription pool.
+
 ## Brand Commitments
 
 Name: DualDock. Slogan: 应用有序收纳，Dock 多屏同在。 Keep the existing colored overlapping-display app icon and matching monochrome menu-bar icon. Public MIT project at https://github.com/autumncry/DualDock.

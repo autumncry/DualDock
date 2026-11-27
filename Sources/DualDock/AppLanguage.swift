@@ -9,10 +9,10 @@ enum AppLanguage: String, CaseIterable {
     private static var localFile: URL?
     private static var localLanguage: AppLanguage = .simplifiedChinese
 
-    static func useLocalSettings(in directory: URL) {
+    static func useLocalSettings(in directory: URL, fallback: AppLanguage = .simplifiedChinese) {
         let file = directory.appendingPathComponent("language.txt")
         let saved = try? String(contentsOf: file, encoding: .utf8)
-        localLanguage = saved.flatMap(Self.init(rawValue:)) ?? .simplifiedChinese
+        localLanguage = saved.flatMap(Self.init(rawValue:)) ?? fallback
         localFile = file
     }
 

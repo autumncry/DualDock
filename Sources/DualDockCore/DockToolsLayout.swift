@@ -6,11 +6,11 @@ public struct DockToolsLayout: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case music, calendar, weather, launcher
         case systemStatus, battery, storage, focusTimer
-        case codexQuota, claudeQuota, geminiQuota
+        case codexQuota, claudeQuota, geminiQuota, cursorQuota
 
         public var defaultSpan: Int {
             switch self {
-            case .music, .codexQuota, .claudeQuota, .geminiQuota: return 3
+            case .music, .codexQuota, .claudeQuota, .geminiQuota, .cursorQuota: return 3
             case .calendar, .systemStatus, .storage, .focusTimer: return 2
             case .weather, .launcher, .battery: return 1
             }

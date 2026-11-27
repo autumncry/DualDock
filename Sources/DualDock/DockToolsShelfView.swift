@@ -48,7 +48,7 @@ struct DockToolsShelfView: View {
         .environment(\.dualDockLanguage, language)
         .environment(\.locale, Locale(identifier: language.rawValue))
         .onReceive(NotificationCenter.default.publisher(for: .dualDockLanguageDidChange)) { _ in language = .current }
-        .accessibilityIdentifier("DualDock3.ToolsShelf")
+        .accessibilityIdentifier("DualDock.ToolsShelf")
     }
 }
 
@@ -83,7 +83,7 @@ private struct DockToolTile: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(localize("显示音乐播放器", "Show Music Player"))
-                .accessibilityIdentifier("DualDock3.Music.OpenPlayer")
+                .accessibilityIdentifier("DualDock.Music.OpenPlayer")
                 .help(localize("显示正在播放的音乐", "Show Now Playing"))
                 .popover(isPresented: $showDetail) { MusicPlayerView(data: data) }
             } else {

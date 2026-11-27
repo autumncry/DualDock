@@ -3,12 +3,12 @@
 # make_appcast, on machines without the maintainer's signing key.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INFO="$ROOT/dist/release/DualDock 3.app/Contents/Info.plist"
+INFO="$ROOT/dist/release/DualDock.app/Contents/Info.plist"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
-ARCH="$(lipo -archs "$ROOT/dist/release/DualDock 3.app/Contents/MacOS/DualDock3")"
+ARCH="$(lipo -archs "$ROOT/dist/release/DualDock.app/Contents/MacOS/DualDock")"
 NAME="DualDock-$VERSION-$ARCH.dmg"
 ARCHIVE="$ROOT/dist/$NAME"
-FEED="$ROOT/dist/updates/3/appcast.xml"
+FEED="$ROOT/dist/appcast.xml"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/dualdock-update-check.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 xcrun swiftc -O "$ROOT/script/verify_appcast.swift" -module-cache-path "$TMP/modules" -o "$TMP/verify"

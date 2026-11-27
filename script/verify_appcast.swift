@@ -22,11 +22,11 @@ func verify(appInfo: URL, feedURL: URL, archive: URL) throws {
           let minimum = info?["LSMinimumSystemVersion"] as? String else {
         throw InvalidFeed(message: "Incomplete app bundle update configuration")
     }
-    try require(info?["CFBundleIdentifier"] as? String == "local.ronny.DualDock3" && version.hasPrefix("3."),
-                "Expected a DualDock 3 release bundle")
+    try require(info?["CFBundleIdentifier"] as? String == "local.ronny.DualDock",
+                "Expected a DualDock release bundle")
     try require(info?["SURequireSignedFeed"] as? Bool == true &&
                 info?["SUVerifyUpdateBeforeExtraction"] as? Bool == true, "App bundle must require a signed feed and archive")
-    try require(info?["SUFeedURL"] as? String == "https://raw.githubusercontent.com/autumncry/DualDock/main/updates/3/appcast.xml",
+    try require(info?["SUFeedURL"] as? String == "https://raw.githubusercontent.com/autumncry/DualDock/main/updates/appcast.xml",
                 "App bundle points to an unexpected feed")
 
     let key = try Curve25519.Signing.PublicKey(rawRepresentation: publicData)

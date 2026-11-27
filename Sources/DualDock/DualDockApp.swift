@@ -20,7 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             source.resume()
             terminationSignals.append(source)
         }
-        let preview = LocalPreviewConfiguration.isPreview
         if let bundleID = Bundle.main.bundleIdentifier,
            let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
                 .first(where: { $0.processIdentifier != getpid() }) {
@@ -28,6 +27,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.terminate(nil)
             return
         }
+        let trials = LocalPreviewConfiguration.isPreview ? [] : LegacyTrialHandoff.runningInstances()
+        guard !trials.isEmpty else {
+            startApplication(previousTrialBundles: [])
+            return
+        }
+        Task { @MainActor in
+            let exited = await LegacyTrialHandoff.waitForExit(trials) {
+                let alert = NSAlert()
+                alert.messageText = L("请先退出旧试用版", "Quit the previous preview")
+                alert.informativeText = L("旧试用版仍在运行。请完成其退出提示，然后重试，以保存设置并恢复系统 Dock。",
+                                          "Finish quitting the preview, then retry so it can save its settings and restore the system Dock.")
+                alert.addButton(withTitle: L("重试", "Retry"))
+                alert.addButton(withTitle: L("退出本次启动", "Quit"))
+                return alert.runModal() == .alertFirstButtonReturn
+            }
+            guard exited else { NSApp.terminate(nil); return }
+            startApplication(previousTrialBundles: trials.compactMap(\.bundle))
+        }
+    }
+
+    private func startApplication(previousTrialBundles: [URL]) {
+        let preview = LocalPreviewConfiguration.isPreview
         let args = ProcessInfo.processInfo.arguments
         let directory: URL
         let override = args.firstIndex(of: "--config-dir").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
@@ -36,13 +57,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                                                 override: override, preview: preview)
         } catch {
             let alert = NSAlert(error: error)
-            alert.messageText = L("无法打开 DualDock 3 配置目录", "Could not open the DualDock 3 settings folder")
+            alert.messageText = L("无法打开 DualDock 配置目录", "Could not open the DualDock settings folder")
             alert.runModal()
             NSApp.terminate(nil)
             return
         }
+        if !preview, override == nil {
+            let candidates = TrialSettingsMigration.candidates(previousBundles: previousTrialBundles,
+                                                              support: directory.deletingLastPathComponent())
+            do {
+                try TrialSettingsMigration.migrate(to: directory, candidates: candidates)
+            } catch let recovery as TrialSettingsMigration.DockRecoveryIssue {
+                let alert = NSAlert()
+                alert.messageText = L("请先完成系统 Dock 恢复", "Finish system Dock recovery first")
+                alert.informativeText = recovery.message.text
+                alert.addButton(withTitle: L("退出并稍后重试", "Quit and retry later"))
+                alert.addButton(withTitle: L("显示恢复记录后退出", "Show Recovery Records and Quit"))
+                if alert.runModal() == .alertSecondButtonReturn {
+                    NSWorkspace.shared.activateFileViewerSelecting(recovery.records)
+                }
+                NSApp.terminate(nil)
+                return
+            } catch {
+                let alert = NSAlert(error: error)
+                alert.messageText = L("未能导入试用配置", "Could not import trial settings")
+                alert.informativeText = L("原配置已保留。可退出后重试，或继续使用正式版配置。", "Your original settings are intact. Quit to retry, or continue with your release settings.")
+                alert.addButton(withTitle: L("退出", "Quit"))
+                alert.addButton(withTitle: L("使用正式版配置", "Use release settings"))
+                guard alert.runModal() == .alertSecondButtonReturn else { NSApp.terminate(nil); return }
+                do { try TrialSettingsMigration.keepExisting(in: directory) }
+                catch { NSAlert(error: error).runModal(); NSApp.terminate(nil); return }
+            }
+        }
         let firstLaunch = !FileManager.default.fileExists(atPath: directory.appendingPathComponent("configuration.json").path)
-        AppLanguage.useLocalSettings(in: directory)
+        AppLanguage.useLocalSettings(in: directory, fallback: preview || override != nil ? .simplifiedChinese : .current)
         store = AppStore(directory: directory)
         if !preview {
             SoftwareUpdateService.shared.beforeRelaunch = { [weak self] in self?.store?.flushPendingSave() }
@@ -69,17 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.image = StatusItemIcon.make()
         statusItem?.button?.toolTip = "DualDock"
-        if LocalPreviewConfiguration.isPreview {
-            statusItem?.button?.toolTip = L("DualDock 3 · 本地试用", "DualDock 3 · Local preview")
-            statusItem?.button?.title = "3"
-            statusItem?.button?.imagePosition = .imageLeading
-        }
         refreshMenuLanguage()
     }
 
     @objc private func refreshMenuLanguage() {
         let menu = NSMenu()
-        menu.addAction(L("DualDock 3 设置…", "DualDock 3 Settings…")) { [weak self] in self?.openSettings() }
+        menu.addAction(L("DualDock 设置…", "DualDock Settings…")) { [weak self] in self?.openSettings() }
         menu.addAction(L("添加应用…", "Add Applications…")) { [weak self] in self?.store.addApplications() }
         menu.addItem(.separator())
         menu.addAction(L("切换本屏应用页与工具页", "Switch Dock Page on This Display")) { [weak self] in
@@ -91,13 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         menu.addAction(L("重新检测显示器", "Detect Displays")) { [weak self] in self?.coordinator.refreshDisplays() }
         menu.addItem(.separator())
-        menu.addAction(L("退出 DualDock 3", "Quit DualDock 3")) { NSApp.terminate(nil) }
+        menu.addAction(L("退出 DualDock", "Quit DualDock")) { NSApp.terminate(nil) }
         statusItem?.menu = menu
     }
 
     @objc private func openToolSettings() { openSettings(section: .tools) }
 
     func openSettings(section: SettingsSection? = nil) {
+        guard let store, let toolsStore else { return }
         coordinator?.resetMagnification()
         if settingsController == nil { settingsController = SettingsWindowController(store: store, tools: toolsStore) }
         store.refreshPermissions()

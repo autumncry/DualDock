@@ -177,7 +177,7 @@ final class DisplayCoordinator {
             // Floating group/preview panels retain their own normal shadow.
             panel.hasShadow = false
             let strip = old?.strip ?? DockStripView()
-            panel.title = "DualDock 3 · \(screen.localizedName)"
+            panel.title = "DualDock · \(screen.localizedName)"
             strip.pointerIsOccluded = { [weak self] point in
                 self?.pointerIsOverPopup(point, includeGroup: true) ?? false
             }

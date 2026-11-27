@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Darwin
 import CryptoKit
@@ -84,7 +85,48 @@ enum AIQuotaClaudeBridge {
         }
     }
 
-    static func install(in file: URL, executable: URL, directory: URL) throws -> UUID {
+    struct RetiredHelper {
+        let executable: URL
+        let directory: URL
+    }
+
+    /// Only the official bundle may adopt a hook from a retired preview, and
+    /// only when the user explicitly chooses Connect in the Claude card.
+    @MainActor static func registeredRetiredHelpers() -> [RetiredHelper] {
+        guard !LocalPreviewConfiguration.isPreview else { return [] }
+        return LegacyTrialHandoff.bundleIdentifiers.compactMap { id in
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id),
+                  let bundle = Bundle(url: url), bundle.bundleIdentifier == id,
+                  let exe = bundle.executableURL, FileManager.default.isExecutableFile(atPath: exe.path) else { return nil }
+            let directory = id == "local.ronny.DualDock3Preview"
+                ? url.deletingLastPathComponent().appendingPathComponent("LocalData")
+                : LocalPreviewConfiguration.releaseDataDirectory.deletingLastPathComponent().appendingPathComponent("DualDock 3")
+            return RetiredHelper(executable: exe, directory: directory)
+        }
+    }
+
+    private static func originalCommand(in wrapper: String, token: UUID) -> String? {
+        guard wrapper.hasPrefix(marker + token.uuidString + " existing\n"),
+              let split = wrapper.range(of: "\n# original statusLine\n"), wrapper.hasSuffix("\n)") else { return nil }
+        return String(wrapper[split.upperBound...].dropLast(2))
+    }
+
+    private static func preservedCommand(_ command: String?, retired: [RetiredHelper]) throws -> String? {
+        guard let command, command.hasPrefix(marker) else { return command }
+        let installedHash = hash(command)
+        for helper in retired {
+            guard let old = connection(in: helper.directory), old.commandHash == installedHash else { continue }
+            let original = originalCommand(in: command, token: old.token)
+            // Check the old executable, token, and entire shell wrapper; a
+            // marker alone cannot authorize adopting another status-line script.
+            if wrapped(executable: helper.executable, token: old.token, original: original) == command {
+                return original
+            }
+        }
+        throw AIQuotaError.claudeHookOwner
+    }
+
+    static func install(in file: URL, executable: URL, directory: URL, retired: [RetiredHelper] = []) throws -> UUID {
         try locked(in:directory) {
             let token = UUID()
             var settings = try readSettings(file)
@@ -92,9 +134,7 @@ enum AIQuotaClaudeBridge {
             if settings["statusLine"] != nil && (previous?["type"] as? String != "command" || !(previous?["command"] is String)) {
                 throw AIQuotaError.conflict
             }
-            let original = previous?["command"] as? String
-            // A different DualDock install may own the existing hook.
-            if original?.hasPrefix(marker) == true { throw AIQuotaError.conflict }
+            let original = try preservedCommand(previous?["command"] as? String, retired: retired)
             var entry = previous ?? ["type":"command"]
             let command = wrapped(executable:executable,token:token,original:original)
             entry["command"] = command
@@ -115,10 +155,8 @@ enum AIQuotaClaudeBridge {
             if var entry = settings["statusLine"] as? [String:Any], let installed = entry["command"] as? String,
                hash(installed) == binding.commandHash {
                 let expected = entry
-                let divider = "\n# original statusLine\n"
-                if installed.hasPrefix(marker + token.uuidString + " existing\n"),
-                   let split = installed.range(of:divider), installed.hasSuffix("\n)") {
-                    entry["command"] = String(installed[split.upperBound...].dropLast(2))
+                if let original = originalCommand(in: installed, token: token) {
+                    entry["command"] = original
                     settings["statusLine"] = entry
                 } else if Set(entry.keys) == ["type","command"] { settings.removeValue(forKey:"statusLine") }
                 else { entry["command"] = ":"; settings["statusLine"] = entry }

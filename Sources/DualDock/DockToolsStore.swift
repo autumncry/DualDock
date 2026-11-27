@@ -5,7 +5,7 @@ import Foundation
 extension Notification.Name {
     static let dualDockSettingsDidClose = Notification.Name("DualDock.settingsDidClose")
     static let dualDockSettingsDidOpen = Notification.Name("DualDock.settingsDidOpen")
-    static let showDualDockToolsSettings = Notification.Name("DualDock3.showToolsSettings")
+    static let showDualDockToolsSettings = Notification.Name("DualDock.showToolsSettings")
 }
 
 typealias ShelfLayout = DockToolsLayout
@@ -43,11 +43,12 @@ final class DockToolsStore: ObservableObject {
         _ = refreshStoredLayout()
     }
 
-    init(directory: URL, providerEnvironment: ToolDataService.Environment? = nil) {
+    init(directory: URL, providerEnvironment: ToolDataService.Environment? = nil,
+         quotaEnvironment: AIQuotaService.Environment? = nil) {
         url = directory.appendingPathComponent("tool-shelf.json")
         data = ToolDataService(directory: directory, environment: providerEnvironment)
         metrics = LocalToolMetrics(directory: directory)
-        quota = AIQuotaService(directory: directory)
+        quota = AIQuotaService(directory: directory, environment: quotaEnvironment ?? .system)
         if FileManager.default.fileExists(atPath: url.path) {
             do {
                 let bytes = try Data(contentsOf: url)
@@ -213,7 +214,9 @@ final class DockToolsStore: ObservableObject {
     private func updateDemand(_ active: Bool, for display: String, kinds: Set<ShelfLayout.Kind>) {
         metrics.setVisible(active, on: display, system: kinds.contains(.systemStatus),
                            battery: kinds.contains(.battery), disk: kinds.contains(.storage))
-        quota.setVisible(active ? Set(kinds.compactMap(\.quotaProvider)) : [], on: display)
+        if display != previewDemandID {
+            quota.setVisible(active ? Set(kinds.compactMap(\.quotaProvider)) : [], on: display)
+        }
         data.setVisible(active, for: display,
                         music: kinds.contains(.music), calendar: kinds.contains(.calendar), weather: kinds.contains(.weather))
     }
@@ -248,6 +251,7 @@ extension ShelfLayout.Kind {
         switch self {
         case .codexQuota: return .codex
         case .claudeQuota: return .claude
+        case .cursorQuota: return .cursor
         case .geminiQuota: return .gemini
         default: return nil
         }
@@ -271,6 +275,7 @@ extension ShelfLayout.Kind {
         case .focusTimer: return language("专注计时", "Focus Timer")
         case .codexQuota: return language("Codex 余量", "Codex Quota")
         case .claudeQuota: return language("Claude Code 余量", "Claude Code Quota")
+        case .cursorQuota: return language("Cursor 额度", "Cursor Quota")
         case .geminiQuota: return language("Gemini 额度 · Antigravity", "Gemini Quota · Antigravity")
         }
     }
@@ -288,6 +293,7 @@ extension ShelfLayout.Kind {
         case .codexQuota: return "terminal"
         case .claudeQuota: return "asterisk"
         case .geminiQuota: return "sparkle"
+        case .cursorQuota: return "cursorarrow"
         }
     }
 }

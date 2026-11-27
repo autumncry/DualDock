@@ -82,7 +82,7 @@ enum AIQuotaCodex {
                     }
                     throw AIQuotaError.timeout
                 }
-                try send(["id":1,"method":"initialize","params":["clientInfo":["name":"dualdock","title":"DualDock","version":"3.0"]]])
+                try send(["id":1,"method":"initialize","params":["clientInfo":["name":"dualdock","title":"DualDock","version":Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "dev"]]])
                 _ = try response(1)
                 try send(["method":"initialized"])
                 try send(["id":2,"method":"account/read","params":["refreshToken":false]])

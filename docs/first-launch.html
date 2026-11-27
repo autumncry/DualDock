@@ -10,9 +10,10 @@
 <main>
 <section data-lang="zh-Hans">
 <h1>首次安装</h1>
-<p>把 DualDock 3.app 拖入 Applications，弹出磁盘映像，再从“应用程序”打开 DualDock。</p>
+<p>把 DualDock.app 拖入 Applications，弹出磁盘映像，再从“应用程序”打开 DualDock。</p>
+<p>升级旧版时，退出 DualDock 并替换“应用程序”中的同名应用。启动后，在 Dock 上用双指沿垂直于栏的方向滑动，即可切换应用页与工具页。</p>
 <h2>如果 macOS 提示“无法验证开发者”</h2>
-<p>当前版本未经过 Apple 公证。请确认安装包来自 <a href="https://github.com/autumncry/DualDock/releases?q=v3.">DualDock 官方发布页</a>且文件完整。</p>
+<p>当前版本未经过 Apple 公证。请确认安装包来自 <a href="https://github.com/autumncry/DualDock/releases/latest">DualDock 官方发布页</a>且文件完整。</p>
 <ol><li>尝试打开 DualDock 一次，关闭验证提示。</li><li>进入 <strong>系统设置 → 隐私与安全性 → 安全性</strong>，找到 DualDock，点击<strong>仍要打开</strong>。</li><li>按系统提示确认。如果找不到按钮，再尝试启动一次后返回此页。</li></ol>
 <p>如果系统明确报告恶意软件或文件损坏，请停止打开，重新下载并核对发布页的 SHA-256。</p>
 <h2>可选：复制终端命令</h2>
@@ -20,16 +21,17 @@
 </section>
 <section data-lang="en" hidden>
 <h1>First installation</h1>
-<p>Drag DualDock 3.app to Applications, eject the disk image, then open DualDock from Applications.</p>
+<p>Drag DualDock.app to Applications, eject the disk image, then open DualDock from Applications.</p>
+<p>To upgrade, quit DualDock and replace your existing app in Applications. After launch, swipe across the Dock with two fingers, perpendicular to the bar, to switch between apps and tools.</p>
 <h2>If macOS cannot verify the developer</h2>
-<p>This build has not been notarized by Apple. Confirm you obtained an intact copy from the <a href="https://github.com/autumncry/DualDock/releases?q=v3.">official releases</a>.</p>
+<p>This build has not been notarized by Apple. Confirm you obtained an intact copy from the <a href="https://github.com/autumncry/DualDock/releases/latest">official releases</a>.</p>
 <ol><li>Try opening DualDock once and dismiss the verification alert.</li><li>Go to <strong>System Settings → Privacy &amp; Security → Security</strong>. Find DualDock and click <strong>Open Anyway</strong>.</li><li>Confirm when macOS asks. If the button is missing, try opening the app again, then return to settings.</li></ol>
 <p>If macOS reports malware or a damaged app, stop and download a fresh copy. Compare its SHA-256 with the release checksum.</p>
 <h2>Optional Terminal commands</h2>
 <p>After copying the app to the path below, copy these two lines, review them in Terminal, and run them. The first removes the download quarantine flag from DualDock. The second opens the app.</p>
 </section>
-<pre id="commands" tabindex="0">xattr -dr com.apple.quarantine "/Applications/DualDock 3.app"
-open "/Applications/DualDock 3.app"</pre>
+<pre id="commands" tabindex="0">xattr -dr com.apple.quarantine "/Applications/DualDock.app"
+open "/Applications/DualDock.app"</pre>
 <button id="copy" type="button">复制命令</button><span id="status" role="status" aria-live="polite"></span>
 </main>
 <footer><a href="./安装说明.txt" id="full">完整安装说明</a></footer>

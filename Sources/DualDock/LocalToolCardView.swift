@@ -186,7 +186,7 @@ struct SystemStatusDetail: View {
         .font(.system(size: 13))
         .frame(width: 242, alignment: .leading)
         .padding(14)
-        .accessibilityIdentifier("DualDock3.SystemStatus.Detail")
+        .accessibilityIdentifier("DualDock.SystemStatus.Detail")
     }
 
     private func usageRow(_ label: String, usage: SystemByteUsage?) -> some View {

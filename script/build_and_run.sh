@@ -7,14 +7,14 @@ cd "$root"
 
 case "$mode" in
   --build-only) exec "$root/script/package_app.sh" debug ;;
-  run|--preview)
-    name=DualDockPreview
-    destination="$root/DualDock 3.app"
+  --preview)
+    name=DualDockDev
+    destination="$root/dist/preview/DualDock.app"
     builder="$root/script/package_preview.sh"
     ;;
-  --release-dev|--verify|--logs|--telemetry|--debug)
-    name=DualDock3
-    destination="$root/dist/DualDock 3.app"
+  run|--release-dev|--verify|--logs|--telemetry|--debug)
+    name=DualDock
+    destination="$root/dist/DualDock.app"
     builder="$root/script/package_app.sh"
     ;;
   *) echo "usage: $0 [run|--preview|--build-only|--release-dev|--verify|--logs|--telemetry|--debug]" >&2; exit 2 ;;
@@ -46,7 +46,7 @@ case "$mode" in
   --debug) exec lldb -- "$app/Contents/MacOS/$name" ;;
   --logs|--telemetry)
     open "$app"
-    /usr/bin/log stream --info --style compact --predicate 'process == "DualDock3"'
+    /usr/bin/log stream --info --style compact --predicate 'process == "DualDock"'
     ;;
   --verify)
     open "$app"; sleep 2

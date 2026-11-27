@@ -47,7 +47,7 @@ struct ToolCalendarView: View {
                     Text(language("月", "Month")).tag(ToolCalendarMode.month)
                 }
                 .pickerStyle(.segmented).labelsHidden().controlSize(.small).fixedSize()
-                .accessibilityIdentifier("DualDock3.Calendar.View")
+                .accessibilityIdentifier("DualDock.Calendar.View")
             }
 
             if let period = ToolCalendarPeriod(containing: selected, mode: data.calendarMode, calendar: calendar) {
@@ -56,7 +56,7 @@ struct ToolCalendarView: View {
         }
         .padding(14).frame(width: 290).fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("DualDock3.Calendar")
+        .accessibilityIdentifier("DualDock.Calendar")
         .onChange(of: data.calendar.readAccess) { _, _ in
             result = nil
             revision += 1

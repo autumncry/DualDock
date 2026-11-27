@@ -303,7 +303,7 @@ private struct CanvasCard: View {
         case .storage: return metrics.diskAvailableBytes.map { ByteCountFormatter.string(fromByteCount:$0,countStyle:.file) } ?? "—"
         case .focusTimer: return formatTime(metrics.focusRemaining)
         case .launcher: return span == 1 ? card.title : ""
-        case .codexQuota, .claudeQuota, .geminiQuota: return ""
+        case .codexQuota, .claudeQuota, .geminiQuota, .cursorQuota: return ""
         }
     }
 
