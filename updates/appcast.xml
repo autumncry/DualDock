@@ -4,28 +4,40 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>DualDock</title>
         <item>
-            <title>2.9.2</title>
-            <pubDate>Thu, 26 Nov 2026 11:49:13 +0800</pubDate>
+            <title>3.0.0</title>
+            <pubDate>Fri, 27 Nov 2026 18:08:29 +0800</pubDate>
             <link>https://github.com/autumncry/DualDock</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v2.9.2</sparkle:fullReleaseNotesLink>
-            <sparkle:version>42</sparkle:version>
-            <sparkle:shortVersionString>2.9.2</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/autumncry/DualDock/releases/tag/v3.0.0</sparkle:fullReleaseNotesLink>
+            <sparkle:version>48</sparkle:version>
+            <sparkle:shortVersionString>3.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DualDock 2.9.2
+            <description sparkle:format="markdown"><![CDATA[# DualDock 3.0.0
 
-- 修复微信独立浏览器图标可以唤起网页、再次点却无法收起的问题。DualDock 会核对图标所代表的网页窗口，并对同一扇窗口执行前置、最小化或还原。多个微信窗口难以区分时，可右键该图标选定目标窗口。
-- 活动区现在结合系统通知和轻量的定时核对刷新列表，修复应用切换 Dock 身份时可能导致 DualDock 退出的问题。先在后台启动、随后才注册为普通 Dock 应用的进程，可以及时显示图标；转回后台身份时，图标也会及时移除。
+在 Dock 上双指滑动，即可在应用页与工具页之间切换。外接屏和内屏各自记住当前页面，切页时可以继续使用手头的窗口。
+
+- **自定义工具栏。** 在「设置 → Dock → 工具页」点「编辑」，从组件库拖入、移除或重排卡片，调整宽度和堆栈；确定后同步到各屏。
+- **音乐、日历与系统工具。** 音乐支持封面、进度、上下曲及当前播放列表。日历支持周／月视图和按日期查看日程。系统状态显示 CPU、内存和 Swap；还提供天气、电池、存储、专注计时和快捷入口。
+- **四家 AI 额度。** Codex 使用本机 Codex CLI；Gemini 查询 Antigravity 的 Gemini 额度；Claude Code 主动读取内置 `/usage`，无需发一条聊天消息，且会注明可能使用近期缓存。Cursor 首次使用须选择套餐：旧 Cursor CLI 用量页为试验性支持；同一 X 订阅可选择 Cursor 与 Grok 共享的额度池。付费 Cursor 余额及重置日期已按样例验证解析，未用真实付费订阅核对。Claude 的主动查询已在官方 CLI 和隔离订阅数据上验证；本机真实 CLI 返回需要订阅登录。
+- **升级与数据。** 应用、菜单栏图标和更新入口继续使用 DualDock。已有 2.x 用户可通过「检查更新」升级。若检测到试用版数据，会先备份原正式版配置，再沿用试用版配置；无试用配置则保留原设置。备份位于 `~/Library/Application Support/DualDock Backups/`。曾单独启用试用版登录项时，可在 macOS 登录项中关闭旧条目。
+
+适用于 Apple Silicon 和 macOS 14 或以上版本。首次安装如遇「无法验证开发者」，请参阅 DMG 中的双语安装指南。
 
 ## English
 
-- Fixed repeated clicks on WeChat’s separate browser icon. DualDock identifies the corresponding window and can bring it forward, minimize it, or restore it. If more than one WeChat window could be the target, choose one from the icon’s context menu.
-- Running app icons now follow Dock eligibility changes using workspace notifications and a lightweight periodic check. This also fixes a crash seen when apps change their Dock eligibility.
+Swipe the Dock to switch between Apps and Tools. Each display remembers its own page while the active application stays in place.
+
+- **Tools library.** Open Settings → Dock → Tools Page → Edit. Drag in cards, change their order and width, and stack related tools. Choose Done to apply your layout across displays.
+- **Music, calendar and system tools.** View artwork, scrub, change tracks or select from the current Music playlist. Browse calendar events by week, month or day; check CPU, memory, swap, battery and storage; add weather, timers and shortcuts.
+- **Four quota cards.** Codex reads local Codex CLI account limits. Gemini reads its Antigravity allowance. Claude invokes the built-in Claude Code `/usage` command without a chat turn; the CLI may return a cached reading. For Cursor, choose the experimental legacy CLI or the shared pool of the same X Subscription. Paid Cursor balances and reset dates were tested with fixtures, not a live paid account. Claude subscription reporting was tested with the official CLI and isolated subscription data; the live local CLI required subscription sign-in.
+- **Upgrade in place.** DualDock keeps the existing application and updater identity. If preview data is found, the app backs up the existing release configuration before importing the preview settings. Otherwise, your existing configuration carries forward. Backups are stored in `~/Library/Application Support/DualDock Backups/`. A separately enabled preview login item can be removed from macOS Login Items.
+
+For Apple Silicon Macs running macOS 14 or later. See the bilingual first-launch guide inside the DMG if macOS cannot verify the developer.
 ]]></description>
-            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v2.9.2/DualDock-2.9.2-arm64.dmg" length="3591360" type="application/octet-stream" sparkle:edSignature="DB957VKwLV/KvN9eUTGnvpAFc4CEwh0KyPYMJTBYU2n1gWn08dIX2uNrD3TqPM0MxA8UAMxa4OKL1xZhCaO7BQ=="></enclosure>
+            <enclosure url="https://github.com/autumncry/DualDock/releases/download/v3.0.0/DualDock-3.0.0-arm64.dmg" length="5067619" type="application/octet-stream" sparkle:edSignature="WA4rRDDqlkmfzq61OWbqPkLIhRKc7jOGNtcaUvh9psJzymOwKgnUcuqCHsIDVEA4HpE6bLTuX+up4YJoZfKfBQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: LS2MS6vaG8VgMHKYUQVBZaVkg4tj7R6xGvvIo5tz+V1mrVdqoXmggOqeLcIF1Kx472O8P3UIIRx52OBGphCeBQ==
-length: 2447
+edSignature: tfX++PWGD6DnOOvmW6J8Hc29VpVf/Q4TBJQc4AxVCtXKcqLyduAuP7AwXadXaR/53QIfY2MhJmy7HaJuZfNyBA==
+length: 4841
 -->
